@@ -1,14 +1,14 @@
 import type { TargetingAlgorithm } from './types';
-import { findClosestTarget } from './findClosestTarget';
-import { getRectCenter } from './helpers/getRectCenter';
+import { findClosestTarget } from './find-closest-target';
+import { getRectCenter } from './helpers/get-rect-center';
 
 export const centerToCenter: TargetingAlgorithm = ({
   runtime,
   dropTargets,
 }) => {
-  if (!runtime.rect) {
+  if (!runtime.overlayRect) {
     return null;
   }
 
-  return findClosestTarget(getRectCenter(runtime.rect), dropTargets);
+  return findClosestTarget(getRectCenter(runtime.overlayRect), dropTargets);
 };

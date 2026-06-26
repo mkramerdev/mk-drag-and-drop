@@ -1,5 +1,5 @@
 import { TargetingAlgorithm } from './types';
-import { findClosestTarget } from './findClosestTarget';
+import { findClosestTarget } from './find-closest-target';
 
 export const pointerToCenter: TargetingAlgorithm = ({
   runtime,

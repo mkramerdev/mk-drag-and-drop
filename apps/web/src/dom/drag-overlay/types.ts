@@ -1,1 +1,1 @@
-export type Overlay = HTMLDivElement;
+export type DragOverlayElement = HTMLDivElement;

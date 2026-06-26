@@ -8,5 +8,5 @@ export function setActiveDropTarget<Payload>(
     return;
   }
 
-  runtime.activeDropTargetKey = input.key;
+  runtime.activeDropTargetKey = input.dropTargetKey;
 }

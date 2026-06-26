@@ -8,18 +8,17 @@ import {
   findDragListItem,
   getOrderedDragListItems,
 } from "./custom/list-data";
-import { applyDrop, setDragListDropTarget } from "./custom/list-drop";
+import { setDragListItemGhosted } from "./custom/list-drag-effects";
+import { applyDragListDrop, setDragListDropTarget } from "./custom/list-drop";
 import {
-  getDragListEntryId,
-  getDropTargetId,
-  renderCustomOverlay,
-  renderDragListEntry,
-  renderDropTarget,
+  getDragListDropTargetKey,
+  renderDragListItem,
+  renderDragListDropTarget,
+  renderDragListOverlayContent,
 } from "./custom/list-render";
 import { pointerToCenter } from "./core/targeting/pointer-to-center";
-import { createDragRuntime } from "./core/runtime/createDragRuntime";
+import { createDragRuntime } from "./core/runtime/create-drag-runtime";
 import { createDomDragHandler } from "./dom/create-dom-drag-handler";
-
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -32,26 +31,22 @@ function renderApp(): void {
   const dragListMarkup = dragListItemsInOrder
     .map((item, dropTargetIndex) => {
       const itemId = item.id;
-      const dropTargetId = getDropTargetId(dropTargetIndex);
-      const entryId = getDragListEntryId(itemId);
+      const dropTargetKey = getDragListDropTargetKey(dropTargetIndex);
       setDragListDropTarget({
-        dropTargetId,
+        dropTargetKey,
         beforeItemId: itemId,
       });
 
       return `
-        ${renderDragListEntry({
-          entryId,
-          dropTargetId,
-          item,
-        })}
+        ${renderDragListDropTarget({ dropTargetKey })}
+        ${renderDragListItem(item)}
       `;
     })
     .join("");
 
-  const endDropTargetId = getDropTargetId(dragListItemsInOrder.length);
+  const endDropTargetKey = getDragListDropTargetKey(dragListItemsInOrder.length);
   setDragListDropTarget({
-    dropTargetId: endDropTargetId,
+    dropTargetKey: endDropTargetKey,
     beforeItemId: null,
   });
 
@@ -63,7 +58,7 @@ function renderApp(): void {
       data-dnd-is-dragging="${dragRuntime.isDragging}"
     >
       ${dragListMarkup}
-      ${renderDropTarget({ dropTargetId: endDropTargetId })}
+      ${renderDragListDropTarget({ dropTargetKey: endDropTargetKey })}
     </div>
   `;
 
@@ -73,7 +68,7 @@ function renderApp(): void {
     "pointerdown",
     createDomDragHandler({
       runtime: dragRuntime,
-      renderOverlay: renderCustomOverlay,
+      renderOverlayContent: renderDragListOverlayContent,
       overlayPlacement: "left-center",
       targetingAlgorithm: pointerToCenter,
       getPayload: (itemId) => {
@@ -87,8 +82,17 @@ function renderApp(): void {
           content: item.content,
         };
       },
+      onDragStart: ({ draggedKey }) => {
+        setDragListItemGhosted(draggedKey, true);
+      },
+      onDragEnd: ({ draggedKey }) => {
+        setDragListItemGhosted(draggedKey, false);
+      },
       onDrop: ({ draggedKey, dropTargetKey }) => {
-        const changedItemId = applyDrop({ draggedKey, dropTargetKey });
+        const changedItemId = applyDragListDrop({
+          draggedItemId: draggedKey,
+          dropTargetKey,
+        });
 
         if (!changedItemId) {
           return;

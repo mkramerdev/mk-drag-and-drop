@@ -26,7 +26,7 @@ export interface FractionalIndexingInstrumentationEvent {
 }
 
 interface FractionalIndexingInstrumentationGlobal {
-  __EDITOR_FRACTIONAL_INDEXING_INSTRUMENTATION__?: {
+  __DRAG_LIST_FRACTIONAL_INDEXING_INSTRUMENTATION__?: {
     record(event: FractionalIndexingInstrumentationEvent): void;
   };
 }
@@ -39,7 +39,7 @@ function readNow(): number {
 }
 
 function recordFractionalIndexingEvent(event: FractionalIndexingInstrumentationEvent): void {
-  (globalThis as FractionalIndexingInstrumentationGlobal).__EDITOR_FRACTIONAL_INDEXING_INSTRUMENTATION__?.record(event);
+  (globalThis as FractionalIndexingInstrumentationGlobal).__DRAG_LIST_FRACTIONAL_INDEXING_INSTRUMENTATION__?.record(event);
 }
 
 /**

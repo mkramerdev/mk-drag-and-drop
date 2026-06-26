@@ -1,7 +1,7 @@
 import type { DragPoint } from '../runtime/types';
 import type { DropTarget } from './types';
-import { getSquaredDistance } from './helpers/getSquaredDistance';
-import { getRectCenter } from './helpers/getRectCenter';
+import { getSquaredDistance } from './helpers/get-squared-distance';
+import { getRectCenter } from './helpers/get-rect-center';
 
 export function findClosestTarget(
   point: DragPoint,
@@ -10,12 +10,15 @@ export function findClosestTarget(
   let closestTarget: DropTarget | null = null;
   let closestDistance = Number.POSITIVE_INFINITY;
 
-  for (const dropTarget of dropTargets) {
-    const distance = getSquaredDistance(point, getRectCenter(dropTarget.rect));
+  for (const candidateDropTarget of dropTargets) {
+    const distance = getSquaredDistance(
+      point,
+      getRectCenter(candidateDropTarget.dropTargetRect),
+    );
 
     if (distance < closestDistance) {
       closestDistance = distance;
-      closestTarget = dropTarget;
+      closestTarget = candidateDropTarget;
     }
   }
 

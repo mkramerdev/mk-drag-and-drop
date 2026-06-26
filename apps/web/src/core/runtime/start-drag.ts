@@ -10,9 +10,9 @@ export function startDrag<Payload>(
   }
 
   runtime.isDragging = true;
-  runtime.key = input.key;
+  runtime.draggedKey = input.draggedKey;
   runtime.payload = input.payload;
   runtime.pointerPosition = input.pointerPosition;
-  runtime.rect = input.rect;
+  runtime.overlayRect = null;
   runtime.activeDropTargetKey = null;
 }

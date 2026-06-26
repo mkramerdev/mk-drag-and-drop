@@ -1,7 +1,7 @@
-import type { TrackDomDragInput } from "./track-dom-drag";
+import type { TrackDomDragInput } from "../types";
 
-import { moveDrag } from "../../core/runtime/moveDrag";
-import { setActiveDropTarget } from "../../core/runtime/setActiveDropTarget";
+import { moveDrag } from "../../core/runtime/move-drag";
+import { setActiveDropTarget } from "../../core/runtime/set-active-drop-target";
 
 export function onPointerMove<Payload>(
   input: TrackDomDragInput<Payload>,
@@ -26,6 +26,6 @@ export function onPointerMove<Payload>(
   });
 
   setActiveDropTarget(input.runtime, {
-    key: activeDropTarget?.key ?? null,
+    dropTargetKey: activeDropTarget?.dropTargetKey ?? null,
   });
 }

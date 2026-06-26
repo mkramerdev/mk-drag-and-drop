@@ -1,21 +1,11 @@
-import type { DragRuntime } from "../../core/runtime/types";
 import type {
-  DropTarget,
-  TargetingAlgorithm,
-} from "../../core/targeting/types";
-import type { DragOverlayController } from "../types";
+  DomPointerCapture,
+  TrackDomDragInput,
+} from "../types";
 
 import { onPointerMove } from "./on-pointer-move";
 import { releaseDomDrag } from "./release-dom-drag";
-import { syncActiveDropTarget } from "./sync-active-droptarget";
-
-export type TrackDomDragInput<Payload> = {
-  runtime: DragRuntime<Payload>;
-  overlay: DragOverlayController | null;
-  dropTargets: readonly DropTarget[];
-  targetingAlgorithm: TargetingAlgorithm;
-  onDrop?: (drop: { draggedKey: string; dropTargetKey: string }) => void;
-};
+import { syncActiveDropTarget } from "./sync-active-drop-target";
 
 export function trackDomDrag<Payload>(
   input: TrackDomDragInput<Payload>,
@@ -27,14 +17,33 @@ export function trackDomDrag<Payload>(
   document.documentElement.dataset.dndDragging = "true";
 
   let activeDropTargetElement: HTMLElement | null = null;
+  let pendingPointerMove: PointerEvent | null = null;
+  let pointerMoveFrameId: number | null = null;
 
   const handlePointerMove = (event: PointerEvent) => {
-    onPointerMove(input, event);
+    pendingPointerMove = event;
 
-    activeDropTargetElement = syncActiveDropTarget(
-      input.runtime.activeDropTargetKey,
-      activeDropTargetElement,
-    );
+    if (pointerMoveFrameId !== null) {
+      return;
+    }
+
+    pointerMoveFrameId = window.requestAnimationFrame(() => {
+      pointerMoveFrameId = null;
+
+      const latestPointerMove = pendingPointerMove;
+      pendingPointerMove = null;
+
+      if (!latestPointerMove || !input.runtime.isDragging) {
+        return;
+      }
+
+      onPointerMove(input, latestPointerMove);
+
+      activeDropTargetElement = syncActiveDropTarget(
+        input.runtime.activeDropTargetKey,
+        activeDropTargetElement,
+      );
+    });
   };
 
   const handlePointerEnd = () => {
@@ -58,5 +67,21 @@ export function trackDomDrag<Payload>(
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerEnd);
     window.removeEventListener("pointercancel", handlePointerEnd);
+    releasePointerCapture(input.pointerCapture);
+
+    if (pointerMoveFrameId !== null) {
+      window.cancelAnimationFrame(pointerMoveFrameId);
+      pointerMoveFrameId = null;
+    }
+
+    pendingPointerMove = null;
   }
+}
+
+function releasePointerCapture(pointerCapture: DomPointerCapture): void {
+  if (pointerCapture.element.hasPointerCapture(pointerCapture.pointerId)) {
+    pointerCapture.element.releasePointerCapture(pointerCapture.pointerId);
+  }
+
+  pointerCapture.element.style.cursor = pointerCapture.previousCursor;
 }

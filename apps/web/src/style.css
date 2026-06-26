@@ -108,9 +108,13 @@ button:focus-visible {
   background-color: #151515;
   min-width: 20rem;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-.dragItem {
+.dragListItem {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
   padding: 0.5rem 1rem;
   background-color: #2e2e2e;
   display: flex;
@@ -121,8 +125,9 @@ button:focus-visible {
   justify-content: flex-start;
   box-sizing: border-box;
   width: 100%;
+  border: 1px solid grey;
 }
-.dragItem1 {
+.dragListItemTall {
   padding: 1.5rem 1rem;
   background-color: #2e2e2e;
   display: flex;
@@ -135,18 +140,18 @@ button:focus-visible {
   width: 100%;
 }
 
-.dragListEntry + .dragListEntry {
-  margin-top: 0.25rem;
+.dragListItemGhosted {
+  opacity: 0.35;
 }
 
-.dropTarget {
+.dragListDropTarget {
   position: relative;
   height: 0;
   pointer-events: none;
   z-index: 2;
 }
 
-.dropTargetLine {
+.dragListDropIndicator {
   position: absolute;
   left: 0;
   right: 0;
@@ -156,11 +161,11 @@ button:focus-visible {
   opacity: 0;
 }
 
-.dropTarget[data-dnd-active-drop-target="true"] .dropTargetLine {
+.dragListDropTarget[data-dnd-active-drop-target="true"] .dragListDropIndicator {
   opacity: 1;
 }
 
-.dragHandle {
+.dragListHandle {
   border: 1px solid #8a8a8a;
   width: 1.25rem;
   height: 1.25rem;
@@ -170,10 +175,10 @@ button:focus-visible {
   cursor: grab;
 }
 
-.dragHandle:active {
+.dragListHandle:active {
   cursor: grabbing;
 }
 
-.dragItemText {
+.dragListItemText {
   font-size: 1rem;
 }

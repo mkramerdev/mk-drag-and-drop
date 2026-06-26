@@ -1,8 +1,8 @@
 import type { DragRuntime, DragRect } from '../runtime/types'
 
 export type DropTarget = {
-  key: string;
-  rect: DragRect;
+  dropTargetKey: string;
+  dropTargetRect: DragRect;
 };
 
 export type TargetingAlgorithmInput = {

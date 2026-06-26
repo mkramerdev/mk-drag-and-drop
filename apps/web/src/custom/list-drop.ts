@@ -5,8 +5,8 @@ import {
 } from "./list-data";
 import { generateKeyBetween } from "./fractional-indexing";
 
-export type DropResult = {
-  draggedKey: string;
+export type DragListDropInput = {
+  draggedItemId: string;
   dropTargetKey: string;
 };
 
@@ -17,24 +17,34 @@ type DragListDropTarget = {
 const dragListDropTargets: Record<string, DragListDropTarget> = {};
 
 export function setDragListDropTarget(input: {
-  dropTargetId: string;
+  dropTargetKey: string;
   beforeItemId: string | null;
 }): void {
-  dragListDropTargets[input.dropTargetId] = {
+  dragListDropTargets[input.dropTargetKey] = {
     beforeItemId: input.beforeItemId,
   };
 }
 
-export function getEndDropTargetId(): string | null {
+export function getEndDragListDropTargetKey(): string | null {
   return (
     Object.entries(dragListDropTargets).find(
-      ([, dropTarget]) => dropTarget.beforeItemId === null,
+      ([, dragListDropTarget]) => dragListDropTarget.beforeItemId === null,
     )?.[0] ?? null
   );
 }
 
-export function applyDrop(drop: DropResult): string | null {
-  const draggedItem = findDragListItem(dragListItems, drop.draggedKey);
+export function getDragListDropTargetKeyBeforeItem(
+  itemId: string,
+): string | null {
+  return (
+    Object.entries(dragListDropTargets).find(
+      ([, dragListDropTarget]) => dragListDropTarget.beforeItemId === itemId,
+    )?.[0] ?? null
+  );
+}
+
+export function applyDragListDrop(drop: DragListDropInput): string | null {
+  const draggedItem = findDragListItem(dragListItems, drop.draggedItemId);
   const listDropTarget = getDragListDropTarget(drop.dropTargetKey);
 
   if (!draggedItem || !listDropTarget) {
@@ -42,7 +52,7 @@ export function applyDrop(drop: DropResult): string | null {
   }
 
   const nextOrderKey = getDropOrderKey({
-    draggedKey: drop.draggedKey,
+    draggedItemId: drop.draggedItemId,
     beforeItemId: listDropTarget.beforeItemId,
   });
 
@@ -56,22 +66,26 @@ export function applyDrop(drop: DropResult): string | null {
 
   draggedItem.orderKey = nextOrderKey;
 
-  return drop.draggedKey;
+  const changedItemId = drop.draggedItemId;
+
+  return changedItemId;
 }
 
-function getDragListDropTarget(dropTargetId: string): DragListDropTarget | null {
-  return dragListDropTargets[dropTargetId] ?? null;
+function getDragListDropTarget(
+  dropTargetKey: string,
+): DragListDropTarget | null {
+  return dragListDropTargets[dropTargetKey] ?? null;
 }
 
 function getDropOrderKey(options: {
-  draggedKey: string;
+  draggedItemId: string;
   beforeItemId: string | null;
 }): string | null {
   const orderedItems = getOrderedDragListItems().filter(
-    (item) => item.id !== options.draggedKey,
+    (item) => item.id !== options.draggedItemId,
   );
 
-  if (options.beforeItemId === options.draggedKey) {
+  if (options.beforeItemId === options.draggedItemId) {
     return null;
   }
 

@@ -1,44 +1,66 @@
 import { getDropTargetElement } from "../dom/targeting/drop-target-elements";
 import type { DragListItem } from "./list-data";
 import { findDragListItem, getOrderedDragListItems } from "./list-data";
-import { getEndDropTargetId } from "./list-drop";
-import { getDragListEntryId, renderDragItem } from "./list-render";
+import {
+  getDragListDropTargetKeyBeforeItem,
+  getEndDragListDropTargetKey,
+} from "./list-drop";
+import { renderDragListItem } from "./list-render";
 
 export function commitChangedItemInOrder(input: {
   items: readonly DragListItem[];
   itemId: string;
 }): void {
-  const currentEntry = getDragListEntryElement(input.itemId);
-  const parent = currentEntry?.parentElement;
+  const currentDropTarget = getDropTargetBeforeItem(input.itemId);
+  const currentItem = document.getElementById(input.itemId);
+  const parent = currentItem?.parentElement;
 
-  if (!currentEntry || !parent) {
+  if (!currentDropTarget || !currentItem || !parent) {
     return;
   }
 
-  if (!rerenderDragItem(input)) {
+  const nextItem = rerenderDragItem(input);
+
+  if (!nextItem) {
     return;
   }
 
+  const itemNodes = createItemNodeFragment(currentDropTarget, nextItem);
   const nextItemId = getNextItemId(input);
-  const nextEntry = nextItemId ? getDragListEntryElement(nextItemId) : null;
+  const nextDropTarget = nextItemId
+    ? getDropTargetBeforeItem(nextItemId)
+    : null;
 
-  if (nextEntry) {
-    nextEntry.before(currentEntry);
+  if (nextDropTarget) {
+    nextDropTarget.before(itemNodes);
     return;
   }
 
   const endDropTarget = getEndDropTarget();
 
   if (endDropTarget) {
-    endDropTarget.before(currentEntry);
+    endDropTarget.before(itemNodes);
     return;
   }
 
-  parent.append(currentEntry);
+  parent.append(itemNodes);
 }
 
-function getDragListEntryElement(itemId: string): HTMLElement | null {
-  return document.getElementById(getDragListEntryId(itemId));
+function getDropTargetBeforeItem(itemId: string): HTMLElement | null {
+  const dropTargetKey = getDragListDropTargetKeyBeforeItem(itemId);
+
+  return dropTargetKey ? getDropTargetElement(dropTargetKey) : null;
+}
+
+function createItemNodeFragment(
+  dropTargetElement: HTMLElement,
+  item: HTMLElement,
+): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+
+  fragment.append(dropTargetElement, item);
+
+  return fragment;
 }
 
 function rerenderDragItem(input: {
@@ -53,7 +75,7 @@ function rerenderDragItem(input: {
   }
 
   const template = document.createElement("template");
-  template.innerHTML = renderDragItem(item).trim();
+  template.innerHTML = renderDragListItem(item).trim();
 
   const nextElement = template.content.firstElementChild;
 
@@ -83,7 +105,7 @@ function getNextItemId(input: {
 }
 
 function getEndDropTarget(): HTMLElement | null {
-  const endDropTargetId = getEndDropTargetId();
+  const endDropTargetKey = getEndDragListDropTargetKey();
 
-  return endDropTargetId ? getDropTargetElement(endDropTargetId) : null;
+  return endDropTargetKey ? getDropTargetElement(endDropTargetKey) : null;
 }

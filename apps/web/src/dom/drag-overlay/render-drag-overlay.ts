@@ -1,85 +1,84 @@
-import type { DragRuntime } from "../../core/runtime/types";
+import type { DragRect, DragRuntime } from "../../core/runtime/types";
 import type {
   DragOverlayController,
   DragOverlayPlacement,
-  DragOverlayRenderer,
+  DragOverlayContentRenderer,
 } from "../types";
-import { createOverlayWrapper } from "./create-overlay-wrapper";
-import { hydrateOverlay } from "./hydrate-overlay";
+import { domRectToDragRect } from "../targeting/dom-rect-to-drag-rect";
+import {
+  createDragOverlayElement,
+  setDragOverlayElementPosition,
+} from "./create-drag-overlay-element";
+import { appendOverlayContent } from "./append-overlay-content";
 
 export function renderDragOverlay<Payload>(options: {
-  renderer?: DragOverlayRenderer<Payload>;
+  renderContent?: DragOverlayContentRenderer<Payload>;
   runtime: DragRuntime<Payload>;
+  draggedElementRect: DragRect;
   placement?: DragOverlayPlacement;
 }): DragOverlayController | null {
+  const renderContent = options.renderContent;
+  const payload = options.runtime.payload;
+  const startPos = options.runtime.pointerPosition;
 
-    const renderer = options.renderer;
-    const payload = options.runtime.payload;
-    const startPos = options.runtime.pointerPosition;
-    const rect = options.runtime.rect;
-  if (
-    !renderer ||
-    !payload ||
-    !startPos ||
-    !rect
-  ) {
+  if (!renderContent || !payload || !startPos) {
     return null;
   }
-  const initialPosition = getOverlayWrapperPosition(
+
+  const initialPosition = getDragOverlayElementPosition(
     options.placement ?? "pointer",
     {
-      rect,
+      draggedElementRect: options.draggedElementRect,
       startPos,
     },
   );
-  const overlayWrapper = createOverlayWrapper(initialPosition);
-  const overlay = hydrateOverlay(payload, renderer, overlayWrapper);
-  document.body.append(overlay);
+  const overlayElement = createDragOverlayElement(initialPosition);
+  appendOverlayContent(payload, renderContent, overlayElement);
+  document.body.append(overlayElement);
+
+  const measuredOverlayRect = domRectToDragRect(
+    overlayElement.getBoundingClientRect(),
+  );
+  const initialOverlayRect = getInitialOverlayRect(options.placement ?? "pointer", {
+    overlayRect: measuredOverlayRect,
+    draggedElementRect: options.draggedElementRect,
+    startPos,
+  });
+
+  setDragOverlayElementPosition(overlayElement, initialOverlayRect);
 
   return {
-    overlay: overlay,
+    overlayElement,
+    initialOverlayRect,
     sync: () => {
-      const pointerPosition = options.runtime.pointerPosition;
+      const currentOverlayRect = options.runtime.overlayRect;
 
-      if (!pointerPosition) {
+      if (!currentOverlayRect) {
         return;
       }
 
-      overlay.style.transform = getOverlayTransform(
-        initialPosition.transform,
-        pointerPosition.x - startPos.x,
-        pointerPosition.y - startPos.y,
-      );
+      setDragOverlayElementPosition(overlayElement, currentOverlayRect);
     },
     destroy: () => {
-      overlay.remove();
+      overlayElement.remove();
     },
   };
 }
 
-function getOverlayWrapperPosition(
+function getDragOverlayElementPosition(
   placement: DragOverlayPlacement,
   input: {
-    rect: NonNullable<DragRuntime["rect"]>;
+    draggedElementRect: DragRect;
     startPos: NonNullable<DragRuntime["pointerPosition"]>;
   },
 ): {
   left: number;
   top: number;
-  transform?: string;
 } {
-  if (placement === "left-center") {
+  if (placement === "left-center" || placement === "left-top") {
     return {
-      left: input.rect.left,
-      top: input.rect.top + input.rect.height / 2,
-      transform: "translateY(-50%)",
-    };
-  }
-
-  if (placement === "left-top") {
-    return {
-      left: input.rect.left,
-      top: input.rect.top,
+      left: input.draggedElementRect.left,
+      top: input.draggedElementRect.top,
     };
   }
 
@@ -89,12 +88,58 @@ function getOverlayWrapperPosition(
   };
 }
 
-function getOverlayTransform(
-  baseTransform: string | undefined,
-  deltaX: number,
-  deltaY: number,
-): string {
-  const dragTransform = `translate(${deltaX}px, ${deltaY}px)`;
+function getInitialOverlayRect(
+  placement: DragOverlayPlacement,
+  input: {
+    overlayRect: DragRect;
+    draggedElementRect: DragRect;
+    startPos: NonNullable<DragRuntime["pointerPosition"]>;
+  },
+): DragRect {
+  const position = getInitialOverlayPosition(placement, input);
 
-  return baseTransform ? `${baseTransform} ${dragTransform}` : dragTransform;
+  return {
+    x: position.left,
+    y: position.top,
+    width: input.overlayRect.width,
+    height: input.overlayRect.height,
+    top: position.top,
+    right: position.left + input.overlayRect.width,
+    bottom: position.top + input.overlayRect.height,
+    left: position.left,
+  };
+}
+
+function getInitialOverlayPosition(
+  placement: DragOverlayPlacement,
+  input: {
+    overlayRect: DragRect;
+    draggedElementRect: DragRect;
+    startPos: NonNullable<DragRuntime["pointerPosition"]>;
+  },
+): {
+  left: number;
+  top: number;
+} {
+  if (placement === "left-center") {
+    return {
+      left: input.draggedElementRect.left,
+      top:
+        input.draggedElementRect.top +
+        input.draggedElementRect.height / 2 -
+        input.overlayRect.height / 2,
+    };
+  }
+
+  if (placement === "left-top") {
+    return {
+      left: input.draggedElementRect.left,
+      top: input.draggedElementRect.top,
+    };
+  }
+
+  return {
+    left: input.startPos.x,
+    top: input.startPos.y,
+  };
 }

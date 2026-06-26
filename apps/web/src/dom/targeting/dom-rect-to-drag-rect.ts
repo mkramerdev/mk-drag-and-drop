@@ -1,6 +1,6 @@
 import type { DragRect } from '../../core/runtime/types'  
 
-export function convertDomRect(rect: DOMRect): DragRect {
+export function domRectToDragRect(rect: DOMRect): DragRect {
   return {
     x: rect.x,
     y: rect.y,

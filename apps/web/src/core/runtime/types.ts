@@ -16,18 +16,17 @@ export type DragRect = {
 
 export type DragRuntime<Payload = unknown> = {
   isDragging: boolean;
-  key: string | null;
+  draggedKey: string | null;
   payload: Payload | null;
   pointerPosition: DragPoint | null;
-  rect: DragRect | null;
+  overlayRect: DragRect | null;
   activeDropTargetKey: string | null;
 };
 
 export type StartDragInput<Payload = unknown> = {
-  key: string;
+  draggedKey: string;
   payload: Payload;
   pointerPosition: DragPoint;
-  rect: DragRect;
 };
 
 export type MoveDragInput = {
@@ -35,5 +34,5 @@ export type MoveDragInput = {
 };
 
 export type SetActiveDropTargetInput = {
-  key: string | null;
+  dropTargetKey: string | null;
 };
