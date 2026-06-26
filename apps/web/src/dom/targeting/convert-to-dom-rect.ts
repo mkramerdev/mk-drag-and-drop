@@ -1,0 +1,14 @@
+import type { DragRect } from '../../core/runtime/types'  
+
+export function convertDomRect(rect: DOMRect): DragRect {
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+  };
+}
