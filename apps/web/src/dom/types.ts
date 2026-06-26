@@ -5,11 +5,14 @@ export type CreateDomDragHandlerOptions<Payload> = {
   runtime: DragRuntime<Payload>;
   getPayload: (key: string) => Payload | null;
   renderOverlay?: DragOverlayRenderer<Payload>;
+  overlayPlacement?: DragOverlayPlacement;
   targetingAlgorithm?: TargetingAlgorithm;
   onDrop?: (drop: { draggedKey: string; dropTargetKey: string }) => void;
 };
 
 export type DragOverlayRenderer<Payload = unknown> = (payload: Payload) => HTMLElement;
+
+export type DragOverlayPlacement = "pointer" | "left-center" | "left-top";
 
 export type DragOverlayController = {
   overlay: HTMLElement;

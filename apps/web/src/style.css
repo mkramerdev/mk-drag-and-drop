@@ -111,7 +111,6 @@ button:focus-visible {
 }
 
 .dragItem {
-  margin-top: 0.25rem;
   padding: 0.5rem 1rem;
   background-color: #2e2e2e;
   display: flex;
@@ -123,9 +122,21 @@ button:focus-visible {
   box-sizing: border-box;
   width: 100%;
 }
+.dragItem1 {
+  padding: 1.5rem 1rem;
+  background-color: #2e2e2e;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+}
 
-.dragListEntry:first-child .dragItem {
-  margin-top: 0;
+.dragListEntry + .dragListEntry {
+  margin-top: 0.25rem;
 }
 
 .dropTarget {

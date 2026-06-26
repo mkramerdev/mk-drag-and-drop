@@ -1,10 +1,10 @@
 import type { DropTarget } from "../../core/targeting/types";
 import { convertDomRect } from './convert-to-dom-rect'
+import { getDropTargetElements } from "./drop-target-elements";
 
 export function findDropTargets(parent: ParentNode): DropTarget[] {
-  return Array.from(
-    parent.querySelectorAll<HTMLElement>("[data-dnd-drop-target-id]"),
-    (element) => {
+  return getDropTargetElements(parent)
+    .map((element) => {
       const key = element.dataset.dndDropTargetId;
 
       if (!key) {
@@ -15,6 +15,6 @@ export function findDropTargets(parent: ParentNode): DropTarget[] {
         key,
         rect: convertDomRect(element.getBoundingClientRect()),
       };
-    },
-  ).filter((dropTarget): dropTarget is DropTarget => dropTarget !== null);
+    })
+    .filter((dropTarget): dropTarget is DropTarget => dropTarget !== null);
 }

@@ -1,4 +1,5 @@
 import { clearActiveDropTarget } from "./clear-active-droptarget";
+import { getDropTargetElement } from "../targeting/drop-target-elements";
 
 export function syncActiveDropTarget(
   key: string | null,
@@ -14,9 +15,7 @@ export function syncActiveDropTarget(
     return null;
   }
 
-  const nextDropTarget = document.querySelector<HTMLElement>(
-    `[data-dnd-drop-target-id="${CSS.escape(key)}"]`,
-  );
+  const nextDropTarget = getDropTargetElement(key);
 
   if (!nextDropTarget) {
     return null;

@@ -1,17 +1,21 @@
 import "./style.css";
 
-import type { DragListItemPayload } from "./custom/types";
+import type { DragListItemPayload } from "./custom/list-data";
 
-import { applyDrop } from "./custom/reordering/apply-drop";
-import { getDragListEntryId } from "./custom/get-drag-list-entry-id";
-import { getOrderedDragListEntries } from "./custom/reordering/get-ordered-drag-list-entries";
-import { renderChangedItemInOrder } from "./custom/reordering/render-changed-item-in-order";
-import { setDragListDropTarget } from "./custom/reordering/set-drag-list-drop-target";
-import { dragListItems } from "./custom/mock-data";
-import { renderCustomOverlay } from "./custom/render-custom-overlay";
-import { renderDragListEntry } from "./custom/render-drag-list-entry";
-import { getDropTargetId } from "./custom/get-drop-target-id";
-import { renderDropTarget } from "./custom/render-drop-target";
+import { commitChangedItemInOrder } from "./custom/list-commit";
+import {
+  dragListItems,
+  findDragListItem,
+  getOrderedDragListItems,
+} from "./custom/list-data";
+import { applyDrop, setDragListDropTarget } from "./custom/list-drop";
+import {
+  getDragListEntryId,
+  getDropTargetId,
+  renderCustomOverlay,
+  renderDragListEntry,
+  renderDropTarget,
+} from "./custom/list-render";
 import { pointerToCenter } from "./core/targeting/pointer-to-center";
 import { createDragRuntime } from "./core/runtime/createDragRuntime";
 import { createDomDragHandler } from "./dom/create-dom-drag-handler";
@@ -24,9 +28,10 @@ const dragRuntime = createDragRuntime<DragListItemPayload>();
 renderApp();
 
 function renderApp(): void {
-  const dragListEntries = getOrderedDragListEntries();
-  const dragListMarkup = dragListEntries
-    .map(([itemId, item], dropTargetIndex) => {
+  const dragListItemsInOrder = getOrderedDragListItems();
+  const dragListMarkup = dragListItemsInOrder
+    .map((item, dropTargetIndex) => {
+      const itemId = item.id;
       const dropTargetId = getDropTargetId(dropTargetIndex);
       const entryId = getDragListEntryId(itemId);
       setDragListDropTarget({
@@ -38,14 +43,13 @@ function renderApp(): void {
         ${renderDragListEntry({
           entryId,
           dropTargetId,
-          itemId,
           item,
         })}
       `;
     })
     .join("");
 
-  const endDropTargetId = getDropTargetId(dragListEntries.length);
+  const endDropTargetId = getDropTargetId(dragListItemsInOrder.length);
   setDragListDropTarget({
     dropTargetId: endDropTargetId,
     beforeItemId: null,
@@ -70,9 +74,10 @@ function renderApp(): void {
     createDomDragHandler({
       runtime: dragRuntime,
       renderOverlay: renderCustomOverlay,
+      overlayPlacement: "left-center",
       targetingAlgorithm: pointerToCenter,
       getPayload: (itemId) => {
-        const item = dragListItems[itemId];
+        const item = findDragListItem(dragListItems, itemId);
 
         if (!item) {
           return null;
@@ -89,7 +94,7 @@ function renderApp(): void {
           return;
         }
 
-        renderChangedItemInOrder({
+        commitChangedItemInOrder({
           items: dragListItems,
           itemId: changedItemId,
         });

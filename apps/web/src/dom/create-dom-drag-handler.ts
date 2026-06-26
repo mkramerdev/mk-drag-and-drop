@@ -21,6 +21,7 @@ export function createDomDragHandler<Payload>(
     const overlay = renderDragOverlay({
       renderer: options.renderOverlay,
       runtime: options.runtime,
+      placement: options.overlayPlacement,
     });
     const dropTargets = findDropTargets(
       event.currentTarget instanceof HTMLElement
