@@ -1,15 +1,18 @@
-import type { DragRect, DragRuntime } from "../../core/runtime/types";
+import type { DragRect, DragRuntime } from "../core";
 import type {
-  DragOverlayController,
-  DragOverlayPlacement,
   DragOverlayContentRenderer,
-} from "../types";
-import { domRectToDragRect } from "../targeting/dom-rect-to-drag-rect";
-import {
-  createDragOverlayElement,
-  setDragOverlayElementPosition,
-} from "./create-drag-overlay-element";
-import { appendOverlayContent } from "./append-overlay-content";
+  DragOverlayPlacement,
+} from "./types";
+import { domRectToDragRect } from "./geometry";
+
+type DragOverlayElement = HTMLDivElement;
+
+export type DragOverlayController = {
+  overlayElement: DragOverlayElement;
+  initialOverlayRect: DragRect;
+  sync: () => void;
+  destroy: () => void;
+};
 
 export function renderDragOverlay<Payload>(options: {
   renderContent?: DragOverlayContentRenderer<Payload>;
@@ -21,17 +24,15 @@ export function renderDragOverlay<Payload>(options: {
   const payload = options.runtime.payload;
   const startPos = options.runtime.pointerPosition;
 
-  if (!renderContent || !payload || !startPos) {
+  if (!renderContent || payload === null || !startPos) {
     return null;
   }
 
-  const initialPosition = getDragOverlayElementPosition(
-    options.placement ?? "pointer",
-    {
-      draggedElementRect: options.draggedElementRect,
-      startPos,
-    },
-  );
+  const placement = options.placement ?? "pointer";
+  const initialPosition = getDragOverlayElementPosition(placement, {
+    draggedElementRect: options.draggedElementRect,
+    startPos,
+  });
   const overlayElement = createDragOverlayElement(initialPosition);
   appendOverlayContent(payload, renderContent, overlayElement);
   document.body.append(overlayElement);
@@ -39,7 +40,7 @@ export function renderDragOverlay<Payload>(options: {
   const measuredOverlayRect = domRectToDragRect(
     overlayElement.getBoundingClientRect(),
   );
-  const initialOverlayRect = getInitialOverlayRect(options.placement ?? "pointer", {
+  const initialOverlayRect = getInitialOverlayRect(placement, {
     overlayRect: measuredOverlayRect,
     draggedElementRect: options.draggedElementRect,
     startPos,
@@ -63,6 +64,45 @@ export function renderDragOverlay<Payload>(options: {
       overlayElement.remove();
     },
   };
+}
+
+function createDragOverlayElement(position: {
+  left: number;
+  top: number;
+}): DragOverlayElement {
+  const overlayElement = document.createElement("div");
+
+  overlayElement.dataset.dndDragOverlay = "true";
+  overlayElement.style.position = "fixed";
+  overlayElement.style.display = "inline-block";
+  overlayElement.style.pointerEvents = "none";
+  overlayElement.style.zIndex = "9999";
+  overlayElement.style.willChange = "left, top";
+  setDragOverlayElementPosition(overlayElement, position);
+
+  return overlayElement;
+}
+
+function appendOverlayContent<Payload>(
+  payload: Payload,
+  renderContent: DragOverlayContentRenderer<Payload>,
+  overlayElement: DragOverlayElement,
+): DragOverlayElement {
+  const overlayContent = renderContent(payload);
+  overlayElement.append(overlayContent);
+
+  return overlayElement;
+}
+
+function setDragOverlayElementPosition(
+  overlayElement: DragOverlayElement,
+  position: {
+    left: number;
+    top: number;
+  },
+): void {
+  overlayElement.style.left = `${position.left}px`;
+  overlayElement.style.top = `${position.top}px`;
 }
 
 function getDragOverlayElementPosition(

@@ -16,9 +16,8 @@ import {
   renderDragListDropTarget,
   renderDragListOverlayContent,
 } from "./custom/list-render";
-import { pointerToCenter } from "./core/targeting/pointer-to-center";
-import { createDragRuntime } from "./core/runtime/create-drag-runtime";
-import { createDomDragHandler } from "./dom/create-dom-drag-handler";
+import { centerToCenter, createDragRuntime } from "./core";
+import { createDomDragHandler } from "./dom";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -70,7 +69,7 @@ function renderApp(): void {
       runtime: dragRuntime,
       renderOverlayContent: renderDragListOverlayContent,
       overlayPlacement: "left-center",
-      targetingAlgorithm: pointerToCenter,
+      targetingAlgorithm: centerToCenter,
       getPayload: (itemId) => {
         const item = findDragListItem(dragListItems, itemId);
 

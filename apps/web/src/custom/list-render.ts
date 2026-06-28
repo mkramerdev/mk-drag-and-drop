@@ -1,4 +1,4 @@
-import type { DragOverlayContentRenderer } from "../dom/types";
+import type { DragOverlayContentRenderer } from "../dom";
 import type { DragListItem, DragListItemPayload } from "./list-data";
 
 export function getDragListHandleElementId(itemId: string): string {

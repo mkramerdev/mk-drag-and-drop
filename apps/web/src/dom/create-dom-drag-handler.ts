@@ -1,13 +1,9 @@
 import type { CreateDomDragHandlerOptions } from "./types";
-import { pointerToCenter } from '../core/targeting/pointer-to-center';
-import { setOverlayRect } from "../core/runtime/set-overlay-rect";
+import { pointerToCenter, setOverlayRect } from "../core";
 
-import { findDropTargets } from "./targeting/find-drop-targets";
-import {
-  renderDragOverlay,
-} from "./drag-overlay/render-drag-overlay";
-import { startDomDrag } from "./actions/start-dom-drag";
-import { trackDomDrag } from "./actions/track-dom-drag";
+import { findDropTargets, trackDomDrag } from "./dom-drag-session";
+import { renderDragOverlay } from "./drag-overlay";
+import { startDomDrag } from "./start-dom-drag";
 
 export function createDomDragHandler<Payload>(
   options: CreateDomDragHandlerOptions<Payload>,

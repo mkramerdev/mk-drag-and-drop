@@ -1,4 +1,4 @@
-import type { DragRect } from '../../core/runtime/types'  
+import type { DragRect } from "../core";
 
 export function domRectToDragRect(rect: DOMRect): DragRect {
   return {

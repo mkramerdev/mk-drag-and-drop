@@ -1,9 +1,23 @@
-import type { DomDragStartOptions, DomDragStartResult } from "../types";
+import type { DragPoint, DragRect, DragRuntime } from "../core";
+import { DragAlreadyActiveError, startDrag } from "../core";
+import type { DomPointerCapture } from "./dom-drag-session";
+import { domRectToDragRect } from "./geometry";
 
-import { startDrag } from "../../core/runtime/start-drag";
-import { DragAlreadyActiveError } from "../../core/runtime/error";
-import { domRectToDragRect } from "../targeting/dom-rect-to-drag-rect";
-import { convertPointerEvent } from "./convert-pointer-event";
+type DomDragStartOptions<Payload> = {
+  runtime: DragRuntime<Payload>;
+  getPayload: (draggedKey: string) => Payload | null;
+  getDraggedElement?: (
+    draggedKey: string,
+    dragHandle: HTMLElement,
+  ) => HTMLElement | null;
+};
+
+type DomDragStartResult<Payload> = {
+  draggedKey: string;
+  payload: Payload;
+  draggedElementRect: DragRect;
+  pointerCapture: DomPointerCapture;
+};
 
 export function startDomDrag<Payload>(
   options: DomDragStartOptions<Payload>,
@@ -21,7 +35,9 @@ export function startDomDrag<Payload>(
   }
 
   const payload = options.getPayload(draggedKey);
-  const draggedElement = document.getElementById(draggedKey);
+  const draggedElement = options.getDraggedElement
+    ? options.getDraggedElement(draggedKey, dragHandle)
+    : document.getElementById(draggedKey);
 
   if (payload === null || !draggedElement) {
     return null;
@@ -43,7 +59,7 @@ export function startDomDrag<Payload>(
     startDrag(options.runtime, {
       draggedKey,
       payload,
-      pointerPosition: convertPointerEvent(event),
+      pointerPosition: pointerEventToDragPoint(event),
     });
   } catch (error) {
     if (didCapturePointer && dragHandle.hasPointerCapture(event.pointerId)) {
@@ -70,5 +86,12 @@ export function startDomDrag<Payload>(
       pointerId: event.pointerId,
       previousCursor,
     },
+  };
+}
+
+function pointerEventToDragPoint(event: PointerEvent): DragPoint {
+  return {
+    x: event.clientX,
+    y: event.clientY,
   };
 }

@@ -1,4 +1,3 @@
-import { getDropTargetElement } from "../dom/targeting/drop-target-elements";
 import type { DragListItem } from "./list-data";
 import { findDragListItem, getOrderedDragListItems } from "./list-data";
 import {
@@ -108,4 +107,10 @@ function getEndDropTarget(): HTMLElement | null {
   const endDropTargetKey = getEndDragListDropTargetKey();
 
   return endDropTargetKey ? getDropTargetElement(endDropTargetKey) : null;
+}
+
+function getDropTargetElement(dropTargetKey: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    `[data-dnd-drop-target-key="${CSS.escape(dropTargetKey)}"]`,
+  );
 }
