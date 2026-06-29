@@ -1,4 +1,7 @@
-import type { CreateDomDragHandlerOptions } from "./types";
+import type {
+  CreateDomDragHandlerOptions,
+  DomDropTargetCollectionContext,
+} from "./types";
 import { pointerToCenter, setOverlayRect } from "../core";
 
 import { findDropTargets, trackDomDrag } from "./dom-drag-session";
@@ -35,12 +38,45 @@ export function createDomDragHandler<Payload>(
       event.currentTarget instanceof HTMLElement
         ? event.currentTarget
         : document;
-    const getDropTargets = () => findDropTargets(dropTargetParent);
+    const getDropTargetContext =
+      (): DomDropTargetCollectionContext<Payload> | null => {
+        const draggedKey = options.runtime.draggedKey;
+        const payload = options.runtime.payload;
+        const pointerPosition = options.runtime.pointerPosition;
+
+        if (
+          draggedKey === null ||
+          payload === null ||
+          pointerPosition === null
+        ) {
+          return null;
+        }
+
+        return {
+          draggedKey,
+          payload,
+          pointerPosition,
+          overlayRect: options.runtime.overlayRect,
+        };
+      };
+    const getDropTargets = () => {
+      const context = getDropTargetContext();
+
+      if (!context) {
+        return [];
+      }
+
+      return (
+        options.getDropTargets?.(dropTargetParent, context) ??
+        findDropTargets(dropTargetParent)
+      );
+    };
     const dropTargets = getDropTargets();
 
     trackDomDrag({
       runtime: options.runtime,
       overlay,
+      dropTargetParent,
       dropTargets,
       getDropTargets,
       remeasureDropTargetsOnDragUpdate:

@@ -1,4 +1,5 @@
 import type {
+  DropTarget,
   DragPoint,
   DragRect,
   DragRuntime,
@@ -15,6 +16,7 @@ export type CreateDomDragHandlerOptions<Payload> = {
   renderOverlayContent?: DragOverlayContentRenderer<Payload>;
   overlayPlacement?: DragOverlayPlacement;
   targetingAlgorithm?: TargetingAlgorithm;
+  getDropTargets?: DomDropTargetCollector<Payload>;
   remeasureDropTargetsOnDragUpdate?: boolean;
   onDragStart?: (drag: DomDragStartEvent<Payload>) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent<Payload>) => void;
@@ -40,7 +42,20 @@ export type DomDragUpdateEvent<Payload> = {
   overlayRect: DragRect | null;
   activeDropTargetKey: string | null;
   previousDropTargetKey: string | null;
+  remeasureDropTargets: () => void;
 };
+
+export type DomDropTargetCollectionContext<Payload> = {
+  draggedKey: string;
+  payload: Payload;
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+};
+
+export type DomDropTargetCollector<Payload> = (
+  parent: ParentNode,
+  context: DomDropTargetCollectionContext<Payload>,
+) => readonly DropTarget[];
 
 export type DragOverlayContentRenderer<Payload = unknown> = (
   payload: Payload,

@@ -4,6 +4,8 @@ export type {
   DomDragEndEvent,
   DomDragStartEvent,
   DomDragUpdateEvent,
+  DomDropTargetCollectionContext,
+  DomDropTargetCollector,
   DragOverlayContentRenderer,
   DragOverlayPlacement,
 } from "./types";

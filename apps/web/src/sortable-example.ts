@@ -7,15 +7,43 @@ import {
 import { generateKeyBetween } from "./custom/fractional-indexing";
 import { setDragListItemGhosted } from "./custom/list-drag-effects";
 import { renderDragListOverlayContent } from "./custom/list-render";
-import { centerToCenter, createDragRuntime } from "./core";
+import {
+  centerToCenter,
+  createDragRuntime,
+  type DragRect,
+  type DropTarget,
+} from "./core";
 import { createDomDragHandler } from "./dom";
 
 const dragRuntime = createDragRuntime<DragListItemPayload>();
 
 type SortablePreviewSession = {
   listElement: HTMLElement;
+  draggedKey: string;
   draggedElement: HTMLElement;
   originalChildren: HTMLElement[];
+  previewOrder: string[];
+  itemElementsByKey: ReadonlyMap<string, HTMLElement>;
+  itemMeasurementsByKey: ReadonlyMap<string, SortableItemMeasurement>;
+  layout: SortablePreviewLayout;
+  dropTargets: DropTarget[];
+};
+
+type SortablePreviewLayout = {
+  contentTop: number;
+  contentLeft: number;
+  rowGap: number;
+};
+
+type SortableItemMeasurement = {
+  key: string;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
 };
 
 let previewSession: SortablePreviewSession | null = null;
@@ -41,7 +69,7 @@ export function mountSortableExample(parent: HTMLElement): void {
       renderOverlayContent: renderDragListOverlayContent,
       overlayPlacement: "left-center",
       targetingAlgorithm: centerToCenter,
-      remeasureDropTargetsOnDragUpdate: true,
+      getDropTargets: () => previewSession?.dropTargets ?? [],
       getDraggedElement: getSortableItemElement,
       getPayload: (itemId) => {
         const item = findDragListItem(dragListItems, itemId);
@@ -68,12 +96,15 @@ export function mountSortableExample(parent: HTMLElement): void {
       onDragUpdate: ({
         activeDropTargetKey,
         previousDropTargetKey,
+        remeasureDropTargets,
       }) => {
         if (activeDropTargetKey === previousDropTargetKey) {
           return;
         }
 
-        moveSortablePreview(activeDropTargetKey);
+        if (moveSortablePreview(activeDropTargetKey)) {
+          remeasureDropTargets();
+        }
       },
       onDragEnd: ({ draggedKey, dropTargetKey }) => {
         setDragListItemGhosted({
@@ -131,52 +162,249 @@ function createSortablePreviewSession(input: {
   draggedKey: string;
 }): SortablePreviewSession | null {
   const draggedElement = getSortableItemElement(input.draggedKey);
+  const originalChildren = getSortableItemChildren(input.listElement);
+  const itemMeasurements = measureSortableItems(originalChildren);
+  const itemElementsByKey = new Map(
+    originalChildren.map((element) => [
+      element.dataset.dndDropTargetKey ?? "",
+      element,
+    ]),
+  );
+  const itemMeasurementsByKey = new Map(
+    itemMeasurements.map((measurement) => [measurement.key, measurement]),
+  );
 
-  if (!draggedElement) {
+  if (!draggedElement || !itemElementsByKey.has(input.draggedKey)) {
     return null;
   }
 
-  return {
+  itemElementsByKey.delete("");
+
+  const session: SortablePreviewSession = {
     listElement: input.listElement,
+    draggedKey: input.draggedKey,
     draggedElement,
-    originalChildren: Array.from(input.listElement.children).filter(
-      (child): child is HTMLElement => child instanceof HTMLElement,
-    ),
+    originalChildren,
+    previewOrder: itemMeasurements.map((measurement) => measurement.key),
+    itemElementsByKey,
+    itemMeasurementsByKey,
+    layout: measureSortablePreviewLayout(input.listElement, itemMeasurements),
+    dropTargets: [],
   };
+
+  session.dropTargets = createSortableVirtualDropTargets(session);
+
+  return session;
 }
 
-function moveSortablePreview(activeDropTargetKey: string | null): void {
+function moveSortablePreview(activeDropTargetKey: string | null): boolean {
   if (!previewSession || activeDropTargetKey === null) {
-    return;
+    return false;
   }
 
   const targetElement = getSortableItemElement(activeDropTargetKey);
 
   if (
     !targetElement ||
-    targetElement === previewSession.draggedElement ||
     targetElement.parentElement !== previewSession.listElement
   ) {
-    return;
+    return false;
   }
 
-  moveElementToTargetPosition(previewSession.draggedElement, targetElement);
+  const nextPreviewOrder = getNextSortablePreviewOrder(
+    previewSession.previewOrder,
+    previewSession.draggedKey,
+    activeDropTargetKey,
+  );
+
+  if (!nextPreviewOrder) {
+    return false;
+  }
+
+  previewSession.previewOrder = nextPreviewOrder;
+  previewSession.dropTargets = createSortableVirtualDropTargets(previewSession);
+  renderSortablePreview(previewSession);
+
+  return true;
 }
 
-function moveElementToTargetPosition(
-  draggedElement: HTMLElement,
-  targetElement: HTMLElement,
-): void {
-  const documentPosition = draggedElement.compareDocumentPosition(targetElement);
+function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
+  return Array.from(listElement.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement &&
+      child.dataset.dndDropTargetKey !== undefined,
+  );
+}
 
-  if (documentPosition & Node.DOCUMENT_POSITION_FOLLOWING) {
-    targetElement.after(draggedElement);
+function measureSortableItems(
+  itemElements: readonly HTMLElement[],
+): SortableItemMeasurement[] {
+  return itemElements
+    .map((element) => {
+      const key = element.dataset.dndDropTargetKey;
+
+      if (!key) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+
+      return {
+        key,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        marginTop: parseCssPixels(style.marginTop),
+        marginBottom: parseCssPixels(style.marginBottom),
+        marginLeft: parseCssPixels(style.marginLeft),
+      };
+    })
+    .filter(
+      (measurement): measurement is SortableItemMeasurement =>
+        measurement !== null,
+    );
+}
+
+function measureSortablePreviewLayout(
+  listElement: HTMLElement,
+  itemMeasurements: readonly SortableItemMeasurement[],
+): SortablePreviewLayout {
+  const rect = listElement.getBoundingClientRect();
+  const style = window.getComputedStyle(listElement);
+
+  return {
+    contentTop:
+      rect.top +
+      parseCssPixels(style.borderTopWidth) +
+      parseCssPixels(style.paddingTop),
+    contentLeft:
+      rect.left +
+      parseCssPixels(style.borderLeftWidth) +
+      parseCssPixels(style.paddingLeft),
+    rowGap: measureSortableRowGap(itemMeasurements),
+  };
+}
+
+function measureSortableRowGap(
+  itemMeasurements: readonly SortableItemMeasurement[],
+): number {
+  let totalGap = 0;
+  let gapCount = 0;
+
+  for (let index = 1; index < itemMeasurements.length; index += 1) {
+    const previousItem = itemMeasurements[index - 1]!;
+    const item = itemMeasurements[index]!;
+    const gap =
+      item.top -
+      previousItem.bottom -
+      previousItem.marginBottom -
+      item.marginTop;
+
+    if (gap > 0) {
+      totalGap += gap;
+      gapCount += 1;
+    }
+  }
+
+  return gapCount > 0 ? totalGap / gapCount : 0;
+}
+
+function createSortableVirtualDropTargets(
+  session: SortablePreviewSession,
+): DropTarget[] {
+  const dropTargets: DropTarget[] = [];
+  let nextTop = session.layout.contentTop;
+  let hasPreviousItem = false;
+
+  for (const key of session.previewOrder) {
+    const measurement = session.itemMeasurementsByKey.get(key);
+
+    if (!measurement) {
+      continue;
+    }
+
+    if (hasPreviousItem) {
+      nextTop += session.layout.rowGap;
+    }
+
+    nextTop += measurement.marginTop;
+
+    dropTargets.push({
+      dropTargetKey: key,
+      dropTargetRect: createDragRect({
+        left: session.layout.contentLeft + measurement.marginLeft,
+        top: nextTop,
+        width: measurement.width,
+        height: measurement.height,
+      }),
+    });
+
+    nextTop += measurement.height + measurement.marginBottom;
+    hasPreviousItem = true;
+  }
+
+  return dropTargets;
+}
+
+function getNextSortablePreviewOrder(
+  previewOrder: readonly string[],
+  draggedKey: string,
+  activeDropTargetKey: string,
+): string[] | null {
+  const draggedIndex = previewOrder.indexOf(draggedKey);
+  const activeDropTargetIndex = previewOrder.indexOf(activeDropTargetKey);
+
+  if (
+    draggedIndex === -1 ||
+    activeDropTargetIndex === -1 ||
+    draggedIndex === activeDropTargetIndex
+  ) {
+    return null;
+  }
+
+  const nextPreviewOrder = [...previewOrder];
+  nextPreviewOrder.splice(draggedIndex, 1);
+  nextPreviewOrder.splice(activeDropTargetIndex, 0, draggedKey);
+
+  return nextPreviewOrder;
+}
+
+function renderSortablePreview(session: SortablePreviewSession): void {
+  const itemElements = session.previewOrder
+    .map((key) => session.itemElementsByKey.get(key))
+    .filter((element): element is HTMLElement => element !== undefined);
+
+  if (itemElements.length !== session.previewOrder.length) {
     return;
   }
 
-  if (documentPosition & Node.DOCUMENT_POSITION_PRECEDING) {
-    targetElement.before(draggedElement);
-  }
+  session.listElement.replaceChildren(...itemElements);
+}
+
+function createDragRect(input: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}): DragRect {
+  return {
+    x: input.left,
+    y: input.top,
+    width: input.width,
+    height: input.height,
+    top: input.top,
+    right: input.left + input.width,
+    bottom: input.top + input.height,
+    left: input.left,
+  };
+}
+
+function parseCssPixels(value: string): number {
+  const parsedValue = Number.parseFloat(value);
+
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
 }
 
 function restoreSortablePreview(): void {
