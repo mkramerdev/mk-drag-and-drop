@@ -1,4 +1,9 @@
-import type { DragRuntime, TargetingAlgorithm } from "../core";
+import type {
+  DragPoint,
+  DragRect,
+  DragRuntime,
+  TargetingAlgorithm,
+} from "../core";
 
 export type CreateDomDragHandlerOptions<Payload> = {
   runtime: DragRuntime<Payload>;
@@ -10,7 +15,9 @@ export type CreateDomDragHandlerOptions<Payload> = {
   renderOverlayContent?: DragOverlayContentRenderer<Payload>;
   overlayPlacement?: DragOverlayPlacement;
   targetingAlgorithm?: TargetingAlgorithm;
+  remeasureDropTargetsOnDragUpdate?: boolean;
   onDragStart?: (drag: DomDragStartEvent<Payload>) => void;
+  onDragUpdate?: (drag: DomDragUpdateEvent<Payload>) => void;
   onDragEnd?: (drag: DomDragEndEvent<Payload>) => void;
   onDrop?: (drop: { draggedKey: string; dropTargetKey: string }) => void;
 };
@@ -24,6 +31,15 @@ export type DomDragEndEvent<Payload> = {
   draggedKey: string;
   payload: Payload;
   dropTargetKey: string | null;
+};
+
+export type DomDragUpdateEvent<Payload> = {
+  draggedKey: string;
+  payload: Payload;
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  activeDropTargetKey: string | null;
+  previousDropTargetKey: string | null;
 };
 
 export type DragOverlayContentRenderer<Payload = unknown> = (

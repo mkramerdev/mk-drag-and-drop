@@ -44,6 +44,28 @@ h1 {
   text-align: center;
 }
 
+.examplesLayout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.examplePanel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.exampleTitle {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
@@ -163,6 +185,10 @@ button:focus-visible {
 
 .dragListDropTarget[data-dnd-active-drop-target="true"] .dragListDropIndicator {
   opacity: 1;
+}
+
+#demo-sortable-list .dragListItem[data-dnd-active-drop-target="true"] {
+  background-color: #166534;
 }
 
 .dragListHandle {

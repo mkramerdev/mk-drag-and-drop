@@ -1,16 +1,17 @@
 import type { DragListItem } from "./list-data";
 import { findDragListItem, getOrderedDragListItems } from "./list-data";
-import {
-  getDragListDropTargetKeyBeforeItem,
-  getEndDragListDropTargetKey,
-} from "./list-drop";
-import { renderDragListItem } from "./list-render";
+import type { DragListDropTargetRegistry } from "./list-drop";
+import { createDragListItemElement } from "./list-render";
 
 export function commitChangedItemInOrder(input: {
   items: readonly DragListItem[];
+  dropTargets: DragListDropTargetRegistry;
   itemId: string;
 }): void {
-  const currentDropTarget = getDropTargetBeforeItem(input.itemId);
+  const currentDropTarget = getDropTargetBeforeItem(
+    input.dropTargets,
+    input.itemId,
+  );
   const currentItem = document.getElementById(input.itemId);
   const parent = currentItem?.parentElement;
 
@@ -27,7 +28,7 @@ export function commitChangedItemInOrder(input: {
   const itemNodes = createItemNodeFragment(currentDropTarget, nextItem);
   const nextItemId = getNextItemId(input);
   const nextDropTarget = nextItemId
-    ? getDropTargetBeforeItem(nextItemId)
+    ? getDropTargetBeforeItem(input.dropTargets, nextItemId)
     : null;
 
   if (nextDropTarget) {
@@ -35,7 +36,7 @@ export function commitChangedItemInOrder(input: {
     return;
   }
 
-  const endDropTarget = getEndDropTarget();
+  const endDropTarget = getEndDropTarget(input.dropTargets);
 
   if (endDropTarget) {
     endDropTarget.before(itemNodes);
@@ -45,8 +46,11 @@ export function commitChangedItemInOrder(input: {
   parent.append(itemNodes);
 }
 
-function getDropTargetBeforeItem(itemId: string): HTMLElement | null {
-  const dropTargetKey = getDragListDropTargetKeyBeforeItem(itemId);
+function getDropTargetBeforeItem(
+  dropTargets: DragListDropTargetRegistry,
+  itemId: string,
+): HTMLElement | null {
+  const dropTargetKey = dropTargets.getDropTargetKeyBeforeItem(itemId);
 
   return dropTargetKey ? getDropTargetElement(dropTargetKey) : null;
 }
@@ -73,15 +77,7 @@ function rerenderDragItem(input: {
     return null;
   }
 
-  const template = document.createElement("template");
-  template.innerHTML = renderDragListItem(item).trim();
-
-  const nextElement = template.content.firstElementChild;
-
-  if (!(nextElement instanceof HTMLElement)) {
-    return null;
-  }
-
+  const nextElement = createDragListItemElement(item);
   currentElement.replaceWith(nextElement);
 
   return nextElement;
@@ -103,8 +99,10 @@ function getNextItemId(input: {
   return orderedItemIds[itemIndex + 1] ?? null;
 }
 
-function getEndDropTarget(): HTMLElement | null {
-  const endDropTargetKey = getEndDragListDropTargetKey();
+function getEndDropTarget(
+  dropTargets: DragListDropTargetRegistry,
+): HTMLElement | null {
+  const endDropTargetKey = dropTargets.getEndDropTargetKey();
 
   return endDropTargetKey ? getDropTargetElement(endDropTargetKey) : null;
 }

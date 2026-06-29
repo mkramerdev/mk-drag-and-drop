@@ -31,19 +31,24 @@ export function createDomDragHandler<Payload>(
       setOverlayRect(options.runtime, overlay.initialOverlayRect);
     }
 
-    const dropTargets = findDropTargets(
+    const dropTargetParent =
       event.currentTarget instanceof HTMLElement
         ? event.currentTarget
-        : document,
-    );
+        : document;
+    const getDropTargets = () => findDropTargets(dropTargetParent);
+    const dropTargets = getDropTargets();
 
     trackDomDrag({
       runtime: options.runtime,
       overlay,
       dropTargets,
+      getDropTargets,
+      remeasureDropTargetsOnDragUpdate:
+        options.remeasureDropTargetsOnDragUpdate,
       pointerCapture: dragStart.pointerCapture,
       targetingAlgorithm:
         options.targetingAlgorithm ?? pointerToCenter,
+      onDragUpdate: options.onDragUpdate,
       onDragEnd: options.onDragEnd,
       onDrop: options.onDrop,
     });

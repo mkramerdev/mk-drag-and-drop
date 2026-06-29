@@ -1,57 +1,61 @@
-import {
-  dragListItems,
-  findDragListItem,
-  getOrderedDragListItems,
-} from "./list-data";
+import type { DragListItem } from "./list-data";
+import { findDragListItem, getOrderedDragListItems } from "./list-data";
 import { generateKeyBetween } from "./fractional-indexing";
 
 export type DragListDropInput = {
+  items: readonly DragListItem[];
+  dropTargets: DragListDropTargetRegistry;
   draggedItemId: string;
   dropTargetKey: string;
 };
 
-type DragListDropTarget = {
+export type DragListDropTarget = {
   beforeItemId: string | null;
 };
 
-const dragListDropTargets: Record<string, DragListDropTarget> = {};
-
-export function setDragListDropTarget(input: {
+export type SetDragListDropTargetInput = {
   dropTargetKey: string;
   beforeItemId: string | null;
-}): void {
-  dragListDropTargets[input.dropTargetKey] = {
-    beforeItemId: input.beforeItemId,
+};
+
+export type DragListDropTargetRegistry = {
+  setDropTarget: (input: SetDragListDropTargetInput) => void;
+  getDropTarget: (dropTargetKey: string) => DragListDropTarget | null;
+  getDropTargetKeyBeforeItem: (itemId: string) => string | null;
+  getEndDropTargetKey: () => string | null;
+};
+
+export function createDragListDropTargetRegistry(): DragListDropTargetRegistry {
+  const dropTargets = new Map<string, DragListDropTarget>();
+
+  return {
+    setDropTarget: (input) => {
+      dropTargets.set(input.dropTargetKey, {
+        beforeItemId: input.beforeItemId,
+      });
+    },
+    getDropTarget: (dropTargetKey) => dropTargets.get(dropTargetKey) ?? null,
+    getDropTargetKeyBeforeItem: (itemId) =>
+      findDropTargetKey(dropTargets, (dropTarget) => {
+        return dropTarget.beforeItemId === itemId;
+      }),
+    getEndDropTargetKey: () =>
+      findDropTargetKey(dropTargets, (dropTarget) => {
+        return dropTarget.beforeItemId === null;
+      }),
   };
 }
 
-export function getEndDragListDropTargetKey(): string | null {
-  return (
-    Object.entries(dragListDropTargets).find(
-      ([, dragListDropTarget]) => dragListDropTarget.beforeItemId === null,
-    )?.[0] ?? null
-  );
-}
-
-export function getDragListDropTargetKeyBeforeItem(
-  itemId: string,
-): string | null {
-  return (
-    Object.entries(dragListDropTargets).find(
-      ([, dragListDropTarget]) => dragListDropTarget.beforeItemId === itemId,
-    )?.[0] ?? null
-  );
-}
-
 export function applyDragListDrop(drop: DragListDropInput): string | null {
-  const draggedItem = findDragListItem(dragListItems, drop.draggedItemId);
-  const listDropTarget = getDragListDropTarget(drop.dropTargetKey);
+  const draggedItem = findDragListItem(drop.items, drop.draggedItemId);
+  const listDropTarget = drop.dropTargets.getDropTarget(drop.dropTargetKey);
 
   if (!draggedItem || !listDropTarget) {
     return null;
   }
 
   const nextOrderKey = getDropOrderKey({
+    items: drop.items,
     draggedItemId: drop.draggedItemId,
     beforeItemId: listDropTarget.beforeItemId,
   });
@@ -71,17 +75,12 @@ export function applyDragListDrop(drop: DragListDropInput): string | null {
   return changedItemId;
 }
 
-function getDragListDropTarget(
-  dropTargetKey: string,
-): DragListDropTarget | null {
-  return dragListDropTargets[dropTargetKey] ?? null;
-}
-
 function getDropOrderKey(options: {
+  items: readonly DragListItem[];
   draggedItemId: string;
   beforeItemId: string | null;
 }): string | null {
-  const orderedItems = getOrderedDragListItems().filter(
+  const orderedItems = getOrderedDragListItems(options.items).filter(
     (item) => item.id !== options.draggedItemId,
   );
 
@@ -108,4 +107,17 @@ function getDropOrderKey(options: {
   const nextOrderKey = orderedItems[nextIndex]!.orderKey;
 
   return generateKeyBetween(previousOrderKey, nextOrderKey);
+}
+
+function findDropTargetKey(
+  dropTargets: ReadonlyMap<string, DragListDropTarget>,
+  predicate: (dropTarget: DragListDropTarget) => boolean,
+): string | null {
+  for (const [dropTargetKey, dropTarget] of dropTargets) {
+    if (predicate(dropTarget)) {
+      return dropTargetKey;
+    }
+  }
+
+  return null;
 }

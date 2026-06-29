@@ -3,6 +3,7 @@ export type {
   CreateDomDragHandlerOptions,
   DomDragEndEvent,
   DomDragStartEvent,
+  DomDragUpdateEvent,
   DragOverlayContentRenderer,
   DragOverlayPlacement,
 } from "./types";

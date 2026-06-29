@@ -1,6 +1,6 @@
 import type { DropTarget, DragRuntime, TargetingAlgorithm } from "../core";
 import { endDrag, moveDrag, setActiveDropTarget } from "../core";
-import type { DomDragEndEvent } from "./types";
+import type { DomDragEndEvent, DomDragUpdateEvent } from "./types";
 import type { DragOverlayController } from "./drag-overlay";
 import { domRectToDragRect } from "./geometry";
 
@@ -16,8 +16,11 @@ export type TrackDomDragInput<Payload> = {
   runtime: DragRuntime<Payload>;
   overlay: DragOverlayController | null;
   dropTargets: readonly DropTarget[];
+  getDropTargets: () => readonly DropTarget[];
+  remeasureDropTargetsOnDragUpdate?: boolean;
   pointerCapture: DomPointerCapture;
   targetingAlgorithm: TargetingAlgorithm;
+  onDragUpdate?: (drag: DomDragUpdateEvent<Payload>) => void;
   onDragEnd?: (drag: DomDragEndEvent<Payload>) => void;
   onDrop?: (drop: { draggedKey: string; dropTargetKey: string }) => void;
 };
@@ -52,6 +55,7 @@ export function trackDomDrag<Payload>(
   document.documentElement.dataset.dndDragging = "true";
 
   let activeDropTargetElement: HTMLElement | null = null;
+  let dropTargets = input.dropTargets;
   let pendingPointerMove: PointerEvent | null = null;
   let pointerMoveFrameId: number | null = null;
 
@@ -72,7 +76,16 @@ export function trackDomDrag<Payload>(
         return;
       }
 
-      onPointerMove(input, latestPointerMove);
+      const previousDropTargetKey = input.runtime.activeDropTargetKey;
+
+      if (input.remeasureDropTargetsOnDragUpdate) {
+        dropTargets = input.getDropTargets();
+      }
+
+      onPointerMove(input, latestPointerMove, {
+        dropTargets,
+        previousDropTargetKey,
+      });
 
       activeDropTargetElement = syncActiveDropTarget(
         input.runtime.activeDropTargetKey,
@@ -116,6 +129,10 @@ export function trackDomDrag<Payload>(
 function onPointerMove<Payload>(
   input: TrackDomDragInput<Payload>,
   event: PointerEvent,
+  options: {
+    dropTargets: readonly DropTarget[];
+    previousDropTargetKey: string | null;
+  },
 ): void {
   if (!input.runtime.isDragging) {
     return;
@@ -132,11 +149,35 @@ function onPointerMove<Payload>(
 
   const activeDropTarget = input.targetingAlgorithm({
     runtime: input.runtime,
-    dropTargets: input.dropTargets,
+    dropTargets: options.dropTargets,
   });
 
   setActiveDropTarget(input.runtime, {
     dropTargetKey: activeDropTarget?.dropTargetKey ?? null,
+  });
+
+  emitDragUpdate(input, options.previousDropTargetKey);
+}
+
+function emitDragUpdate<Payload>(
+  input: TrackDomDragInput<Payload>,
+  previousDropTargetKey: string | null,
+): void {
+  const draggedKey = input.runtime.draggedKey;
+  const payload = input.runtime.payload;
+  const pointerPosition = input.runtime.pointerPosition;
+
+  if (draggedKey === null || payload === null || pointerPosition === null) {
+    return;
+  }
+
+  input.onDragUpdate?.({
+    draggedKey,
+    payload,
+    pointerPosition,
+    overlayRect: input.runtime.overlayRect,
+    activeDropTargetKey: input.runtime.activeDropTargetKey,
+    previousDropTargetKey,
   });
 }
 

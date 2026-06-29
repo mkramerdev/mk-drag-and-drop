@@ -9,40 +9,43 @@ export function getDragListDropTargetKey(index: number): string {
   return `demo-drag-list-drop-target-${index}`;
 }
 
-export function renderDragListDropTarget(options: {
+export function createDragListDropTargetElement(options: {
   dropTargetKey: string;
-}): string {
-  const dropTargetElementId = options.dropTargetKey;
+}): HTMLElement {
+  const dropTargetElement = document.createElement("div");
+  dropTargetElement.id = options.dropTargetKey;
+  dropTargetElement.className = "dragListDropTarget";
+  dropTargetElement.dataset.dndDropTargetKey = options.dropTargetKey;
 
-  return `
-    <div
-      id="${dropTargetElementId}"
-      class="dragListDropTarget"
-      data-dnd-drop-target-key="${options.dropTargetKey}"
-    >
-      <div class="dragListDropIndicator" aria-hidden="true"></div>
-    </div>
-  `;
+  const dropIndicator = document.createElement("div");
+  dropIndicator.className = "dragListDropIndicator";
+  dropIndicator.setAttribute("aria-hidden", "true");
+
+  dropTargetElement.append(dropIndicator);
+
+  return dropTargetElement;
 }
 
-export function renderDragListItem(item: DragListItem): string {
+export function createDragListItemElement(item: DragListItem): HTMLElement {
   const dragListHandleElementId = getDragListHandleElementId(item.id);
+  const itemElement = document.createElement("div");
+  itemElement.id = item.id;
+  itemElement.className = "dragListItem";
+  itemElement.dataset.dndItemId = item.id;
+  itemElement.dataset.orderKey = item.orderKey;
 
-  return `
-    <div
-      id="${item.id}"
-      class="dragListItem"
-      data-dnd-item-id="${item.id}"
-      data-order-key="${item.orderKey}"
-    >
-      <div
-        id="${dragListHandleElementId}"
-        class="dragListHandle"
-        data-dnd-drag-key="${item.id}"
-      ></div>
-      <div class="dragListItemText">${item.content}</div>
-    </div>
-  `;
+  const dragHandle = document.createElement("div");
+  dragHandle.id = dragListHandleElementId;
+  dragHandle.className = "dragListHandle";
+  dragHandle.dataset.dndDragKey = item.id;
+
+  const content = document.createElement("div");
+  content.className = "dragListItemText";
+  content.textContent = item.content;
+
+  itemElement.append(dragHandle, content);
+
+  return itemElement;
 }
 
 export const renderDragListOverlayContent: DragOverlayContentRenderer<

@@ -1,107 +1,51 @@
 import "./style.css";
 
-import type { DragListItemPayload } from "./custom/list-data";
-
-import { commitChangedItemInOrder } from "./custom/list-commit";
-import {
-  dragListItems,
-  findDragListItem,
-  getOrderedDragListItems,
-} from "./custom/list-data";
-import { setDragListItemGhosted } from "./custom/list-drag-effects";
-import { applyDragListDrop, setDragListDropTarget } from "./custom/list-drop";
-import {
-  getDragListDropTargetKey,
-  renderDragListItem,
-  renderDragListDropTarget,
-  renderDragListOverlayContent,
-} from "./custom/list-render";
-import { centerToCenter, createDragRuntime } from "./core";
-import { createDomDragHandler } from "./dom";
+import { mountDropzoneLineExample } from "./dropzone-line-example";
+import { mountSortableExample } from "./sortable-example";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
-
-const dragRuntime = createDragRuntime<DragListItemPayload>();
 
 renderApp();
 
 function renderApp(): void {
-  const dragListItemsInOrder = getOrderedDragListItems();
-  const dragListMarkup = dragListItemsInOrder
-    .map((item, dropTargetIndex) => {
-      const itemId = item.id;
-      const dropTargetKey = getDragListDropTargetKey(dropTargetIndex);
-      setDragListDropTarget({
-        dropTargetKey,
-        beforeItemId: itemId,
-      });
-
-      return `
-        ${renderDragListDropTarget({ dropTargetKey })}
-        ${renderDragListItem(item)}
-      `;
-    })
-    .join("");
-
-  const endDropTargetKey = getDragListDropTargetKey(dragListItemsInOrder.length);
-  setDragListDropTarget({
-    dropTargetKey: endDropTargetKey,
-    beforeItemId: null,
+  const examplesLayout = document.createElement("div");
+  const dropzoneLineExample = createExamplePanel({
+    title: "Dropzone lines",
+    mountId: "dropzone-line-example",
+  });
+  const sortableExample = createExamplePanel({
+    title: "Sortable list",
+    mountId: "sortable-example",
   });
 
-  app.innerHTML = `
-    <div
-      id="demo-drag-list"
-      class="drag-parent"
-      data-dnd-list-id="demo-drag-list"
-      data-dnd-is-dragging="${dragRuntime.isDragging}"
-    >
-      ${dragListMarkup}
-      ${renderDragListDropTarget({ dropTargetKey: endDropTargetKey })}
-    </div>
-  `;
+  examplesLayout.className = "examplesLayout";
+  examplesLayout.append(dropzoneLineExample.panel, sortableExample.panel);
+  app.replaceChildren(examplesLayout);
 
-  const dragList = document.querySelector<HTMLDivElement>("#demo-drag-list")!;
+  mountDropzoneLineExample(dropzoneLineExample.mountPoint);
+  mountSortableExample(sortableExample.mountPoint);
+}
 
-  dragList.addEventListener(
-    "pointerdown",
-    createDomDragHandler({
-      runtime: dragRuntime,
-      renderOverlayContent: renderDragListOverlayContent,
-      overlayPlacement: "left-center",
-      targetingAlgorithm: centerToCenter,
-      getPayload: (itemId) => {
-        const item = findDragListItem(dragListItems, itemId);
+function createExamplePanel(input: {
+  title: string;
+  mountId: string;
+}): {
+  panel: HTMLElement;
+  mountPoint: HTMLElement;
+} {
+  const panel = document.createElement("section");
+  const title = document.createElement("h2");
+  const mountPoint = document.createElement("div");
 
-        if (!item) {
-          return null;
-        }
+  panel.className = "examplePanel";
+  title.className = "exampleTitle";
+  title.textContent = input.title;
+  mountPoint.id = input.mountId;
 
-        return {
-          content: item.content,
-        };
-      },
-      onDragStart: ({ draggedKey }) => {
-        setDragListItemGhosted(draggedKey, true);
-      },
-      onDragEnd: ({ draggedKey }) => {
-        setDragListItemGhosted(draggedKey, false);
-      },
-      onDrop: ({ draggedKey, dropTargetKey }) => {
-        const changedItemId = applyDragListDrop({
-          draggedItemId: draggedKey,
-          dropTargetKey,
-        });
+  panel.append(title, mountPoint);
 
-        if (!changedItemId) {
-          return;
-        }
-
-        commitChangedItemInOrder({
-          items: dragListItems,
-          itemId: changedItemId,
-        });
-      },
-    }),
-  );
+  return {
+    panel,
+    mountPoint,
+  };
 }

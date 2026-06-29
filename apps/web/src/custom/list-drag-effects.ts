@@ -1,12 +1,13 @@
-export function setDragListItemGhosted(
+export function setDragListItemGhosted(input: {
   itemId: string,
   isGhosted: boolean,
-): void {
-  const itemElement = document.getElementById(itemId);
+  getItemElement: (itemId: string) => HTMLElement | null,
+}): void {
+  const itemElement = input.getItemElement(input.itemId);
 
   if (!itemElement) {
     return;
   }
 
-  itemElement.classList.toggle("dragListItemGhosted", isGhosted);
+  itemElement.classList.toggle("dragListItemGhosted", input.isGhosted);
 }
