@@ -1,7 +1,7 @@
 import "./style.css";
 
-import { mountDropzoneLineExample } from "./dropzone-line-example";
-import { mountSortableExample } from "./sortable-example";
+import { mountDropzoneLineExample } from "./custom/dropzone-line/dropzone-line-example";
+import { mountSortableExample } from "./custom/sortable/sortable-example";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 

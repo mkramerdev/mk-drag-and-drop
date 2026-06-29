@@ -122,6 +122,7 @@ button:focus-visible {
 :root[data-dnd-dragging="true"] * {
   user-select: none;
   -webkit-user-select: none;
+  cursor: grabbing !important;
 }
 
 .drag-parent {
@@ -189,6 +190,14 @@ button:focus-visible {
 
 #demo-sortable-list .dragListItem[data-dnd-active-drop-target="true"] {
   background-color: #166534;
+}
+
+#demo-sortable-list .dragListItem {
+  cursor: grab;
+}
+
+#demo-sortable-list .dragListItem:active {
+  cursor: grabbing;
 }
 
 .dragListHandle {

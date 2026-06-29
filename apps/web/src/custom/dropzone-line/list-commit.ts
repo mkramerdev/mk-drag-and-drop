@@ -1,5 +1,8 @@
-import type { DragListItem } from "./list-data";
-import { findDragListItem, getOrderedDragListItems } from "./list-data";
+import type { DragListItem } from "../shared/list-data";
+import {
+  findDragListItem,
+  getOrderedDragListItems,
+} from "../shared/list-data";
 import type { DragListDropTargetRegistry } from "./list-drop";
 import { createDragListItemElement } from "./list-render";
 

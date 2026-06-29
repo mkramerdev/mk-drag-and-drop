@@ -1,5 +1,4 @@
-import type { DragOverlayContentRenderer } from "../dom";
-import type { DragListItem, DragListItemPayload } from "./list-data";
+import type { DragListItem } from "../shared/list-data";
 
 export function getDragListHandleElementId(itemId: string): string {
   return `${itemId}-drag-handle`;
@@ -47,21 +46,3 @@ export function createDragListItemElement(item: DragListItem): HTMLElement {
 
   return itemElement;
 }
-
-export const renderDragListOverlayContent: DragOverlayContentRenderer<
-  DragListItemPayload
-> = (payload: DragListItemPayload) => {
-  const element = document.createElement("div");
-  element.className = "dragListItem";
-
-  const dragHandle = document.createElement("div");
-  dragHandle.className = "dragListHandle";
-
-  const content = document.createElement("div");
-  content.className = "dragListItemText";
-  content.textContent = payload.content;
-
-  element.append(dragHandle, content);
-
-  return element;
-};

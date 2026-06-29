@@ -1,6 +1,9 @@
-import type { DragListItem } from "./list-data";
-import { findDragListItem, getOrderedDragListItems } from "./list-data";
-import { generateKeyBetween } from "./fractional-indexing";
+import type { DragListItem } from "../shared/list-data";
+import {
+  findDragListItem,
+  getOrderedDragListItems,
+} from "../shared/list-data";
+import { generateKeyBetween } from "../shared/fractional-indexing";
 
 export type DragListDropInput = {
   items: readonly DragListItem[];
