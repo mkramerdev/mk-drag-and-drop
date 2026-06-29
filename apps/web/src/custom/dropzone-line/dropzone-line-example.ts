@@ -18,11 +18,17 @@ import {
 } from "./list-render";
 import { renderDragListOverlayContent } from "../shared/list-overlay";
 import { centerToCenter, createDragRuntime } from "../../core";
-import { createDomDragHandler } from "../../dom";
+import {
+  createDomDragController,
+  createDomDragHandler,
+  createDomDragSession,
+} from "../../dom";
 
 const dragRuntime = createDragRuntime<DragListItemPayload>();
 
 export function mountDropzoneLineExample(parent: HTMLElement): void {
+  const dragSession = createDomDragSession();
+  const dragController = createDomDragController();
   const dragList = document.createElement("div");
   const dragListItemsInOrder = getOrderedDragListItems();
   const dropTargets = createDragListDropTargetRegistry();
@@ -58,6 +64,8 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
 
   const dragHandler = createDomDragHandler({
     runtime: dragRuntime,
+    session: dragSession,
+    controller: dragController,
     renderOverlayContent: renderDragListOverlayContent,
     overlayPlacement: "left-center",
     targetingAlgorithm: centerToCenter,

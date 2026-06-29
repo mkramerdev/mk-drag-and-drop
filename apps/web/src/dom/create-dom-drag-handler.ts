@@ -16,11 +16,6 @@ export function createDomDragHandler<Payload>(
         return;
       }
 
-      options.onDragStart?.({
-        draggedKey: dragStart.draggedKey,
-        payload: dragStart.payload,
-      });
-
       const overlay = renderDragOverlay({
         renderContent: options.renderOverlayContent,
         runtime: options.runtime,
@@ -39,11 +34,13 @@ export function createDomDragHandler<Payload>(
 
       trackDomDrag({
         runtime: options.runtime,
+        session: options.session,
+        controller: options.controller,
         overlay,
         dropTargetParent,
         pointerCapture: dragStart.pointerCapture,
         targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
-        getDropTargetMeasurementKey: options.getDropTargetMeasurementKey,
+        onDragStart: options.onDragStart,
         onDragUpdate: options.onDragUpdate,
         onDragEnd: options.onDragEnd,
         onDrop: options.onDrop,

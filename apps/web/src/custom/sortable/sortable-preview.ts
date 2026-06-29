@@ -1,85 +1,126 @@
+import {
+  dragListItems,
+  findDragListItem,
+  getOrderedDragListItems,
+  type DragListItem,
+} from "../shared/list-data";
 import { getSortableItemElement } from "./sortable-render";
 
-export type SortablePreviewSession = {
-  listElement: HTMLElement;
-  draggedKey: string;
-  draggedElement: HTMLElement;
-  originalChildren: HTMLElement[];
-  previewOrder: string[];
-  itemElementsByKey: ReadonlyMap<string, HTMLElement>;
-};
-
-export function createSortablePreviewSession(input: {
-  listElement: HTMLElement;
-  draggedKey: string;
-}): SortablePreviewSession | null {
-  const draggedElement = getSortableItemElement(input.draggedKey);
-  const originalChildren = getSortableItemChildren(input.listElement);
-  const itemElementsByKey = new Map(
-    originalChildren.map((element) => [getSortableItemKey(element), element]),
-  );
-
-  if (!draggedElement || !itemElementsByKey.has(input.draggedKey)) {
-    return null;
-  }
-
-  itemElementsByKey.delete("");
-
-  const session: SortablePreviewSession = {
-    listElement: input.listElement,
-    draggedKey: input.draggedKey,
-    draggedElement,
-    originalChildren,
-    previewOrder: originalChildren.map(getSortableItemKey),
-    itemElementsByKey,
-  };
-
-  return session;
-}
-
 export function moveSortablePreview(input: {
-  session: SortablePreviewSession;
+  draggedKey: string;
   activeDropTargetKey: string | null;
+  listElement?: HTMLElement;
 }): void {
-  if (input.activeDropTargetKey === null) {
-    return;
-  }
-
-  const targetElement = getSortableItemElement(input.activeDropTargetKey);
-
   if (
-    !targetElement ||
-    targetElement.parentElement !== input.session.listElement
+    input.activeDropTargetKey === null ||
+    input.activeDropTargetKey === input.draggedKey
   ) {
     return;
   }
 
-  const nextPreviewOrder = getNextSortablePreviewOrder(
-    input.session.previewOrder,
-    input.session.draggedKey,
-    input.activeDropTargetKey,
-  );
+  const draggedElement = getSortableItemElement(input.draggedKey);
+  const targetElement = getSortableItemElement(input.activeDropTargetKey);
+  const listElement =
+    input.listElement ??
+    draggedElement?.parentElement ??
+    targetElement?.parentElement;
 
-  if (!nextPreviewOrder) {
+  if (
+    !draggedElement ||
+    !targetElement ||
+    !listElement ||
+    draggedElement.parentElement !== listElement ||
+    targetElement.parentElement !== listElement
+  ) {
     return;
   }
 
-  input.session.previewOrder = nextPreviewOrder;
-  renderSortablePreview(input.session);
+  const sortableItems = getSortableItemChildren(listElement);
+  const draggedIndex = sortableItems.indexOf(draggedElement);
+  const targetIndex = sortableItems.indexOf(targetElement);
+
+  if (
+    draggedIndex === -1 ||
+    targetIndex === -1 ||
+    draggedIndex === targetIndex
+  ) {
+    return;
+  }
+
+  if (draggedIndex < targetIndex) {
+    targetElement.after(draggedElement);
+    return;
+  }
+
+  targetElement.before(draggedElement);
 }
 
-export function restoreSortablePreview(session: SortablePreviewSession): void {
-  session.listElement.replaceChildren(...session.originalChildren);
-}
+export function restoreSortableDraggedItem(input: {
+  listElement: HTMLElement;
+  draggedKey: string;
+  items?: readonly DragListItem[];
+}): void {
+  const items = input.items ?? dragListItems;
+  const draggedItem = findDragListItem(items, input.draggedKey);
+  const draggedElement = getSortableItemElement(input.draggedKey);
 
-export function isSortablePreviewInOriginalOrder(
-  session: SortablePreviewSession,
-): boolean {
-  const currentChildren = Array.from(session.listElement.children);
+  if (
+    !draggedItem ||
+    !draggedElement ||
+    draggedElement.parentElement !== input.listElement
+  ) {
+    return;
+  }
 
-  return session.originalChildren.every((child, index) => {
-    return currentChildren[index] === child;
+  const orderedItems = getOrderedDragListItems(items);
+  const draggedIndex = orderedItems.findIndex(
+    (item) => item.id === draggedItem.id,
+  );
+
+  if (draggedIndex === -1) {
+    return;
+  }
+
+  const nextElement = findNextCanonicalSortableElement({
+    draggedKey: input.draggedKey,
+    draggedIndex,
+    listElement: input.listElement,
+    orderedItems,
   });
+
+  if (nextElement) {
+    input.listElement.insertBefore(draggedElement, nextElement);
+    return;
+  }
+
+  input.listElement.append(draggedElement);
+}
+
+function findNextCanonicalSortableElement(input: {
+  draggedKey: string;
+  draggedIndex: number;
+  listElement: HTMLElement;
+  orderedItems: readonly DragListItem[];
+}): HTMLElement | null {
+  for (
+    let index = input.draggedIndex + 1;
+    index < input.orderedItems.length;
+    index += 1
+  ) {
+    const item = input.orderedItems[index];
+
+    if (!item || item.id === input.draggedKey) {
+      continue;
+    }
+
+    const itemElement = getSortableItemElement(item.id);
+
+    if (itemElement?.parentElement === input.listElement) {
+      return itemElement;
+    }
+  }
+
+  return null;
 }
 
 function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
@@ -88,43 +129,4 @@ function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
       child instanceof HTMLElement &&
       child.dataset.dndDropTargetKey !== undefined,
   );
-}
-
-function getNextSortablePreviewOrder(
-  previewOrder: readonly string[],
-  draggedKey: string,
-  activeDropTargetKey: string,
-): string[] | null {
-  const draggedIndex = previewOrder.indexOf(draggedKey);
-  const activeDropTargetIndex = previewOrder.indexOf(activeDropTargetKey);
-
-  if (
-    draggedIndex === -1 ||
-    activeDropTargetIndex === -1 ||
-    draggedIndex === activeDropTargetIndex
-  ) {
-    return null;
-  }
-
-  const nextPreviewOrder = [...previewOrder];
-  nextPreviewOrder.splice(draggedIndex, 1);
-  nextPreviewOrder.splice(activeDropTargetIndex, 0, draggedKey);
-
-  return nextPreviewOrder;
-}
-
-function renderSortablePreview(session: SortablePreviewSession): void {
-  const itemElements = session.previewOrder
-    .map((key) => session.itemElementsByKey.get(key))
-    .filter((element): element is HTMLElement => element !== undefined);
-
-  if (itemElements.length !== session.previewOrder.length) {
-    return;
-  }
-
-  session.listElement.replaceChildren(...itemElements);
-}
-
-function getSortableItemKey(element: HTMLElement): string {
-  return element.dataset.dndDropTargetKey ?? "";
 }

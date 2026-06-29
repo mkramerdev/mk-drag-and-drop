@@ -7,13 +7,15 @@ import {
 import { setDragListItemGhosted } from "../shared/list-drag-effects";
 import { renderDragListOverlayContent } from "../shared/list-overlay";
 import { centerToCenter, createDragRuntime } from "../../core";
-import { createDomDragHandler } from "../../dom";
+import {
+  createDomDragController,
+  createDomDragHandler,
+  createDomDragSession,
+} from "../../dom";
 import { applySortableDrop } from "./sortable-drop";
 import {
-  createSortablePreviewSession,
   moveSortablePreview,
-  restoreSortablePreview,
-  type SortablePreviewSession,
+  restoreSortableDraggedItem,
 } from "./sortable-preview";
 import {
   createSortableItemElement,
@@ -21,9 +23,9 @@ import {
 } from "./sortable-render";
 
 export function mountSortableExample(parent: HTMLElement): void {
-  const dragRuntime = createDragRuntime<DragListItemPayload>();
-  let previewSession: SortablePreviewSession | null = null;
-  let dropTargetMeasurementKey = 0;
+  const runtime = createDragRuntime<DragListItemPayload>();
+  const session = createDomDragSession();
+  const controller = createDomDragController();
   const list = document.createElement("div");
   const itemsInOrder = getOrderedDragListItems();
 
@@ -38,11 +40,12 @@ export function mountSortableExample(parent: HTMLElement): void {
   parent.replaceChildren(list);
 
   const dragHandler = createDomDragHandler({
-    runtime: dragRuntime,
+    runtime,
+    session,
+    controller,
     renderOverlayContent: renderDragListOverlayContent,
     overlayPlacement: "left-center",
     targetingAlgorithm: centerToCenter,
-    getDropTargetMeasurementKey: () => dropTargetMeasurementKey,
     getDraggedElement: getSortableItemElement,
     getPayload: (itemId) => {
       const item = findDragListItem(dragListItems, itemId);
@@ -61,26 +64,26 @@ export function mountSortableExample(parent: HTMLElement): void {
         isGhosted: true,
         getItemElement: getSortableItemElement,
       });
-      previewSession = createSortablePreviewSession({
-        listElement: list,
-        draggedKey,
-      });
     },
-    onDragUpdate: ({ activeDropTargetKey, previousDropTargetKey }) => {
+    onDragUpdate: ({
+      draggedKey,
+      activeDropTargetKey,
+      previousDropTargetKey,
+    }) => {
       if (
-        !previewSession ||
         activeDropTargetKey === null ||
         activeDropTargetKey === previousDropTargetKey ||
-        activeDropTargetKey === previewSession.draggedKey
+        activeDropTargetKey === draggedKey
       ) {
         return;
       }
 
       moveSortablePreview({
-        session: previewSession,
+        listElement: list,
+        draggedKey,
         activeDropTargetKey,
       });
-      dropTargetMeasurementKey += 1;
+      controller.requestDropTargetRemeasure();
     },
     onDragEnd: ({ draggedKey, dropTargetKey }) => {
       setDragListItemGhosted({
@@ -89,21 +92,18 @@ export function mountSortableExample(parent: HTMLElement): void {
         getItemElement: getSortableItemElement,
       });
 
-      if (previewSession && dropTargetKey === null) {
-        restoreSortablePreview(previewSession);
-        previewSession = null;
+      if (dropTargetKey === null) {
+        restoreSortableDraggedItem({
+          listElement: list,
+          draggedKey,
+        });
       }
     },
     onDrop: ({ draggedKey }) => {
-      if (!previewSession) {
-        return;
-      }
-
       applySortableDrop({
-        session: previewSession,
+        listElement: list,
         draggedKey,
       });
-      previewSession = null;
     },
   });
 

@@ -4,36 +4,31 @@ import {
   findDragListItem,
   type DragListItem,
 } from "../shared/list-data";
-import {
-  isSortablePreviewInOriginalOrder,
-  restoreSortablePreview,
-  type SortablePreviewSession,
-} from "./sortable-preview";
+import { getSortableItemElement } from "./sortable-render";
 
 export function applySortableDrop(input: {
-  session: SortablePreviewSession;
+  listElement: HTMLElement;
   draggedKey: string;
   items?: readonly DragListItem[];
 }): void {
-  if (isSortablePreviewInOriginalOrder(input.session)) {
-    restoreSortablePreview(input.session);
+  const items = input.items ?? dragListItems;
+  const draggedItem = findDragListItem(items, input.draggedKey);
+  const draggedElement = getSortableItemElement(input.draggedKey);
+
+  if (
+    !draggedItem ||
+    !draggedElement ||
+    draggedElement.parentElement !== input.listElement
+  ) {
     return;
   }
 
-  const items = input.items ?? dragListItems;
-  const draggedItem = findDragListItem(items, input.draggedKey);
-  const draggedElement = input.session.draggedElement;
   const previousOrderKey = getSortableSiblingOrderKey(
     draggedElement.previousElementSibling,
   );
   const nextOrderKey = getSortableSiblingOrderKey(
     draggedElement.nextElementSibling,
   );
-
-  if (!draggedItem) {
-    restoreSortablePreview(input.session);
-    return;
-  }
 
   draggedItem.orderKey = generateKeyBetween(previousOrderKey, nextOrderKey);
   draggedElement.dataset.orderKey = draggedItem.orderKey;

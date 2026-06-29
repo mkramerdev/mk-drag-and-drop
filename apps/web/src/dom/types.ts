@@ -2,6 +2,7 @@ import type {
   DragPoint,
   DragRect,
   DragRuntime,
+  DropTarget,
   TargetingAlgorithm,
 } from "../core";
 
@@ -9,8 +10,19 @@ export type DomDragHandler = {
   handlePointerDown: (event: PointerEvent) => void;
 };
 
+export type DomDragController = {
+  requestDropTargetRemeasure: () => void;
+};
+
+export type DomDragSession = {
+  dropTargets: DropTarget[];
+  activeDropTargetKey: string | null;
+};
+
 export type CreateDomDragHandlerOptions<Payload> = {
   runtime: DragRuntime<Payload>;
+  session: DomDragSession;
+  controller: DomDragController;
   getPayload: (draggedKey: string) => Payload | null;
   getDraggedElement?: (
     draggedKey: string,
@@ -19,7 +31,6 @@ export type CreateDomDragHandlerOptions<Payload> = {
   renderOverlayContent?: DragOverlayContentRenderer<Payload>;
   overlayPlacement?: DragOverlayPlacement;
   targetingAlgorithm?: TargetingAlgorithm;
-  getDropTargetMeasurementKey?: () => unknown;
   onDragStart?: (drag: DomDragStartEvent<Payload>) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent<Payload>) => void;
   onDragEnd?: (drag: DomDragEndEvent<Payload>) => void;
