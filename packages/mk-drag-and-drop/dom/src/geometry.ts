@@ -1,4 +1,4 @@
-import type { DragRect } from "../core";
+import type { DragRect } from "@mk-drag-and-drop/core";
 
 export function domRectToDragRect(rect: DOMRect): DragRect {
   return {

@@ -8,13 +8,13 @@ export function getDragListDropTargetKey(index: number): string {
   return `demo-drag-list-drop-target-${index}`;
 }
 
-export function createDragListDropTargetElement(options: {
-  dropTargetKey: string;
-}): HTMLElement {
+export function createDragListDropTargetElement(
+  dropTargetKey: string,
+): HTMLElement {
   const dropTargetElement = document.createElement("div");
-  dropTargetElement.id = options.dropTargetKey;
+  dropTargetElement.id = dropTargetKey;
   dropTargetElement.className = "dragListDropTarget";
-  dropTargetElement.dataset.dndDropTargetKey = options.dropTargetKey;
+  dropTargetElement.dataset.dndDropTargetKey = dropTargetKey;
 
   const dropIndicator = document.createElement("div");
   dropIndicator.className = "dragListDropIndicator";
@@ -30,8 +30,6 @@ export function createDragListItemElement(item: DragListItem): HTMLElement {
   const itemElement = document.createElement("div");
   itemElement.id = item.id;
   itemElement.className = "dragListItem";
-  itemElement.dataset.dndItemId = item.id;
-  itemElement.dataset.orderKey = item.orderKey;
 
   const dragHandle = document.createElement("div");
   dragHandle.id = dragListHandleElementId;

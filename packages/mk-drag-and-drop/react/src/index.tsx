@@ -1,0 +1,515 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type RefCallback,
+} from "react";
+
+import {
+  createDragRuntime,
+  type DragPoint,
+  type DragRect,
+  type DragRuntime,
+  type TargetingAlgorithm,
+} from "@mk-drag-and-drop/core";
+import {
+  createDomDragHandler,
+  createDomDragSession,
+  type DomDragControls,
+  type DomDragEndEvent,
+  type DomDragStartEvent,
+  type DomDragSession,
+  type DomDragUpdateEvent,
+  type DomDropEvent,
+  measureDomElement,
+  removeDomDropTarget,
+  setDomDropTarget,
+} from "@mk-drag-and-drop/dom";
+
+type DragDropConfiguration = {
+  runtime: DragRuntime;
+  session: DomDragSession;
+  draggableElements: Map<string, HTMLElement>;
+  targetingAlgorithm?: TargetingAlgorithm;
+  onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
+  onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
+  onDragEnd?: (drag: DomDragEndEvent, controls: DomDragControls) => void;
+  onDrop?: (drop: DomDropEvent, controls: DomDragControls) => void;
+};
+
+export type DragDropControls = {
+  pointerPosition: DragPoint | null;
+  measureDraggable: (draggedKey: string) => DragRect | null;
+  recalculateTargets: (overlayRect?: DragRect | null) => void;
+};
+
+export type DragDropProviderProps = {
+  children: ReactNode;
+  targetingAlgorithm?: TargetingAlgorithm;
+  onDragStart?: (
+    drag: DomDragStartEvent,
+    controls: DragDropControls,
+  ) => void;
+  onDragUpdate?: (
+    drag: DomDragUpdateEvent,
+    controls: DragDropControls,
+  ) => void;
+  onDragEnd?: (drag: DomDragEndEvent, controls: DragDropControls) => void;
+  onDrop?: (drop: DomDropEvent, controls: DragDropControls) => void;
+};
+
+export type UseDraggableOptions = {
+  draggedKey: string;
+};
+
+export type UseDragHandleOptions = {
+  draggedKey: string;
+};
+
+export type UseDropTargetOptions = {
+  dropTargetKey: string;
+};
+
+export type UseDropTargetResult<ElementType extends HTMLElement = HTMLElement> = {
+  ref: RefCallback<ElementType>;
+  remeasure: () => void;
+};
+
+export type UseSortableOptions = {
+  itemKey: string;
+};
+
+export type UseSortableResult<ElementType extends HTMLElement = HTMLElement> = {
+  ref: RefCallback<ElementType>;
+  remeasureDropTarget: () => void;
+};
+
+const DragDropContext = createContext<DragDropConfiguration | null>(null);
+
+export function DragDropProvider(
+  props: DragDropProviderProps,
+): JSX.Element {
+  const {
+    children,
+    targetingAlgorithm,
+    onDragStart,
+    onDragUpdate,
+    onDragEnd,
+    onDrop,
+  } = props;
+  const runtime = useMemo(() => createDragRuntime(), []);
+  const session = useMemo(createDomDragSession, []);
+  const draggableElements = useMemo(() => new Map<string, HTMLElement>(), []);
+  const createControls = useCallback(
+    (controls: DomDragControls): DragDropControls => ({
+      pointerPosition: controls.pointerPosition,
+      measureDraggable: (draggedKey) => {
+        const element = draggableElements.get(draggedKey);
+
+        return element ? measureDomElement(element) : null;
+      },
+      recalculateTargets: controls.recalculateTargets,
+    }),
+    [draggableElements],
+  );
+  const configuration = useMemo<DragDropConfiguration>(
+    () => ({
+      runtime,
+      session,
+      draggableElements,
+      targetingAlgorithm,
+      onDragStart: onDragStart
+        ? (drag, controls) => {
+            onDragStart(drag, createControls(controls));
+          }
+        : undefined,
+      onDragUpdate: onDragUpdate
+        ? (drag, controls) => {
+            onDragUpdate(drag, createControls(controls));
+          }
+        : undefined,
+      onDragEnd: onDragEnd
+        ? (drag, controls) => {
+            onDragEnd(drag, createControls(controls));
+          }
+        : undefined,
+      onDrop: onDrop
+        ? (drop, controls) => {
+            onDrop(drop, createControls(controls));
+          }
+        : undefined,
+    }),
+    [
+      createControls,
+      onDragEnd,
+      onDragStart,
+      onDragUpdate,
+      onDrop,
+      draggableElements,
+      runtime,
+      session,
+      targetingAlgorithm,
+    ],
+  );
+
+  return (
+    <DragDropContext.Provider value={configuration}>
+      {children}
+    </DragDropContext.Provider>
+  );
+}
+
+export function useDraggable<ElementType extends HTMLElement = HTMLElement>(
+  options: UseDraggableOptions,
+): RefCallback<ElementType> {
+  const configuration = useRequiredDragDropConfiguration();
+  const elementRef = useRef<ElementType | null>(null);
+  const optionsRef = useRef(options);
+  const configurationRef = useRef(configuration);
+  const registeredDraggedKeyRef = useRef<string | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  optionsRef.current = options;
+  configurationRef.current = configuration;
+
+  const draggableRef = useCallback<RefCallback<ElementType>>((element) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    elementRef.current = element;
+
+    if (!element) {
+      return;
+    }
+
+    const initialDragKey = element.dataset.dndDragKey;
+    const currentDraggedKey = optionsRef.current.draggedKey;
+    element.dataset.dndDragKey = currentDraggedKey;
+    configurationRef.current.draggableElements.set(currentDraggedKey, element);
+    registeredDraggedKeyRef.current = currentDraggedKey;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const currentConfiguration = configurationRef.current;
+      const currentOptions = optionsRef.current;
+      const dragTarget = getDragStartTarget({
+        rootElement: element,
+        eventTarget: event.target,
+        draggedKey: currentOptions.draggedKey,
+      });
+
+      if (!dragTarget) {
+        return;
+      }
+
+      const dragHandler = createDomDragHandler({
+        runtime: currentConfiguration.runtime,
+        session: currentConfiguration.session,
+        targetingAlgorithm: currentConfiguration.targetingAlgorithm,
+        onDragStart: currentConfiguration.onDragStart,
+        onDragUpdate: currentConfiguration.onDragUpdate,
+        onDragEnd: currentConfiguration.onDragEnd,
+        onDrop: currentConfiguration.onDrop,
+      });
+
+      dragHandler({
+        target: dragTarget,
+        currentTarget: null,
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    };
+
+    element.addEventListener("pointerdown", handlePointerDown);
+
+    cleanupRef.current = () => {
+      element.removeEventListener("pointerdown", handlePointerDown);
+      unregisterCurrentDraggableElement({
+        configuration: configurationRef.current,
+        draggedKey: registeredDraggedKeyRef.current,
+        element,
+      });
+      registeredDraggedKeyRef.current = null;
+
+      if (initialDragKey === undefined) {
+        delete element.dataset.dndDragKey;
+      } else {
+        element.dataset.dndDragKey = initialDragKey;
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+
+    if (element) {
+      unregisterCurrentDraggableElement({
+        configuration: configurationRef.current,
+        draggedKey: registeredDraggedKeyRef.current,
+        element,
+      });
+      element.dataset.dndDragKey = options.draggedKey;
+      configurationRef.current.draggableElements.set(options.draggedKey, element);
+      registeredDraggedKeyRef.current = options.draggedKey;
+    }
+  }, [options.draggedKey]);
+
+  useEffect(
+    () => () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    },
+    [],
+  );
+
+  return draggableRef;
+}
+
+function unregisterCurrentDraggableElement(input: {
+  configuration: DragDropConfiguration;
+  draggedKey: string | null;
+  element: HTMLElement;
+}): void {
+  if (
+    input.draggedKey !== null &&
+    input.configuration.draggableElements.get(input.draggedKey) === input.element
+  ) {
+    input.configuration.draggableElements.delete(input.draggedKey);
+  }
+}
+
+export function useDragHandle<ElementType extends HTMLElement = HTMLElement>(
+  options: UseDragHandleOptions,
+): RefCallback<ElementType> {
+  const elementRef = useRef<ElementType | null>(null);
+  const optionsRef = useRef(options);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  optionsRef.current = options;
+
+  const dragHandleRef = useCallback<RefCallback<ElementType>>((element) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    elementRef.current = element;
+
+    if (!element) {
+      return;
+    }
+
+    const initialDragKey = element.dataset.dndDragKey;
+    const initialDragHandleKey = element.dataset.dndDragHandleKey;
+    element.dataset.dndDragKey = optionsRef.current.draggedKey;
+    element.dataset.dndDragHandleKey = optionsRef.current.draggedKey;
+
+    cleanupRef.current = () => {
+      if (initialDragKey === undefined) {
+        delete element.dataset.dndDragKey;
+      } else {
+        element.dataset.dndDragKey = initialDragKey;
+      }
+
+      if (initialDragHandleKey === undefined) {
+        delete element.dataset.dndDragHandleKey;
+      } else {
+        element.dataset.dndDragHandleKey = initialDragHandleKey;
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (elementRef.current) {
+      elementRef.current.dataset.dndDragKey = options.draggedKey;
+      elementRef.current.dataset.dndDragHandleKey = options.draggedKey;
+    }
+  }, [options.draggedKey]);
+
+  useEffect(
+    () => () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    },
+    [],
+  );
+
+  return dragHandleRef;
+}
+
+export function useDropTarget<ElementType extends HTMLElement = HTMLElement>(
+  options: UseDropTargetOptions,
+): UseDropTargetResult<ElementType> {
+  const configuration = useRequiredDragDropConfiguration();
+  const elementRef = useRef<ElementType | null>(null);
+  const optionsRef = useRef(options);
+  const configurationRef = useRef(configuration);
+  const registeredDropTargetKeyRef = useRef<string | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  optionsRef.current = options;
+  configurationRef.current = configuration;
+
+  const unregisterCurrentDropTarget = useCallback(() => {
+    const registeredDropTargetKey = registeredDropTargetKeyRef.current;
+
+    if (!registeredDropTargetKey) {
+      return;
+    }
+
+    removeDomDropTarget(
+      configurationRef.current.session,
+      registeredDropTargetKey,
+    );
+    registeredDropTargetKeyRef.current = null;
+  }, []);
+
+  const remeasure = useCallback(() => {
+    const element = elementRef.current;
+    const currentOptions = optionsRef.current;
+    const currentConfiguration = configurationRef.current;
+
+    if (!element) {
+      unregisterCurrentDropTarget();
+      return;
+    }
+
+    if (
+      registeredDropTargetKeyRef.current !== null &&
+      registeredDropTargetKeyRef.current !== currentOptions.dropTargetKey
+    ) {
+      removeDomDropTarget(
+        currentConfiguration.session,
+        registeredDropTargetKeyRef.current,
+      );
+    }
+
+    setDomDropTarget(currentConfiguration.session, {
+      dropTargetKey: currentOptions.dropTargetKey,
+      dropTargetRect: measureDomElement(element),
+    });
+    registeredDropTargetKeyRef.current = currentOptions.dropTargetKey;
+  }, [unregisterCurrentDropTarget]);
+
+  const dropTargetRef = useCallback<RefCallback<ElementType>>((element) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    elementRef.current = element;
+
+    if (!element) {
+      return;
+    }
+
+    const initialDropTargetKey = element.dataset.dndDropTargetKey;
+    element.dataset.dndDropTargetKey = optionsRef.current.dropTargetKey;
+    remeasure();
+
+    cleanupRef.current = () => {
+      unregisterCurrentDropTarget();
+
+      if (initialDropTargetKey === undefined) {
+        delete element.dataset.dndDropTargetKey;
+      } else {
+        element.dataset.dndDropTargetKey = initialDropTargetKey;
+      }
+    };
+  }, [remeasure, unregisterCurrentDropTarget]);
+
+  useLayoutEffect(() => {
+    if (elementRef.current) {
+      elementRef.current.dataset.dndDropTargetKey =
+        optionsRef.current.dropTargetKey;
+      remeasure();
+    }
+  }, [options.dropTargetKey, remeasure]);
+
+  useEffect(
+    () => () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    },
+    [],
+  );
+
+  return useMemo(
+    () => ({
+      ref: dropTargetRef,
+      remeasure,
+    }),
+    [dropTargetRef, remeasure],
+  );
+}
+
+export function useSortable<ElementType extends HTMLElement = HTMLElement>(
+  options: UseSortableOptions,
+): UseSortableResult<ElementType> {
+  const draggableRef = useDraggable<ElementType>({
+    draggedKey: options.itemKey,
+  });
+  const dropTarget = useDropTarget<ElementType>({
+    dropTargetKey: options.itemKey,
+  });
+
+  const sortableRef = useCallback<RefCallback<ElementType>>(
+    (element) => {
+      dropTarget.ref(element);
+      draggableRef(element);
+    },
+    [draggableRef, dropTarget],
+  );
+
+  return useMemo(
+    () => ({
+      ref: sortableRef,
+      remeasureDropTarget: dropTarget.remeasure,
+    }),
+    [dropTarget.remeasure, sortableRef],
+  );
+}
+
+function useRequiredDragDropConfiguration(): DragDropConfiguration {
+  const configuration = useContext(DragDropContext);
+
+  if (!configuration) {
+    throw new Error("useDraggable must be used inside DragDropProvider.");
+  }
+
+  return configuration;
+}
+
+function getDragStartTarget(input: {
+  rootElement: HTMLElement;
+  eventTarget: EventTarget | null;
+  draggedKey: string;
+}): HTMLElement | null {
+  const dragHandleSelector = `[data-dnd-drag-handle-key="${CSS.escape(
+    input.draggedKey,
+  )}"]`;
+  const hasDragHandle =
+    input.rootElement.matches(dragHandleSelector) ||
+    input.rootElement.querySelector(dragHandleSelector) !== null;
+
+  if (!hasDragHandle) {
+    return input.rootElement;
+  }
+
+  if (!(input.eventTarget instanceof HTMLElement)) {
+    return null;
+  }
+
+  const dragHandle = input.eventTarget.closest(dragHandleSelector);
+
+  if (!(dragHandle instanceof HTMLElement)) {
+    return null;
+  }
+
+  if (
+    dragHandle !== input.rootElement &&
+    !input.rootElement.contains(dragHandle)
+  ) {
+    return null;
+  }
+
+  return dragHandle;
+}

@@ -1,22 +1,23 @@
-import type { DropTarget, DragRuntime, TargetingAlgorithm } from "../core";
-import { endDrag, moveDrag, setActiveDropTarget } from "../core";
-import {
-  activateDomDragController,
-  consumeDropTargetRemeasureRequest,
-  deactivateDomDragController,
-  subscribeToDropTargetRemeasureRequests,
-} from "./dom-drag-controller";
-import type { DragOverlayController } from "./drag-overlay";
-import { domRectToDragRect } from "./geometry";
 import type {
-  DomDragController,
+  DragRect,
+  DropTarget,
+  DragRuntime,
+  TargetingAlgorithm,
+} from "@mk-drag-and-drop/core";
+import {
+  endDrag,
+  moveDrag,
+  setActiveDropTarget,
+} from "@mk-drag-and-drop/core";
+import { getDomDropTargets } from "./dom-drop-target.js";
+import type {
+  DomDragControls,
   DomDragEndEvent,
+  DomDropEvent,
   DomDragSession,
   DomDragStartEvent,
   DomDragUpdateEvent,
-} from "./types";
-
-const DROP_TARGET_SELECTOR = "[data-dnd-drop-target-key]";
+} from "./types.js";
 
 export type DomPointerCapture = {
   element: HTMLElement;
@@ -24,61 +25,52 @@ export type DomPointerCapture = {
   previousCursor: string;
 };
 
-export type TrackDomDragInput<Payload> = {
-  runtime: DragRuntime<Payload>;
+export type TrackDomDragInput = {
+  runtime: DragRuntime;
   session: DomDragSession;
-  controller: DomDragController;
-  overlay: DragOverlayController | null;
   dropTargetParent: ParentNode;
   pointerCapture: DomPointerCapture;
   targetingAlgorithm: TargetingAlgorithm;
-  onDragStart?: (drag: DomDragStartEvent<Payload>) => void;
-  onDragUpdate?: (drag: DomDragUpdateEvent<Payload>) => void;
-  onDragEnd?: (drag: DomDragEndEvent<Payload>) => void;
-  onDrop?: (drop: { draggedKey: string; dropTargetKey: string }) => void;
+  onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
+  onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
+  onDragEnd?: (drag: DomDragEndEvent, controls: DomDragControls) => void;
+  onDrop?: (drop: DomDropEvent, controls: DomDragControls) => void;
+};
+
+type TargetRecalculation = {
+  activeDropTargetKey: string | null;
+  previousDropTargetKey: string | null;
+};
+
+type CurrentDragUpdateEventRef = {
+  current: DomDragUpdateEvent | null;
 };
 
 export function createDomDragSession(): DomDragSession {
   return {
-    dropTargets: [],
+    dropTargets: new Map(),
     activeDropTargetKey: null,
+    requestDropTargetRetarget: null,
   };
 }
 
-export function findDropTargets(parent: ParentNode): DropTarget[] {
-  return getDropTargetElements(parent)
-    .map((element) => {
-      const dropTargetKey = element.dataset.dndDropTargetKey;
-
-      if (!dropTargetKey) {
-        return null;
-      }
-
-      return {
-        dropTargetKey,
-        dropTargetRect: domRectToDragRect(element.getBoundingClientRect()),
-      };
-    })
-    .filter(
-      (candidateDropTarget): candidateDropTarget is DropTarget =>
-        candidateDropTarget !== null,
-    );
-}
-
-export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
+export function trackDomDrag(input: TrackDomDragInput): void {
   if (!input.runtime.isDragging) {
     return;
   }
 
   document.documentElement.dataset.dndDragging = "true";
-  input.session.dropTargets = [];
   input.session.activeDropTargetKey = null;
 
   let pendingPointerMove: PointerEvent | null = null;
   let pointerMoveFrameId: number | null = null;
-  let dropTargetRemeasureFrameId: number | null = null;
+  let isDropTargetRetargetPending = false;
   let isProcessingPointerMoveFrame = false;
   let isDragSessionActive = true;
+  let latestOverlayRect: DragRect | null = null;
+  const currentDragUpdateEventRef: CurrentDragUpdateEventRef = {
+    current: null,
+  };
 
   const syncCurrentActiveDropTarget = () => {
     syncActiveDropTarget({
@@ -87,55 +79,86 @@ export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
       nextDropTargetKey: input.runtime.activeDropTargetKey,
     });
   };
-  const measureDropTargets = () => {
-    input.session.dropTargets = findDropTargets(input.dropTargetParent);
-  };
-  const measureTargetsAndRetarget = (): boolean => {
+  const retargetFromSession = (options?: {
+    overlayRect?: DragRect | null;
+  }): TargetRecalculation => {
+    const previousDropTargetKey = input.runtime.activeDropTargetKey;
+
     if (!isDragSessionActive || !input.runtime.isDragging) {
+      return {
+        activeDropTargetKey: previousDropTargetKey,
+        previousDropTargetKey,
+      };
+    }
+
+    retargetDrag(input, {
+      dropTargets: getDomDropTargets(input.session),
+      overlayRect: options?.overlayRect ?? null,
+    });
+    syncCurrentActiveDropTarget();
+
+    return {
+      activeDropTargetKey: input.runtime.activeDropTargetKey,
+      previousDropTargetKey,
+    };
+  };
+  const recalculateTargets = (
+    overlayRect?: DragRect | null,
+  ): void => {
+    if (overlayRect !== undefined) {
+      latestOverlayRect = overlayRect;
+    }
+
+    cancelPendingDropTargetRetarget();
+
+    const recalculation = retargetFromSession({
+      overlayRect:
+        input.targetingAlgorithm.mode === "rect" ? latestOverlayRect : null,
+    });
+
+    if (currentDragUpdateEventRef.current) {
+      currentDragUpdateEventRef.current.activeDropTargetKey =
+        recalculation.activeDropTargetKey;
+      currentDragUpdateEventRef.current.previousDropTargetKey =
+        recalculation.previousDropTargetKey;
+    }
+  };
+  const controls: DomDragControls = {
+    get pointerPosition() {
+      return input.runtime.pointerPosition;
+    },
+    recalculateTargets,
+  };
+  const requestDropTargetRetarget = () => {
+    if (!isDragSessionActive || !input.runtime.isDragging) {
+      return;
+    }
+
+    isDropTargetRetargetPending = true;
+
+    if (isProcessingPointerMoveFrame) {
+      return;
+    }
+
+    flushPendingDropTargetRetarget();
+  };
+  const flushPendingDropTargetRetarget = (): boolean => {
+    if (!isDropTargetRetargetPending) {
       return false;
     }
 
-    measureDropTargets();
-    retargetDrag(input, input.session.dropTargets);
-    syncCurrentActiveDropTarget();
+    isDropTargetRetargetPending = false;
+
+    retargetFromSession({
+      overlayRect:
+        input.targetingAlgorithm.mode === "rect" ? latestOverlayRect : null,
+    });
 
     return true;
   };
-  const scheduleDropTargetRemeasure = () => {
-    if (!isDragSessionActive || !input.runtime.isDragging) {
-      return;
-    }
 
-    if (isProcessingPointerMoveFrame || dropTargetRemeasureFrameId !== null) {
-      return;
-    }
-
-    dropTargetRemeasureFrameId = window.requestAnimationFrame(() => {
-      dropTargetRemeasureFrameId = null;
-      flushPendingDropTargetRemeasure();
-    });
-  };
-  const flushPendingDropTargetRemeasure = (): boolean => {
-    if (!consumeDropTargetRemeasureRequest(input.controller)) {
-      return false;
-    }
-
-    if (dropTargetRemeasureFrameId !== null) {
-      window.cancelAnimationFrame(dropTargetRemeasureFrameId);
-      dropTargetRemeasureFrameId = null;
-    }
-
-    return measureTargetsAndRetarget();
-  };
-  const unsubscribeDropTargetRemeasureRequests =
-    subscribeToDropTargetRemeasureRequests(
-      input.controller,
-      scheduleDropTargetRemeasure,
-    );
-
-  activateDomDragController(input.controller);
-  emitDragStart(input);
-  measureDropTargets();
+  input.session.requestDropTargetRetarget = requestDropTargetRetarget;
+  emitDragStart(input, controls);
 
   const handlePointerMove = (event: PointerEvent) => {
     pendingPointerMove = event;
@@ -160,9 +183,19 @@ export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
         const previousDropTargetKey = input.runtime.activeDropTargetKey;
 
         onPointerMove(input, latestPointerMove);
-        syncCurrentActiveDropTarget();
-        emitDragUpdate(input, previousDropTargetKey);
-        flushPendingDropTargetRemeasure();
+        if (input.targetingAlgorithm.mode === "pointer") {
+          syncCurrentActiveDropTarget();
+        }
+        emitDragUpdate(
+          input,
+          previousDropTargetKey,
+          controls,
+          currentDragUpdateEventRef,
+        );
+
+        if (isDropTargetRetargetPending) {
+          flushPendingDropTargetRetarget();
+        }
       } finally {
         isProcessingPointerMoveFrame = false;
       }
@@ -174,9 +207,11 @@ export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
       return;
     }
 
-    if (!flushPendingDropTargetRemeasure()) {
-      retargetDrag(input, input.session.dropTargets);
-      syncCurrentActiveDropTarget();
+    if (!flushPendingDropTargetRetarget()) {
+      retargetFromSession({
+        overlayRect:
+          input.targetingAlgorithm.mode === "rect" ? latestOverlayRect : null,
+      });
     }
 
     releaseDrag();
@@ -189,10 +224,10 @@ export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
   function releaseDrag(): void {
     removeListeners();
     isDragSessionActive = false;
-    cancelPendingDropTargetRemeasure();
-    unsubscribeDropTargetRemeasureRequests();
-    deactivateDomDragController(input.controller);
-    releaseDomDrag(input);
+    cancelPendingDropTargetRetarget();
+    input.session.requestDropTargetRetarget = null;
+
+    releaseDomDrag(input, controls);
   }
 
   function removeListeners(): void {
@@ -209,18 +244,13 @@ export function trackDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
     pendingPointerMove = null;
   }
 
-  function cancelPendingDropTargetRemeasure(): void {
-    if (dropTargetRemeasureFrameId === null) {
-      return;
-    }
-
-    window.cancelAnimationFrame(dropTargetRemeasureFrameId);
-    dropTargetRemeasureFrameId = null;
+  function cancelPendingDropTargetRetarget(): void {
+    isDropTargetRetargetPending = false;
   }
 }
 
-function onPointerMove<Payload>(
-  input: TrackDomDragInput<Payload>,
+function onPointerMove(
+  input: TrackDomDragInput,
   event: PointerEvent,
 ): void {
   if (!input.runtime.isDragging) {
@@ -234,18 +264,31 @@ function onPointerMove<Payload>(
     },
   });
 
-  input.overlay?.sync();
-
-  retargetDrag(input, input.session.dropTargets);
+  if (input.targetingAlgorithm.mode === "pointer") {
+    retargetDrag(input, {
+      dropTargets: getDomDropTargets(input.session),
+      overlayRect: null,
+    });
+  }
 }
 
-function retargetDrag<Payload>(
-  input: TrackDomDragInput<Payload>,
-  dropTargets: readonly DropTarget[],
+function retargetDrag(
+  input: TrackDomDragInput,
+  targetingInput: {
+    dropTargets: readonly DropTarget[];
+    overlayRect: DragRect | null;
+  },
 ): void {
+  const pointerPosition = input.runtime.pointerPosition;
+
+  if (!pointerPosition) {
+    return;
+  }
+
   const activeDropTarget = input.targetingAlgorithm({
-    runtime: input.runtime,
-    dropTargets,
+    pointerPosition,
+    overlayRect: targetingInput.overlayRect,
+    dropTargets: targetingInput.dropTargets,
   });
 
   setActiveDropTarget(input.runtime, {
@@ -253,45 +296,58 @@ function retargetDrag<Payload>(
   });
 }
 
-function emitDragUpdate<Payload>(
-  input: TrackDomDragInput<Payload>,
+function emitDragUpdate(
+  input: TrackDomDragInput,
   previousDropTargetKey: string | null,
+  controls: DomDragControls,
+  currentDragUpdateEventRef: CurrentDragUpdateEventRef,
 ): void {
   const draggedKey = input.runtime.draggedKey;
-  const payload = input.runtime.payload;
   const pointerPosition = input.runtime.pointerPosition;
 
-  if (draggedKey === null || payload === null || pointerPosition === null) {
+  if (draggedKey === null || pointerPosition === null) {
     return;
   }
 
-  input.onDragUpdate?.({
+  const dragUpdate: DomDragUpdateEvent = {
     draggedKey,
-    payload,
     pointerPosition,
-    overlayRect: input.runtime.overlayRect,
     activeDropTargetKey: input.runtime.activeDropTargetKey,
     previousDropTargetKey,
-  });
+  };
+
+  currentDragUpdateEventRef.current = dragUpdate;
+
+  try {
+    input.onDragUpdate?.(dragUpdate, controls);
+  } finally {
+    currentDragUpdateEventRef.current = null;
+  }
 }
 
-function emitDragStart<Payload>(input: TrackDomDragInput<Payload>): void {
+function emitDragStart(
+  input: TrackDomDragInput,
+  controls: DomDragControls,
+): void {
   const draggedKey = input.runtime.draggedKey;
-  const payload = input.runtime.payload;
 
-  if (draggedKey === null || payload === null) {
+  if (draggedKey === null) {
     return;
   }
 
-  input.onDragStart?.({
-    draggedKey,
-    payload,
-  });
+  input.onDragStart?.(
+    {
+      draggedKey,
+    },
+    controls,
+  );
 }
 
-function releaseDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
+function releaseDomDrag(
+  input: TrackDomDragInput,
+  controls: DomDragControls,
+): void {
   const draggedKey = input.runtime.draggedKey;
-  const payload = input.runtime.payload;
   const dropTargetKey = input.runtime.activeDropTargetKey;
   const drop =
     draggedKey !== null && dropTargetKey !== null
@@ -307,22 +363,21 @@ function releaseDomDrag<Payload>(input: TrackDomDragInput<Payload>): void {
     input.dropTargetParent,
   );
   input.session.activeDropTargetKey = null;
-  input.session.dropTargets = [];
 
-  input.overlay?.destroy();
-
-  if (draggedKey !== null && payload !== null) {
-    input.onDragEnd?.({
-      draggedKey,
-      payload,
-      dropTargetKey,
-    });
+  if (draggedKey !== null) {
+    input.onDragEnd?.(
+      {
+        draggedKey,
+        dropTargetKey,
+      },
+      controls,
+    );
   }
 
   endDrag(input.runtime);
 
   if (drop) {
-    input.onDrop?.(drop);
+    input.onDrop?.(drop, controls);
   }
 }
 
@@ -334,19 +389,7 @@ function syncActiveDropTarget(input: {
   const previousDropTargetKey = input.session.activeDropTargetKey;
 
   if (previousDropTargetKey === input.nextDropTargetKey) {
-    if (previousDropTargetKey === null) {
-      return;
-    }
-
-    const currentDropTarget = getDropTargetElement(
-      previousDropTargetKey,
-      input.parent,
-    );
-
-    if (currentDropTarget) {
-      currentDropTarget.dataset.dndActiveDropTarget = "true";
-      return;
-    }
+    return;
   }
 
   clearActiveDropTarget(previousDropTargetKey, input.parent);
@@ -390,10 +433,6 @@ function releasePointerCapture(pointerCapture: DomPointerCapture): void {
   }
 
   pointerCapture.element.style.cursor = pointerCapture.previousCursor;
-}
-
-function getDropTargetElements(parent: ParentNode): HTMLElement[] {
-  return Array.from(parent.querySelectorAll<HTMLElement>(DROP_TARGET_SELECTOR));
 }
 
 function getDropTargetElement(

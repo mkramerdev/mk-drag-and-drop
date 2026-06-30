@@ -1,111 +1,175 @@
-import type { DragListItemPayload } from "../shared/list-data";
 import {
   dragListItems,
+  type DragListItem,
   findDragListItem,
   getOrderedDragListItems,
 } from "../shared/list-data";
 import { setDragListItemGhosted } from "../shared/list-drag-effects";
-import { renderDragListOverlayContent } from "../shared/list-overlay";
-import { centerToCenter, createDragRuntime } from "../../core";
 import {
-  createDomDragController,
+  createOverlay,
+  renderDragListOverlayContent,
+  type DragListOverlay,
+} from "../shared/list-overlay";
+import {
+  centerToCenter,
+  createDragRuntime,
+} from "@mk-drag-and-drop/core";
+import {
   createDomDragHandler,
   createDomDragSession,
-} from "../../dom";
-import { applySortableDrop } from "./sortable-drop";
+  measureDomElement,
+  type DomDragSession,
+} from "@mk-drag-and-drop/dom";
 import {
+  applySortableDrop,
   moveSortablePreview,
   restoreSortableDraggedItem,
-} from "./sortable-preview";
+  shouldMoveSortablePreview,
+} from "@mk-drag-and-drop/sortable";
 import {
   createSortableItemElement,
-  getSortableItemElement,
 } from "./sortable-render";
 
 export function mountSortableExample(parent: HTMLElement): void {
-  const runtime = createDragRuntime<DragListItemPayload>();
+  const runtime = createDragRuntime();
   const session = createDomDragSession();
-  const controller = createDomDragController();
+  let overlay: DragListOverlay | null = null;
   const list = document.createElement("div");
   const itemsInOrder = getOrderedDragListItems();
+  const itemElements = new Map<string, HTMLElement>();
+  const getItemElement = (itemId: string): HTMLElement | null =>
+    itemElements.get(itemId) ?? null;
 
-  list.id = "demo-sortable-list";
-  list.className = "drag-parent";
-  list.dataset.dndListId = "demo-sortable-list";
+  list.className = "drag-parent sortableList";
 
   for (const item of itemsInOrder) {
-    list.append(createSortableItemElement(item));
+    const element = createSortableItemElement(item);
+
+    itemElements.set(item.id, element);
+    list.append(element);
   }
 
   parent.replaceChildren(list);
+  session.dropTargets = measureSortableDropTargets(
+    itemsInOrder,
+    getItemElement,
+  );
 
   const dragHandler = createDomDragHandler({
     runtime,
     session,
-    controller,
-    renderOverlayContent: renderDragListOverlayContent,
-    overlayPlacement: "left-center",
     targetingAlgorithm: centerToCenter,
-    getDraggedElement: getSortableItemElement,
-    getPayload: (itemId) => {
-      const item = findDragListItem(dragListItems, itemId);
+    onDragStart: (event, { pointerPosition, recalculateTargets }) => {
+      const item = findDragListItem(dragListItems, event.draggedKey);
+      const sourceElement = getItemElement(event.draggedKey);
 
-      if (!item) {
-        return null;
+      setDragListItemGhosted({
+        itemId: event.draggedKey,
+        isGhosted: true,
+        getItemElement,
+      });
+
+      if (item && sourceElement) {
+        overlay = createOverlay({
+          draggedKey: event.draggedKey,
+          pointerPosition,
+          sourceRect: measureDomElement(sourceElement),
+          content: renderDragListOverlayContent(item),
+          placement: "left-top",
+        });
+
+        if (overlay) {
+          recalculateTargets(overlay.overlayRect);
+        }
+      }
+    },
+    onDragUpdate: (event, { recalculateTargets }) => {
+      const overlayRect = overlay?.move(event.pointerPosition) ?? null;
+      if (overlay) {
+        recalculateTargets(overlayRect);
+      } else {
+        recalculateTargets();
       }
 
-      return {
-        content: item.content,
-      };
-    },
-    onDragStart: ({ draggedKey }) => {
-      setDragListItemGhosted({
-        itemId: draggedKey,
-        isGhosted: true,
-        getItemElement: getSortableItemElement,
-      });
-    },
-    onDragUpdate: ({
-      draggedKey,
-      activeDropTargetKey,
-      previousDropTargetKey,
-    }) => {
       if (
-        activeDropTargetKey === null ||
-        activeDropTargetKey === previousDropTargetKey ||
-        activeDropTargetKey === draggedKey
+        !shouldMoveSortablePreview({
+          draggedKey: event.draggedKey,
+          activeDropTargetKey: event.activeDropTargetKey,
+          previousDropTargetKey: event.previousDropTargetKey,
+        })
       ) {
         return;
       }
 
       moveSortablePreview({
         listElement: list,
-        draggedKey,
-        activeDropTargetKey,
+        draggedKey: event.draggedKey,
+        activeDropTargetKey: event.activeDropTargetKey,
+        getItemElement,
       });
-      controller.requestDropTargetRemeasure();
+      session.dropTargets = measureSortableDropTargets(
+        dragListItems,
+        getItemElement,
+      );
+      if (overlay) {
+        recalculateTargets(overlayRect);
+      }
     },
     onDragEnd: ({ draggedKey, dropTargetKey }) => {
+      overlay?.remove();
+      overlay = null;
+
       setDragListItemGhosted({
         itemId: draggedKey,
         isGhosted: false,
-        getItemElement: getSortableItemElement,
+        getItemElement,
       });
 
       if (dropTargetKey === null) {
         restoreSortableDraggedItem({
           listElement: list,
           draggedKey,
+          items: dragListItems,
+          getItemKey: (item) => item.id,
+          getItemOrderKey: (item) => item.orderKey,
+          getItemElement,
         });
       }
     },
     onDrop: ({ draggedKey }) => {
+      overlay?.remove();
+      overlay = null;
+
       applySortableDrop({
         listElement: list,
         draggedKey,
+        items: dragListItems,
+        getItemKey: (item) => item.id,
+        getItemOrderKey: (item) => item.orderKey,
+        setItemOrderKey: (item, orderKey) => {
+          item.orderKey = orderKey;
+        },
+        getItemElement,
       });
     },
   });
 
-  list.addEventListener("pointerdown", dragHandler.handlePointerDown);
+  list.addEventListener("pointerdown", dragHandler);
+}
+
+function measureSortableDropTargets(
+  items: readonly DragListItem[],
+  getItemElement: (itemId: string) => HTMLElement | null,
+): DomDragSession["dropTargets"] {
+  const dropTargets: DomDragSession["dropTargets"] = new Map();
+
+  for (const item of items) {
+    const element = getItemElement(item.id);
+
+    if (element) {
+      dropTargets.set(item.id, measureDomElement(element));
+    }
+  }
+
+  return dropTargets;
 }

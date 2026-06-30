@@ -1,5 +1,3 @@
-import type { DragListItemPayload } from "../shared/list-data";
-
 import { commitChangedItemInOrder } from "./list-commit";
 import {
   findDragListItem,
@@ -16,26 +14,32 @@ import {
   createDragListItemElement,
   getDragListDropTargetKey,
 } from "./list-render";
-import { renderDragListOverlayContent } from "../shared/list-overlay";
-import { centerToCenter, createDragRuntime } from "../../core";
 import {
-  createDomDragController,
+  createOverlay,
+  renderDragListOverlayContent,
+  type DragListOverlay,
+} from "../shared/list-overlay";
+import {
+  centerToCenter,
+  createDragRuntime,
+} from "@mk-drag-and-drop/core";
+import {
   createDomDragHandler,
   createDomDragSession,
-} from "../../dom";
+  measureDomElement,
+  type DomDragSession,
+} from "@mk-drag-and-drop/dom";
 
-const dragRuntime = createDragRuntime<DragListItemPayload>();
+const dragRuntime = createDragRuntime();
 
 export function mountDropzoneLineExample(parent: HTMLElement): void {
   const dragSession = createDomDragSession();
-  const dragController = createDomDragController();
+  let overlay: DragListOverlay | null = null;
   const dragList = document.createElement("div");
   const dragListItemsInOrder = getOrderedDragListItems();
   const dropTargets = createDragListDropTargetRegistry();
 
-  dragList.id = "demo-drag-list";
   dragList.className = "drag-parent";
-  dragList.dataset.dndListId = "demo-drag-list";
   dragList.dataset.dndIsDragging = String(dragRuntime.isDragging);
 
   for (const [dropTargetIndex, item] of dragListItemsInOrder.entries()) {
@@ -47,7 +51,7 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
     });
 
     dragList.append(
-      createDragListDropTargetElement({ dropTargetKey }),
+      createDragListDropTargetElement(dropTargetKey),
       createDragListItemElement(item),
     );
   }
@@ -57,37 +61,49 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
     dropTargetKey: endDropTargetKey,
     beforeItemId: null,
   });
-  dragList.append(
-    createDragListDropTargetElement({ dropTargetKey: endDropTargetKey }),
-  );
+  dragList.append(createDragListDropTargetElement(endDropTargetKey));
   parent.replaceChildren(dragList);
+  dragSession.dropTargets = measureDropTargets(dragListItemsInOrder.length);
 
   const dragHandler = createDomDragHandler({
     runtime: dragRuntime,
     session: dragSession,
-    controller: dragController,
-    renderOverlayContent: renderDragListOverlayContent,
-    overlayPlacement: "left-center",
     targetingAlgorithm: centerToCenter,
-    getPayload: (itemId) => {
-      const item = findDragListItem(dragListItems, itemId);
+    onDragStart: (event, { pointerPosition, recalculateTargets }) => {
+      const item = findDragListItem(dragListItems, event.draggedKey);
+      const sourceElement = getDropzoneLineItemElement(event.draggedKey);
 
-      if (!item) {
-        return null;
-      }
-
-      return {
-        content: item.content,
-      };
-    },
-    onDragStart: ({ draggedKey }) => {
       setDragListItemGhosted({
-        itemId: draggedKey,
+        itemId: event.draggedKey,
         isGhosted: true,
         getItemElement: getDropzoneLineItemElement,
       });
+
+      if (item && sourceElement) {
+        overlay = createOverlay({
+          draggedKey: event.draggedKey,
+          pointerPosition,
+          sourceRect: measureDomElement(sourceElement),
+          content: renderDragListOverlayContent(item),
+          placement: "left-top",
+        });
+
+        if (overlay) {
+          recalculateTargets(overlay.overlayRect);
+        }
+      }
+    },
+    onDragUpdate: (event, { recalculateTargets }) => {
+      if (!overlay) {
+        return;
+      }
+
+      recalculateTargets(overlay.move(event.pointerPosition));
     },
     onDragEnd: ({ draggedKey }) => {
+      overlay?.remove();
+      overlay = null;
+
       setDragListItemGhosted({
         itemId: draggedKey,
         isGhosted: false,
@@ -95,6 +111,9 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
       });
     },
     onDrop: ({ draggedKey, dropTargetKey }) => {
+      overlay?.remove();
+      overlay = null;
+
       const changedItemId = applyDragListDrop({
         items: dragListItems,
         dropTargets,
@@ -114,9 +133,28 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
     },
   });
 
-  dragList.addEventListener("pointerdown", dragHandler.handlePointerDown);
+  dragList.addEventListener("pointerdown", dragHandler);
 }
 
 function getDropzoneLineItemElement(itemId: string): HTMLElement | null {
   return document.getElementById(itemId);
+}
+
+function measureDropTargets(itemCount: number): DomDragSession["dropTargets"] {
+  const dropTargets: DomDragSession["dropTargets"] = new Map();
+
+  for (
+    let dropTargetIndex = 0;
+    dropTargetIndex <= itemCount;
+    dropTargetIndex++
+  ) {
+    const dropTargetKey = getDragListDropTargetKey(dropTargetIndex);
+    const dropTargetElement = document.getElementById(dropTargetKey);
+
+    if (dropTargetElement) {
+      dropTargets.set(dropTargetKey, measureDomElement(dropTargetElement));
+    }
+  }
+
+  return dropTargets;
 }

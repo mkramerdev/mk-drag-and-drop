@@ -1,10 +1,10 @@
+import { createRoot, type Root } from "react-dom/client";
+
 import type {
   DragPoint,
   DragRect,
 } from "@mk-drag-and-drop/core";
 import type { DragListItem } from "./list-data";
-
-type DragListOverlayElement = HTMLDivElement;
 
 export type DragListOverlay = {
   overlayRect: DragRect;
@@ -18,7 +18,7 @@ export function createOverlay(input: {
   draggedKey: string;
   pointerPosition: DragPoint | null;
   sourceRect: DragRect;
-  content: HTMLElement;
+  item: DragListItem;
   placement?: DragListOverlayPlacement;
 }): DragListOverlay | null {
   const startPos = input.pointerPosition;
@@ -28,7 +28,8 @@ export function createOverlay(input: {
   }
 
   const placement = input.placement ?? "pointer";
-  const initialOverlayRect = getInitialOverlayRect(placement, {
+  const initialOverlayRect = getInitialOverlayRect({
+    placement,
     overlayRect: input.sourceRect,
     draggedElementRect: input.sourceRect,
     startPos,
@@ -39,9 +40,11 @@ export function createOverlay(input: {
     width: initialOverlayRect.width,
     height: initialOverlayRect.height,
   });
-  prepareOverlayContent(input.content);
-  overlayElement.append(input.content);
+  const root = createRoot(overlayElement);
+
+  overlayElement.dataset.dndDragOverlayKey = input.draggedKey;
   document.body.append(overlayElement);
+  root.render(<DragListOverlayContent item={input.item} />);
 
   let currentPointerPosition = startPos;
   let currentOverlayRect = initialOverlayRect;
@@ -61,44 +64,18 @@ export function createOverlay(input: {
       return currentOverlayRect;
     },
     remove: () => {
-      overlayElement.remove();
+      removeOverlay(root, overlayElement);
     },
   };
 }
 
-function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect {
-  return {
-    x: rect.x + deltaX,
-    y: rect.y + deltaY,
-    width: rect.width,
-    height: rect.height,
-    top: rect.top + deltaY,
-    right: rect.right + deltaX,
-    bottom: rect.bottom + deltaY,
-    left: rect.left + deltaX,
-  };
-}
-
-function prepareOverlayContent(content: HTMLElement): void {
-  content.style.margin = "0";
-}
-
-export function renderDragListOverlayContent(
-  item: DragListItem,
-): HTMLElement {
-  const element = document.createElement("div");
-  element.className = "dragListItem";
-
-  const dragHandle = document.createElement("div");
-  dragHandle.className = "dragListHandle";
-
-  const content = document.createElement("div");
-  content.className = "dragListItemText";
-  content.textContent = item.content;
-
-  element.append(dragHandle, content);
-
-  return element;
+function DragListOverlayContent(input: { item: DragListItem }): JSX.Element {
+  return (
+    <div className="dragListItem" style={{ margin: 0 }}>
+      <div className="dragListHandle" />
+      <div className="dragListItemText">{input.item.content}</div>
+    </div>
+  );
 }
 
 function createDragOverlayElement(position: {
@@ -106,7 +83,7 @@ function createDragOverlayElement(position: {
   top: number;
   width: number;
   height: number;
-}): DragListOverlayElement {
+}): HTMLDivElement {
   const overlayElement = document.createElement("div");
 
   overlayElement.dataset.dndDragOverlay = "true";
@@ -124,7 +101,7 @@ function createDragOverlayElement(position: {
 }
 
 function setDragOverlayElementPosition(
-  overlayElement: DragListOverlayElement,
+  overlayElement: HTMLElement,
   position: {
     left: number;
     top: number;
@@ -135,7 +112,7 @@ function setDragOverlayElementPosition(
 }
 
 function setDragOverlayElementOffset(
-  overlayElement: DragListOverlayElement,
+  overlayElement: HTMLElement,
   offset: {
     x: number;
     y: number;
@@ -144,15 +121,13 @@ function setDragOverlayElementOffset(
   overlayElement.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
 }
 
-function getInitialOverlayRect(
-  placement: DragListOverlayPlacement,
-  input: {
-    overlayRect: DragRect;
-    draggedElementRect: DragRect;
-    startPos: DragPoint;
-  },
-): DragRect {
-  const position = getInitialOverlayPosition(placement, input);
+function getInitialOverlayRect(input: {
+  placement: DragListOverlayPlacement;
+  overlayRect: DragRect;
+  draggedElementRect: DragRect;
+  startPos: DragPoint;
+}): DragRect {
+  const position = getInitialOverlayPosition(input.placement, input);
 
   return {
     x: position.left,
@@ -198,4 +173,22 @@ function getInitialOverlayPosition(
     left: input.startPos.x,
     top: input.startPos.y,
   };
+}
+
+function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect {
+  return {
+    x: rect.x + deltaX,
+    y: rect.y + deltaY,
+    width: rect.width,
+    height: rect.height,
+    top: rect.top + deltaY,
+    right: rect.right + deltaX,
+    bottom: rect.bottom + deltaY,
+    left: rect.left + deltaX,
+  };
+}
+
+function removeOverlay(root: Root, overlayElement: HTMLElement): void {
+  root.unmount();
+  overlayElement.remove();
 }

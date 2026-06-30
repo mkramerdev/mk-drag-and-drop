@@ -4,7 +4,7 @@ export type DragListItem = {
   content: string;
 };
 
-export const dragListItems: DragListItem[] = [
+const initialDragListItems: readonly DragListItem[] = [
   {
     id: "drag-item-1",
     orderKey: "a0",
@@ -31,6 +31,12 @@ export const dragListItems: DragListItem[] = [
     content: "Item 5",
   },
 ];
+
+export const dragListItems: DragListItem[] = createDragListItems();
+
+export function createDragListItems(): DragListItem[] {
+  return initialDragListItems.map((item) => ({ ...item }));
+}
 
 export function findDragListItem(
   items: readonly DragListItem[],

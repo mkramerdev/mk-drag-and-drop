@@ -1,14 +1,26 @@
-import {
-  dragListItems,
-  findDragListItem,
-  getOrderedDragListItems,
-  type DragListItem,
-} from "../shared/list-data";
-import { getSortableItemElement } from "./sortable-render";
+import { findSortableItem, getOrderedSortableItems } from "./items.js";
+import type {
+  SortableItemElementGetter,
+  SortableItemKeyGetter,
+  SortableItemOrderKeyGetter,
+} from "./types.js";
+
+export function shouldMoveSortablePreview(input: {
+  draggedKey: string;
+  activeDropTargetKey: string | null;
+  previousDropTargetKey: string | null;
+}): boolean {
+  return (
+    input.activeDropTargetKey !== null &&
+    input.activeDropTargetKey !== input.previousDropTargetKey &&
+    input.activeDropTargetKey !== input.draggedKey
+  );
+}
 
 export function moveSortablePreview(input: {
   draggedKey: string;
   activeDropTargetKey: string | null;
+  getItemElement: SortableItemElementGetter;
   listElement?: HTMLElement;
 }): void {
   if (
@@ -18,8 +30,8 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const draggedElement = getSortableItemElement(input.draggedKey);
-  const targetElement = getSortableItemElement(input.activeDropTargetKey);
+  const draggedElement = input.getItemElement(input.draggedKey);
+  const targetElement = input.getItemElement(input.activeDropTargetKey);
   const listElement =
     input.listElement ??
     draggedElement?.parentElement ??
@@ -55,26 +67,37 @@ export function moveSortablePreview(input: {
   targetElement.before(draggedElement);
 }
 
-export function restoreSortableDraggedItem(input: {
-  listElement: HTMLElement;
+export function restoreSortableDraggedItem<Item>(input: {
   draggedKey: string;
-  items?: readonly DragListItem[];
+  items: readonly Item[];
+  getItemKey: SortableItemKeyGetter<Item>;
+  getItemOrderKey: SortableItemOrderKeyGetter<Item>;
+  getItemElement: SortableItemElementGetter;
+  listElement?: HTMLElement;
 }): void {
-  const items = input.items ?? dragListItems;
-  const draggedItem = findDragListItem(items, input.draggedKey);
-  const draggedElement = getSortableItemElement(input.draggedKey);
+  const draggedItem = findSortableItem(
+    input.items,
+    input.draggedKey,
+    input.getItemKey,
+  );
+  const draggedElement = input.getItemElement(input.draggedKey);
+  const listElement = input.listElement ?? draggedElement?.parentElement;
 
   if (
     !draggedItem ||
     !draggedElement ||
-    draggedElement.parentElement !== input.listElement
+    !listElement ||
+    draggedElement.parentElement !== listElement
   ) {
     return;
   }
 
-  const orderedItems = getOrderedDragListItems(items);
+  const orderedItems = getOrderedSortableItems(
+    input.items,
+    input.getItemOrderKey,
+  );
   const draggedIndex = orderedItems.findIndex(
-    (item) => item.id === draggedItem.id,
+    (item) => input.getItemKey(item) === input.draggedKey,
   );
 
   if (draggedIndex === -1) {
@@ -84,23 +107,27 @@ export function restoreSortableDraggedItem(input: {
   const nextElement = findNextCanonicalSortableElement({
     draggedKey: input.draggedKey,
     draggedIndex,
-    listElement: input.listElement,
+    listElement,
     orderedItems,
+    getItemKey: input.getItemKey,
+    getItemElement: input.getItemElement,
   });
 
   if (nextElement) {
-    input.listElement.insertBefore(draggedElement, nextElement);
+    listElement.insertBefore(draggedElement, nextElement);
     return;
   }
 
-  input.listElement.append(draggedElement);
+  listElement.append(draggedElement);
 }
 
-function findNextCanonicalSortableElement(input: {
+function findNextCanonicalSortableElement<Item>(input: {
   draggedKey: string;
   draggedIndex: number;
   listElement: HTMLElement;
-  orderedItems: readonly DragListItem[];
+  orderedItems: readonly Item[];
+  getItemKey: SortableItemKeyGetter<Item>;
+  getItemElement: SortableItemElementGetter;
 }): HTMLElement | null {
   for (
     let index = input.draggedIndex + 1;
@@ -109,11 +136,11 @@ function findNextCanonicalSortableElement(input: {
   ) {
     const item = input.orderedItems[index];
 
-    if (!item || item.id === input.draggedKey) {
+    if (!item || input.getItemKey(item) === input.draggedKey) {
       continue;
     }
 
-    const itemElement = getSortableItemElement(item.id);
+    const itemElement = input.getItemElement(input.getItemKey(item));
 
     if (itemElement?.parentElement === input.listElement) {
       return itemElement;

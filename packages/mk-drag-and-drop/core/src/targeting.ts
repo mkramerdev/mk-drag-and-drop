@@ -1,36 +1,39 @@
-import type { DragPoint, DragRect, DragRuntime } from "./runtime";
+import type { DragPoint, DragRect } from "./runtime.js";
 
 export type DropTarget = {
   dropTargetKey: string;
   dropTargetRect: DragRect;
 };
 
-export type TargetingAlgorithm = (input: {
-  runtime: DragRuntime;
+export type TargetingAlgorithmInput = {
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   dropTargets: readonly DropTarget[];
-}) => DropTarget | null;
-
-export const pointerToCenter: TargetingAlgorithm = ({
-  runtime,
-  dropTargets,
-}) => {
-  if (!runtime.pointerPosition) {
-    return null;
-  }
-
-  return findClosestTarget(runtime.pointerPosition, dropTargets);
 };
 
-export const centerToCenter: TargetingAlgorithm = ({
-  runtime,
-  dropTargets,
-}) => {
-  if (!runtime.overlayRect) {
-    return null;
-  }
+export type TargetingAlgorithmMode = "pointer" | "rect";
 
-  return findClosestTarget(getRectCenter(runtime.overlayRect), dropTargets);
+export type TargetingAlgorithm = {
+  (input: TargetingAlgorithmInput): DropTarget | null;
+  mode: TargetingAlgorithmMode;
 };
+
+export const pointerToCenter: TargetingAlgorithm = Object.assign(
+  ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
+    findClosestTarget(pointerPosition, dropTargets),
+  { mode: "pointer" as const },
+);
+
+export const centerToCenter: TargetingAlgorithm = Object.assign(
+  ({ overlayRect, dropTargets }: TargetingAlgorithmInput) => {
+    if (!overlayRect) {
+      return null;
+    }
+
+    return findClosestTarget(getRectCenter(overlayRect), dropTargets);
+  },
+  { mode: "rect" as const },
+);
 
 function findClosestTarget(
   point: DragPoint,
