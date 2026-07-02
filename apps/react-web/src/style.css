@@ -197,3 +197,14 @@ button {
 .sortableItem[data-dnd-dragged="true"] {
   opacity: 0.4;
 }
+
+.droppableContainer {
+  border: 1px solid #555;
+  padding: 2rem;
+  background-color: #151515;
+  width: 20rem;
+  height: 20rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}

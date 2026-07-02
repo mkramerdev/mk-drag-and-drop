@@ -8,6 +8,12 @@ import {
 } from "@mk-drag-and-drop/core";
 
 type Rect = DragRect;
+type DragGroup = string;
+
+type DropTargetRegistration = {
+    element: HTMLElement;
+    group: DragGroup;
+};
 
 export type Point = {
     x: number;
@@ -25,14 +31,11 @@ type DragProviderProps = {
     children: ReactNode;
     dragOverlay?: (drag: DragState) => ReactNode;
     targetingAlgorithm?: TargetingAlgorithm;
-    onDragStart?: (event: DragStartEvent) => void;
-    onDragUpdate?: (event: DragUpdateEvent) => void;
-    onDragEnd?: (event: DragEndEvent) => void;
-    onDrop?: (event: DropEvent) => void;
-};
+} & DragProviderLifecycleCallbacks;
 
 type StartDragInput = {
     itemId: string;
+    group: DragGroup;
     pointerPosition: Point;
     sourceRect: Rect;
 };
@@ -60,6 +63,32 @@ export type DropEvent = {
     dropTarget: string;
 };
 
+export type SortablePlacement = {
+    itemId: string;
+    previousItemId: string | null;
+    nextItemId: string | null;
+};
+
+export type DragLifecycleHelpers = {
+    getSortablePlacement: (itemId: string) => SortablePlacement | null;
+};
+
+type DragProviderLifecycleCallbacks = {
+    onDragStart?: (
+        event: DragStartEvent,
+        helpers: DragLifecycleHelpers,
+    ) => void;
+    onDragUpdate?: (
+        event: DragUpdateEvent,
+        helpers: DragLifecycleHelpers,
+    ) => void;
+    onDragEnd?: (
+        event: DragEndEvent,
+        helpers: DragLifecycleHelpers,
+    ) => void;
+    onDrop?: (event: DropEvent, helpers: DragLifecycleHelpers) => void;
+};
+
 export type DragRuntimeSubscription = {
     onDragStart?: (event: DragStartEvent) => void;
     onDragUpdate?: (event: DragUpdateEvent) => void;
@@ -70,15 +99,17 @@ export type DragRuntimeSubscription = {
 export class DragRuntime {
     isDragging = false;
     draggedId: string | null = null;
+    draggedGroup: DragGroup | null = null;
     pointerPosition: Point | null = null;
-    dropTargets = new Map<string, Rect>();
+    dropTargets = new Map<string, DropTargetRegistration>();
     activeDropTarget: string | null = null;
 
     private dragState: DragState | null = null;
     private cleanupWindowListeners: (() => void) | null = null;
     private cleanupTextSelectionSuppression: (() => void) | null = null;
     private subscriptions = new Set<DragRuntimeSubscription>();
-    private lifecycleCallbacks: DragRuntimeSubscription = {};
+    private lifecycleCallbacks: DragProviderLifecycleCallbacks = {};
+    private dropTargetElements = new WeakMap<HTMLElement, string>();
 
     constructor(
       private setDragState: (dragState: DragState | null) => void,
@@ -89,7 +120,7 @@ export class DragRuntime {
     configure(input: {
       targetingAlgorithm: TargetingAlgorithm;
       hasDragOverlay: boolean;
-      lifecycleCallbacks: DragRuntimeSubscription;
+      lifecycleCallbacks: DragProviderLifecycleCallbacks;
     }): void {
       this.hasDragOverlay = input.hasDragOverlay;
       this.targetingAlgorithm = input.targetingAlgorithm;
@@ -105,6 +136,7 @@ export class DragRuntime {
 
         this.isDragging = true;
         this.draggedId = input.itemId;
+        this.draggedGroup = input.group;
         this.pointerPosition = input.pointerPosition;
         this.activeDropTarget = null;
 
@@ -153,6 +185,7 @@ export class DragRuntime {
 
       this.isDragging = false;
       this.draggedId = null;
+      this.draggedGroup = null;
       this.pointerPosition = null;
       this.activeDropTarget = null;
       this.dragState = null;
@@ -178,12 +211,53 @@ export class DragRuntime {
       }
     }
 
-    registerDropTarget(id: string, rect: Rect): void {
-      this.dropTargets.set(id, rect);
+    registerDropTarget(
+      id: string,
+      element: HTMLElement,
+      group: DragGroup,
+    ): void {
+      const previousTarget = this.dropTargets.get(id);
+
+      if (previousTarget && previousTarget.element !== element) {
+        this.dropTargetElements.delete(previousTarget.element);
+      }
+
+      this.dropTargets.set(id, { element, group });
+      this.dropTargetElements.set(element, id);
     }
 
     unregisterDropTarget(id: string): void {
+      const target = this.dropTargets.get(id);
+
+      if (target) {
+        this.dropTargetElements.delete(target.element);
+      }
+
       this.dropTargets.delete(id);
+    }
+
+    getSortablePlacement(itemId: string): SortablePlacement | null {
+      const registration = this.dropTargets.get(itemId);
+
+      if (!registration?.element.parentElement) {
+        return null;
+      }
+
+      const { element, group } = registration;
+
+      return {
+        itemId,
+        previousItemId: this.getNearestSortableSiblingItemId(
+          element.previousElementSibling,
+          group,
+          "previous",
+        ),
+        nextItemId: this.getNearestSortableSiblingItemId(
+          element.nextElementSibling,
+          group,
+          "next",
+        ),
+      };
     }
 
     subscribe(subscription: DragRuntimeSubscription): () => void {
@@ -251,10 +325,20 @@ export class DragRuntime {
     private getAvailableDropTargets(): DropTarget[] {
       const dropTargets: DropTarget[] = [];
 
-      for (const [dropTargetKey, dropTargetRect] of this.dropTargets) {
+      if (this.draggedGroup === null) {
+        return dropTargets;
+      }
+
+      for (const [dropTargetKey, dropTarget] of this.dropTargets) {
+        if (dropTarget.group !== this.draggedGroup) {
+          continue;
+        }
+
         dropTargets.push({
           dropTargetKey,
-          dropTargetRect,
+          dropTargetRect: domRectToDragRect(
+            dropTarget.element.getBoundingClientRect(),
+          ),
         });
       }
 
@@ -272,8 +356,55 @@ export class DragRuntime {
       return translateRect(this.dragState.sourceRect, deltaX, deltaY);
     }
 
+    private getNearestSortableSiblingItemId(
+      element: Element | null,
+      group: DragGroup,
+      direction: "previous" | "next",
+    ): string | null {
+      let currentElement = element;
+
+      while (currentElement) {
+        const itemId = this.getSortableItemId(currentElement, group);
+
+        if (itemId) {
+          return itemId;
+        }
+
+        currentElement =
+          direction === "previous"
+            ? currentElement.previousElementSibling
+            : currentElement.nextElementSibling;
+      }
+
+      return null;
+    }
+
+    private getSortableItemId(element: Element, group: DragGroup): string | null {
+      if (!(element instanceof HTMLElement)) {
+        return null;
+      }
+
+      const itemId = this.dropTargetElements.get(element);
+      const registration = itemId ? this.dropTargets.get(itemId) : null;
+
+      if (!registration || registration.group !== group) {
+        return null;
+      }
+
+      return itemId ?? null;
+    }
+
+    private createLifecycleHelpers(): DragLifecycleHelpers {
+      return {
+        getSortablePlacement: (itemId) => this.getSortablePlacement(itemId),
+      };
+    }
+
     private notifyDragStart(event: DragStartEvent): void {
-      this.lifecycleCallbacks.onDragStart?.(event);
+      this.lifecycleCallbacks.onDragStart?.(
+        event,
+        this.createLifecycleHelpers(),
+      );
 
       for (const subscription of Array.from(this.subscriptions)) {
         subscription.onDragStart?.(event);
@@ -281,7 +412,10 @@ export class DragRuntime {
     }
 
     private notifyDragUpdate(event: DragUpdateEvent): void {
-      this.lifecycleCallbacks.onDragUpdate?.(event);
+      this.lifecycleCallbacks.onDragUpdate?.(
+        event,
+        this.createLifecycleHelpers(),
+      );
 
       for (const subscription of Array.from(this.subscriptions)) {
         subscription.onDragUpdate?.(event);
@@ -289,7 +423,10 @@ export class DragRuntime {
     }
 
     private notifyDragEnd(event: DragEndEvent): void {
-      this.lifecycleCallbacks.onDragEnd?.(event);
+      this.lifecycleCallbacks.onDragEnd?.(
+        event,
+        this.createLifecycleHelpers(),
+      );
 
       for (const subscription of Array.from(this.subscriptions)) {
         subscription.onDragEnd?.(event);
@@ -297,7 +434,7 @@ export class DragRuntime {
     }
 
     private notifyDrop(event: DropEvent): void {
-      this.lifecycleCallbacks.onDrop?.(event);
+      this.lifecycleCallbacks.onDrop?.(event, this.createLifecycleHelpers());
 
       for (const subscription of Array.from(this.subscriptions)) {
         subscription.onDrop?.(event);
@@ -359,6 +496,19 @@ function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect
     right: rect.right + deltaX,
     bottom: rect.bottom + deltaY,
     left: rect.left + deltaX,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function domRectToDragRect(rect: DOMRect): DragRect {
+  return {
+    x: rect.x,
+    y: rect.y,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
     width: rect.width,
     height: rect.height,
   };

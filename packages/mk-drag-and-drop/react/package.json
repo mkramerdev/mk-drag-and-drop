@@ -18,6 +18,14 @@
       "types": "./dist/useDragHandle.d.ts",
       "import": "./dist/useDragHandle.js"
     },
+    "./use-draggable": {
+      "types": "./dist/useDraggable.d.ts",
+      "import": "./dist/useDraggable.js"
+    },
+    "./use-droppable": {
+      "types": "./dist/useDroppable.d.ts",
+      "import": "./dist/useDroppable.js"
+    },
     "./use-sortable": {
       "types": "./dist/useSortable.d.ts",
       "import": "./dist/useSortable.js"

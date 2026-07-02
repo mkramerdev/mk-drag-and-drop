@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @mk-drag-and-drop/react... build && vite --clearScreen false",
+    "dev": "pnpm --filter @mk-drag-and-drop/react... build && vite --force --clearScreen false",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\""

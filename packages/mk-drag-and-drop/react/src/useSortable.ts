@@ -10,7 +10,8 @@ import {
 
 type UseSortableItem = {
     itemId: string;
-  };
+    group?: string;
+};
 
 type UseSortableReturn =
     HTMLAttributes<HTMLDivElement> & {
@@ -22,6 +23,7 @@ const sortableItemSelector = "[data-dnd-sortable-item]";
 
 type SortableRegistry = {
     elements: Map<string, HTMLElement>;
+    groups: Map<string, string>;
     snapshots: Map<string, SortableSnapshot>;
 };
 
@@ -32,14 +34,18 @@ type SortableSnapshot = {
 };
 
 const sortableRegistries = new WeakMap<DragRuntime, SortableRegistry>();
+const defaultSortableGroup = "default";
 
-export function useSortable({ itemId }: UseSortableItem): UseSortableReturn {
+export function useSortable({
+    itemId,
+    group = defaultSortableGroup,
+}: UseSortableItem): UseSortableReturn {
     const runtime = useContext(DragContext);
     const nodeRef = useRef<HTMLDivElement | null>(null);
     const registeredItemIdRef = useRef<string | null>(null);
 
     if (!runtime) {
-        throw new Error("useSortable must be used inside DragContext.Provider");
+        throw new Error("useSortable must be used inside DragProvider");
     }
 
     const registry = getSortableRegistry(runtime);
@@ -62,16 +68,18 @@ export function useSortable({ itemId }: UseSortableItem): UseSortableReturn {
 
             node.dataset.dndSortableItem = "true";
             registry.elements.set(itemId, node);
+            registry.groups.set(itemId, group);
             registeredItemIdRef.current = itemId;
-            remeasureSortableElement(runtime, itemId, node);
+            registerSortableDropTarget(runtime, itemId, node, group);
         },
-        [itemId, registry, runtime],
+        [group, itemId, registry, runtime],
     );
 
     return {
       ref: setNodeRef,
       onPointerDown: createDragHandler(
         itemId,
+        group,
         runtime,
         registry,
         () => nodeRef.current,
@@ -81,6 +89,7 @@ export function useSortable({ itemId }: UseSortableItem): UseSortableReturn {
 
 function createDragHandler(
     itemId: string,
+    group: string,
     runtime: DragRuntime,
     registry: SortableRegistry,
     getNode: () => HTMLDivElement | null,
@@ -92,12 +101,13 @@ function createDragHandler(
         if (!shouldStartDragFromEvent(node, event)) return;
 
         event.preventDefault();
-        remeasureSortableDropTargets(registry, runtime);
+        refreshSortableDropTargets(registry, runtime);
 
         const rect = node.getBoundingClientRect();
 
         runtime.startDrag({
             itemId,
+            group,
             pointerPosition: {
                 x: event.clientX,
                 y: event.clientY,
@@ -141,6 +151,7 @@ function getSortableRegistry(runtime: DragRuntime): SortableRegistry {
 
     const registry: SortableRegistry = {
         elements: new Map(),
+        groups: new Map(),
         snapshots: new Map(),
     };
 
@@ -169,7 +180,7 @@ function getSortableRegistry(runtime: DragRuntime): SortableRegistry {
         onDragEnd: (event) => {
             if (event.dropTarget === null) {
                 restoreSortableSnapshot(registry, event.itemId);
-                remeasureSortableDropTargets(registry, runtime);
+                refreshSortableDropTargets(registry, runtime);
             }
 
             clearSortableDraggedState(registry, event.itemId);
@@ -178,7 +189,7 @@ function getSortableRegistry(runtime: DragRuntime): SortableRegistry {
         onDrop: (event) => {
             clearSortableDraggedState(registry, event.itemId);
             registry.snapshots.delete(event.itemId);
-            remeasureSortableDropTargets(registry, runtime);
+            refreshSortableDropTargets(registry, runtime);
         },
     });
 
@@ -198,6 +209,7 @@ function unregisterSortableElement(input: {
 
         if (input.registry.elements.get(input.itemId) === input.element) {
             input.registry.elements.delete(input.itemId);
+            input.registry.groups.delete(input.itemId);
         }
     }
 
@@ -282,7 +294,7 @@ function moveSortablePreview(input: {
         targetElement.before(draggedElement);
     }
 
-    remeasureSortableDropTargets(input.registry, input.runtime);
+    refreshSortableDropTargets(input.registry, input.runtime);
 }
 
 function restoreSortableSnapshot(
@@ -315,23 +327,26 @@ function clearSortableDraggedState(
     }
 }
 
-function remeasureSortableDropTargets(
+function refreshSortableDropTargets(
     registry: SortableRegistry,
     runtime: DragRuntime,
 ): void {
     for (const [itemId, element] of registry.elements) {
-        remeasureSortableElement(runtime, itemId, element);
+        const group = registry.groups.get(itemId);
+
+        if (group) {
+            registerSortableDropTarget(runtime, itemId, element, group);
+        }
     }
 }
 
-function remeasureSortableElement(
+function registerSortableDropTarget(
     runtime: DragRuntime,
     itemId: string,
     element: HTMLElement,
+    group: string,
 ): void {
-    const rect = element.getBoundingClientRect();
-
-    runtime.registerDropTarget(itemId, domRectToDragRect(rect));
+    runtime.registerDropTarget(itemId, element, group);
 }
 
 function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
