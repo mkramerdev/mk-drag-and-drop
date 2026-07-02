@@ -9,6 +9,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./drag-provider": {
+      "types": "./dist/drag-provider.d.ts",
+      "import": "./dist/drag-provider.js"
+    },
+    "./use-drag-handle": {
+      "types": "./dist/useDragHandle.d.ts",
+      "import": "./dist/useDragHandle.js"
+    },
+    "./use-sortable": {
+      "types": "./dist/useSortable.d.ts",
+      "import": "./dist/useSortable.js"
     }
   },
   "files": [
@@ -16,21 +28,23 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@mk-drag-and-drop/core": "workspace:*",
-    "@mk-drag-and-drop/dom": "workspace:*"
+    "@mk-drag-and-drop/dom": "workspace:*",
+    "@mk-drag-and-drop/sortable": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^18.3.1"
+    "react": "^19.2.7"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "@types/react": "^18.3.3",
+    "@types/react": "^19.2.17",
     "eslint": "^8.57.0",
-    "react": "^18.3.1",
+    "react": "^19.2.7",
     "typescript": "5.5.4"
   }
 }

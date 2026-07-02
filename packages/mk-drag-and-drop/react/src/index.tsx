@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  type ReactElement,
   type ReactNode,
   type RefCallback,
 } from "react";
@@ -35,6 +36,10 @@ type DragDropConfiguration = {
   runtime: DragRuntime;
   session: DomDragSession;
   draggableElements: Map<string, HTMLElement>;
+  subscribeDrag: (
+    draggedKey: string,
+    subscription: DragDropSubscription,
+  ) => () => void;
   targetingAlgorithm?: TargetingAlgorithm;
   onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
@@ -46,6 +51,19 @@ export type DragDropControls = {
   pointerPosition: DragPoint | null;
   measureDraggable: (draggedKey: string) => DragRect | null;
   recalculateTargets: (overlayRect?: DragRect | null) => void;
+};
+
+export type DragDropSubscription = {
+  onDragStart?: (
+    drag: DomDragStartEvent,
+    controls: DragDropControls,
+  ) => void;
+  onDragUpdate?: (
+    drag: DomDragUpdateEvent,
+    controls: DragDropControls,
+  ) => void;
+  onDragEnd?: (drag: DomDragEndEvent, controls: DragDropControls) => void;
+  onDrop?: (drop: DomDropEvent, controls: DragDropControls) => void;
 };
 
 export type DragDropProviderProps = {
@@ -80,20 +98,11 @@ export type UseDropTargetResult<ElementType extends HTMLElement = HTMLElement> =
   remeasure: () => void;
 };
 
-export type UseSortableOptions = {
-  itemKey: string;
-};
-
-export type UseSortableResult<ElementType extends HTMLElement = HTMLElement> = {
-  ref: RefCallback<ElementType>;
-  remeasureDropTarget: () => void;
-};
-
 const DragDropContext = createContext<DragDropConfiguration | null>(null);
 
 export function DragDropProvider(
   props: DragDropProviderProps,
-): JSX.Element {
+): ReactElement {
   const {
     children,
     targetingAlgorithm,
@@ -105,6 +114,10 @@ export function DragDropProvider(
   const runtime = useMemo(() => createDragRuntime(), []);
   const session = useMemo(createDomDragSession, []);
   const draggableElements = useMemo(() => new Map<string, HTMLElement>(), []);
+  const dragSubscriptions = useMemo(
+    () => new Map<string, Set<DragDropSubscription>>(),
+    [],
+  );
   const createControls = useCallback(
     (controls: DomDragControls): DragDropControls => ({
       pointerPosition: controls.pointerPosition,
@@ -117,35 +130,90 @@ export function DragDropProvider(
     }),
     [draggableElements],
   );
+  const subscribeDrag = useCallback(
+    (
+      draggedKey: string,
+      subscription: DragDropSubscription,
+    ): (() => void) => {
+      let subscriptions = dragSubscriptions.get(draggedKey);
+
+      if (!subscriptions) {
+        subscriptions = new Set();
+        dragSubscriptions.set(draggedKey, subscriptions);
+      }
+
+      subscriptions.add(subscription);
+
+      return () => {
+        subscriptions.delete(subscription);
+
+        if (subscriptions.size === 0) {
+          dragSubscriptions.delete(draggedKey);
+        }
+      };
+    },
+    [dragSubscriptions],
+  );
+  const notifyDragSubscriptions = useCallback(
+    (
+      draggedKey: string,
+      notify: (subscription: DragDropSubscription) => void,
+    ): void => {
+      const subscriptions = dragSubscriptions.get(draggedKey);
+
+      if (!subscriptions) {
+        return;
+      }
+
+      for (const subscription of Array.from(subscriptions)) {
+        notify(subscription);
+      }
+    },
+    [dragSubscriptions],
+  );
   const configuration = useMemo<DragDropConfiguration>(
     () => ({
       runtime,
       session,
       draggableElements,
+      subscribeDrag,
       targetingAlgorithm,
-      onDragStart: onDragStart
-        ? (drag, controls) => {
-            onDragStart(drag, createControls(controls));
-          }
-        : undefined,
-      onDragUpdate: onDragUpdate
-        ? (drag, controls) => {
-            onDragUpdate(drag, createControls(controls));
-          }
-        : undefined,
-      onDragEnd: onDragEnd
-        ? (drag, controls) => {
-            onDragEnd(drag, createControls(controls));
-          }
-        : undefined,
-      onDrop: onDrop
-        ? (drop, controls) => {
-            onDrop(drop, createControls(controls));
-          }
-        : undefined,
+      onDragStart: (drag, controls) => {
+        const dragControls = createControls(controls);
+
+        onDragStart?.(drag, dragControls);
+        notifyDragSubscriptions(drag.draggedKey, (subscription) => {
+          subscription.onDragStart?.(drag, dragControls);
+        });
+      },
+      onDragUpdate: (drag, controls) => {
+        const dragControls = createControls(controls);
+
+        onDragUpdate?.(drag, dragControls);
+        notifyDragSubscriptions(drag.draggedKey, (subscription) => {
+          subscription.onDragUpdate?.(drag, dragControls);
+        });
+      },
+      onDragEnd: (drag, controls) => {
+        const dragControls = createControls(controls);
+
+        onDragEnd?.(drag, dragControls);
+        notifyDragSubscriptions(drag.draggedKey, (subscription) => {
+          subscription.onDragEnd?.(drag, dragControls);
+        });
+      },
+      onDrop: (drop, controls) => {
+        const dragControls = createControls(controls);
+
+        onDrop?.(drop, dragControls);
+        notifyDragSubscriptions(drop.draggedKey, (subscription) => {
+          subscription.onDrop?.(drop, dragControls);
+        });
+      },
     }),
     [
       createControls,
+      notifyDragSubscriptions,
       onDragEnd,
       onDragStart,
       onDragUpdate,
@@ -153,6 +221,7 @@ export function DragDropProvider(
       draggableElements,
       runtime,
       session,
+      subscribeDrag,
       targetingAlgorithm,
     ],
   );
@@ -441,34 +510,36 @@ export function useDropTarget<ElementType extends HTMLElement = HTMLElement>(
   );
 }
 
-export function useSortable<ElementType extends HTMLElement = HTMLElement>(
-  options: UseSortableOptions,
-): UseSortableResult<ElementType> {
-  const draggableRef = useDraggable<ElementType>({
-    draggedKey: options.itemKey,
-  });
-  const dropTarget = useDropTarget<ElementType>({
-    dropTargetKey: options.itemKey,
-  });
+export function useDragDropSubscription(
+  draggedKey: string,
+  subscription: DragDropSubscription,
+): void {
+  const configuration = useRequiredDragDropConfiguration();
+  const subscriptionRef = useRef(subscription);
 
-  const sortableRef = useCallback<RefCallback<ElementType>>(
-    (element) => {
-      dropTarget.ref(element);
-      draggableRef(element);
-    },
-    [draggableRef, dropTarget],
-  );
+  subscriptionRef.current = subscription;
 
-  return useMemo(
-    () => ({
-      ref: sortableRef,
-      remeasureDropTarget: dropTarget.remeasure,
-    }),
-    [dropTarget.remeasure, sortableRef],
+  useLayoutEffect(
+    () =>
+      configuration.subscribeDrag(draggedKey, {
+        onDragStart: (drag, controls) => {
+          subscriptionRef.current.onDragStart?.(drag, controls);
+        },
+        onDragUpdate: (drag, controls) => {
+          subscriptionRef.current.onDragUpdate?.(drag, controls);
+        },
+        onDragEnd: (drag, controls) => {
+          subscriptionRef.current.onDragEnd?.(drag, controls);
+        },
+        onDrop: (drop, controls) => {
+          subscriptionRef.current.onDrop?.(drop, controls);
+        },
+      }),
+    [configuration, draggedKey],
   );
 }
 
-function useRequiredDragDropConfiguration(): DragDropConfiguration {
+export function useRequiredDragDropConfiguration(): DragDropConfiguration {
   const configuration = useContext(DragDropContext);
 
   if (!configuration) {
@@ -477,6 +548,12 @@ function useRequiredDragDropConfiguration(): DragDropConfiguration {
 
   return configuration;
 }
+
+export {
+  useSortable,
+  type UseSortableOptions,
+  type UseSortableResult,
+} from "./sortable/use-sortable.js";
 
 function getDragStartTarget(input: {
   rootElement: HTMLElement;

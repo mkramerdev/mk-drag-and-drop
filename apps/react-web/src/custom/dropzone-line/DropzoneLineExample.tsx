@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
 } from "react";
 
 import { centerToCenter } from "@mk-drag-and-drop/core";
@@ -29,7 +30,7 @@ import {
   type DragListDropTargetRegistry,
 } from "./list-drop";
 
-export function DropzoneLineExample(): JSX.Element {
+export function DropzoneLineExample(): ReactElement {
   const [items, setItems] = useState(createDragListItems);
   const overlayRef = useRef<DragListOverlay | null>(null);
   const itemElementsRef = useRef(new Map<string, HTMLElement>());
@@ -156,7 +157,7 @@ function createDropTargetRegistry(
   return dropTargets;
 }
 
-function DropTarget(input: { dropTargetKey: string }): JSX.Element {
+function DropTarget(input: { dropTargetKey: string }): ReactElement {
   const dropTarget = useDropTarget<HTMLDivElement>({
     dropTargetKey: input.dropTargetKey,
   });
@@ -175,7 +176,7 @@ function DropTarget(input: { dropTargetKey: string }): JSX.Element {
 function DragListItemView(input: {
   item: DragListItem;
   registerItemElement: (itemId: string, element: HTMLElement | null) => void;
-}): JSX.Element {
+}): ReactElement {
   const draggableRef = useDraggable<HTMLDivElement>({
     draggedKey: input.item.id,
   });

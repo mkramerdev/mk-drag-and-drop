@@ -1,9 +1,9 @@
 import {
   useCallback,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ReactElement,
 } from "react";
 
 import { centerToCenter } from "@mk-drag-and-drop/core";
@@ -14,9 +14,6 @@ import {
 } from "@mk-drag-and-drop/react";
 import {
   applySortableDrop,
-  moveSortablePreview,
-  restoreSortableDraggedItem,
-  shouldMoveSortablePreview,
 } from "@mk-drag-and-drop/sortable";
 import {
   createDragListItems,
@@ -29,11 +26,10 @@ import {
   type DragListOverlay,
 } from "../shared/list-overlay";
 
-export function SortableExample(): JSX.Element {
+export function SortableExample(): ReactElement {
   const [items, setItems] = useState(createDragListItems);
   const overlayRef = useRef<DragListOverlay | null>(null);
   const itemElementsRef = useRef(new Map<string, HTMLElement>());
-  const remeasureDropTargetsRef = useRef(new Map<string, () => void>());
   const renderedItems = useMemo(
     () => getOrderedDragListItems(items),
     [items],
@@ -49,17 +45,6 @@ export function SortableExample(): JSX.Element {
     },
     [],
   );
-  const registerDropTargetRemeasure = useCallback(
-    (itemId: string, remeasure: (() => void) | null) => {
-      if (remeasure) {
-        remeasureDropTargetsRef.current.set(itemId, remeasure);
-        return;
-      }
-
-      remeasureDropTargetsRef.current.delete(itemId);
-    },
-    [],
-  );
   const getItemElement = useCallback(
     (itemId: string) => itemElementsRef.current.get(itemId) ?? null,
     [],
@@ -72,14 +57,6 @@ export function SortableExample(): JSX.Element {
       );
     },
     [getItemElement],
-  );
-  const remeasureDropTargets = useCallback(
-    () => {
-      for (const remeasure of remeasureDropTargetsRef.current.values()) {
-        remeasure();
-      }
-    },
-    [],
   );
 
   return (
@@ -122,39 +99,11 @@ export function SortableExample(): JSX.Element {
 
         const overlayRect = overlay.move(event.pointerPosition);
         recalculateTargets(overlayRect);
-
-        if (
-          !shouldMoveSortablePreview({
-            draggedKey: event.draggedKey,
-            activeDropTargetKey: event.activeDropTargetKey,
-            previousDropTargetKey: event.previousDropTargetKey,
-          })
-        ) {
-          return;
-        }
-
-        moveSortablePreview({
-          draggedKey: event.draggedKey,
-          activeDropTargetKey: event.activeDropTargetKey,
-          getItemElement,
-        });
-        remeasureDropTargets();
-        recalculateTargets(overlayRect);
       }}
-      onDragEnd={({ draggedKey, dropTargetKey }) => {
+      onDragEnd={({ draggedKey }) => {
         overlayRef.current?.remove();
         overlayRef.current = null;
         setItemGhosted(draggedKey, false);
-
-        if (dropTargetKey === null) {
-          restoreSortableDraggedItem({
-            draggedKey,
-            items,
-            getItemKey: (item) => item.id,
-            getItemOrderKey: (item) => item.orderKey,
-            getItemElement,
-          });
-        }
       }}
       onDrop={({ draggedKey }) => {
         overlayRef.current?.remove();
@@ -183,7 +132,6 @@ export function SortableExample(): JSX.Element {
             key={item.id}
             item={item}
             registerItemElement={registerItemElement}
-            registerDropTargetRemeasure={registerDropTargetRemeasure}
           />
         ))}
       </div>
@@ -195,12 +143,8 @@ function SortableItemView(
   input: {
     item: DragListItem;
     registerItemElement: (itemId: string, element: HTMLElement | null) => void;
-    registerDropTargetRemeasure: (
-      itemId: string,
-      remeasure: (() => void) | null,
-    ) => void;
   },
-): JSX.Element {
+): ReactElement {
   const sortable = useSortable<HTMLDivElement>({
     itemKey: input.item.id,
   });
@@ -214,17 +158,6 @@ function SortableItemView(
     },
     [input, sortable.ref],
   );
-
-  useLayoutEffect(() => {
-    input.registerDropTargetRemeasure(
-      input.item.id,
-      sortable.remeasureDropTarget,
-    );
-    sortable.remeasureDropTarget();
-    return () => {
-      input.registerDropTargetRemeasure(input.item.id, null);
-    };
-  }, [input, sortable.remeasureDropTarget]);
 
   return (
     <div ref={sortableRef} className="dragListItem">

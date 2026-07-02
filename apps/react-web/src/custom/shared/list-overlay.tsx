@@ -1,4 +1,5 @@
 import { createRoot, type Root } from "react-dom/client";
+import type { ReactElement } from "react";
 
 import type {
   DragPoint,
@@ -69,7 +70,7 @@ export function createOverlay(input: {
   };
 }
 
-function DragListOverlayContent(input: { item: DragListItem }): JSX.Element {
+function DragListOverlayContent(input: { item: DragListItem }): ReactElement {
   return (
     <div className="dragListItem" style={{ margin: 0 }}>
       <div className="dragListHandle" />

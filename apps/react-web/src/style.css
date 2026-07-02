@@ -27,6 +27,10 @@ button {
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .examplesLayout {
@@ -55,7 +59,6 @@ button {
 :root[data-dnd-dragging="true"] * {
   user-select: none;
   -webkit-user-select: none;
-  cursor: grabbing !important;
 }
 
 .drag-parent {
@@ -121,20 +124,6 @@ button {
   cursor: grabbing;
 }
 
-.dragListHandle {
-  border: 1px solid #8a8a8a;
-  width: 1.25rem;
-  height: 1.25rem;
-  flex: 0 0 1.25rem;
-  border-radius: 0.375rem;
-  background-color: #b8b8b8;
-  cursor: grab;
-}
-
-.dragListHandle:active {
-  cursor: grabbing;
-}
-
 .dragListItemText {
   font-size: 1rem;
 }
@@ -144,4 +133,67 @@ button {
     color: #213547;
     background-color: #ffffff;
   }
+}
+
+
+.sortableItem {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #2e2e2e;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid grey;
+}
+
+.sortableOverlay {
+  padding: 0.5rem 1rem;
+  background-color: #2e2e2e;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 10rem;
+  border: 1px solid grey;
+  cursor: grabbing;
+}
+
+.sortableOverlay * {
+  cursor: inherit;
+}
+
+.sortableParent {
+  border: 1px solid #555;
+  padding: 2rem;
+  background-color: #151515;
+  min-width: 20rem;
+  max-width: 40rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.dragListHandle {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.25rem;
+  cursor: grab;
+}
+
+.dragListHandle:active {
+  cursor: grabbing;
+}
+
+.sortableItem[data-dnd-dragged="true"] {
+  opacity: 0.4;
 }

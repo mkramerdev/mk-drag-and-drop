@@ -1,29 +1,11 @@
-import { DropzoneLineExample } from "./custom/dropzone-line/DropzoneLineExample";
-import { SortableExample } from "./custom/sortable/SortableExample";
+import type { ReactElement } from "react";
 
-export function App(): JSX.Element {
+import { SortableList } from './react/sortableList'
+
+export function App(): ReactElement {
   return (
     <main className="appShell">
-      <div className="examplesLayout">
-        <ExamplePanel title="Dropzone lines">
-          <DropzoneLineExample />
-        </ExamplePanel>
-        <ExamplePanel title="Sortable list">
-          <SortableExample />
-        </ExamplePanel>
-      </div>
+      <SortableList/>
     </main>
-  );
-}
-
-function ExamplePanel(input: {
-  title: string;
-  children: JSX.Element;
-}): JSX.Element {
-  return (
-    <section className="examplePanel">
-      <h2 className="exampleTitle">{input.title}</h2>
-      {input.children}
-    </section>
   );
 }
