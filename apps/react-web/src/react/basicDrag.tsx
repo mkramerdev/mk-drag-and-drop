@@ -1,14 +1,23 @@
-import { DragProvider } from "@mk-drag-and-drop/react/drag-provider";
+import {
+    DragProvider,
+    type DragOverlayPhase,
+} from "@mk-drag-and-drop/react/drag-provider";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { Menu } from "lucide-react";
 import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
     useState,
     type AnimationEvent,
     type ReactElement,
     type ReactNode,
+    type TransitionEvent,
 } from "react";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
+import type { DragRect } from "@mk-drag-and-drop/core";
 
 const draggableItem = {
     itemId: "draggable",
@@ -35,6 +44,9 @@ type MovePreview = {
 export function BasicDrag(): ReactElement {
   const [itemContainer, setItemContainer] = useState(rootContainer.targetId);
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
+  const [overlayTargetRect, setOverlayTargetRect] = useState<DragRect | null>(
+    null,
+  );
 
   function finishMovePreview(): void {
     if (!movePreview) {
@@ -45,17 +57,23 @@ export function BasicDrag(): ReactElement {
     setMovePreview(null);
   }
 
+  function clearOverlayState(): void {
+    setOverlayTargetRect(null);
+  }
+
   return (
     <DragProvider
-      dragOverlay={() => (
-        <div className="sortableOverlay">
-            <div className="dragListHandle">
-                <Menu />
-            </div> 
-            <span>{draggableItem.label}</span>
-        </div>
+      keepOverlayOnDrop
+      dragOverlay={({ phase, finish }) => (
+        <BasicDragOverlay
+            phase={phase}
+            targetRect={overlayTargetRect}
+            finish={finish}
+            onFinish={clearOverlayState}
+        />
       )}
       onDragStart={() => {
+        setOverlayTargetRect(null);
         clearActiveDroppableContainers();
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
@@ -67,7 +85,7 @@ export function BasicDrag(): ReactElement {
       onDragEnd={() => {
         clearActiveDroppableContainers();
       }}
-      onDrop={({ itemId, dropTarget }) => {
+      onDrop={({ itemId, dropTarget }, { getDropTargetRect }) => {
         if (
             itemId !== draggableItem.itemId ||
             !isKnownDropTarget(dropTarget)
@@ -79,6 +97,7 @@ export function BasicDrag(): ReactElement {
             return;
         }
 
+        setOverlayTargetRect(getDropTargetRect(dropTarget));
         setMovePreview({
             fromTargetId: itemContainer,
             toTargetId: dropTarget,
@@ -125,6 +144,104 @@ export function BasicDrag(): ReactElement {
         </div>
     </DragProvider>
   );
+}
+
+function BasicDragOverlay({
+    phase,
+    targetRect,
+    finish,
+    onFinish,
+}: {
+    phase: DragOverlayPhase;
+    targetRect: DragRect | null;
+    finish: () => void;
+    onFinish: () => void;
+}): ReactElement {
+    const overlayRef = useRef<HTMLDivElement | null>(null);
+    const completedRef = useRef(false);
+    const [releaseOffset, setReleaseOffset] = useState<{
+        x: number;
+        y: number;
+    } | null>(null);
+
+    const completeOverlay = useCallback(() => {
+        if (completedRef.current) {
+            return;
+        }
+
+        completedRef.current = true;
+        onFinish();
+        finish();
+    }, [finish, onFinish]);
+
+    useEffect(() => {
+        if (phase === "dragging") {
+            completedRef.current = false;
+            setReleaseOffset(null);
+        }
+    }, [phase]);
+
+    useLayoutEffect(() => {
+        if (phase !== "released") {
+            return;
+        }
+
+        const overlay = overlayRef.current;
+
+        if (!overlay || !targetRect) {
+            completeOverlay();
+            return;
+        }
+
+        const overlayRect = overlay.getBoundingClientRect();
+        const offset = {
+            x: getRectCenterX(targetRect) - getRectCenterX(overlayRect),
+            y: getRectCenterY(targetRect) - getRectCenterY(overlayRect),
+        };
+
+        if (Math.abs(offset.x) < 0.5 && Math.abs(offset.y) < 0.5) {
+            completeOverlay();
+            return;
+        }
+
+        setReleaseOffset(offset);
+    }, [completeOverlay, phase, targetRect]);
+
+    function handleTransitionEnd(event: TransitionEvent<HTMLDivElement>): void {
+        if (
+            phase !== "released" ||
+            event.target !== event.currentTarget ||
+            event.propertyName !== "transform"
+        ) {
+            return;
+        }
+
+        completeOverlay();
+    }
+
+    return (
+        <div
+            ref={overlayRef}
+            className={
+                phase === "released"
+                    ? "sortableOverlay basicDragOverlayReleasing"
+                    : "sortableOverlay"
+            }
+            style={
+                releaseOffset
+                    ? {
+                        transform: `translate3d(${releaseOffset.x}px, ${releaseOffset.y}px, 0)`,
+                      }
+                    : undefined
+            }
+            onTransitionEnd={handleTransitionEnd}
+        >
+            <div className="dragListHandle">
+                <Menu />
+            </div>
+            <span>{draggableItem.label}</span>
+        </div>
+    );
 }
 
 function DraggableItem({
@@ -263,4 +380,12 @@ function setDroppableContainerActive(
 
 function getDroppableContainerElements(): NodeListOf<HTMLElement> {
     return document.querySelectorAll("[data-basic-drop-target-id]");
+}
+
+function getRectCenterX(rect: Pick<DOMRect, "left" | "width">): number {
+    return rect.left + rect.width / 2;
+}
+
+function getRectCenterY(rect: Pick<DOMRect, "top" | "height">): number {
+    return rect.top + rect.height / 2;
 }

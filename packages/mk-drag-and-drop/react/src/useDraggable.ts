@@ -18,6 +18,7 @@ type UseDraggableReturn =
         ref: RefCallback<HTMLDivElement>;
     };
 
+const dragHandleSelector = "[data-dnd-drag-handle]";
 const defaultDraggableGroup = "default";
 
 export function useDraggable({
@@ -55,6 +56,7 @@ function createDragHandler(
     return (event) => {
         const node = getNode();
         if (!node) return;
+        if (!shouldStartDragFromEvent(node, event)) return;
 
         event.preventDefault();
 
@@ -70,6 +72,29 @@ function createDragHandler(
             sourceRect: domRectToDragRect(rect),
         });
     };
+}
+
+function shouldStartDragFromEvent(
+    draggableElement: HTMLElement,
+    event: Parameters<PointerEventHandler<HTMLDivElement>>[0],
+): boolean {
+    if (!(event.target instanceof Element)) {
+        return false;
+    }
+
+    const hasDragHandle =
+        draggableElement.querySelector(dragHandleSelector) !== null;
+
+    if (!hasDragHandle) {
+        return true;
+    }
+
+    const closestDragHandle = event.target.closest(dragHandleSelector);
+
+    return (
+        closestDragHandle !== null &&
+        draggableElement.contains(closestDragHandle)
+    );
 }
 
 function domRectToDragRect(rect: DOMRect): {
