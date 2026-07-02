@@ -17,7 +17,11 @@ import {
 } from "react";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
-import type { DragRect } from "@mk-drag-and-drop/core";
+import {
+    maxDistanceToRect,
+    pointerToRectDistance,
+    type DragRect,
+} from "@mk-drag-and-drop/core";
 
 const draggableItem = {
     itemId: "draggable",
@@ -33,6 +37,7 @@ const droppableContainer = {
     targetId: "droppable",
     label: "Drop Here",
 };
+const basicTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 type DraggableItemModel = typeof draggableItem;
 
@@ -63,6 +68,8 @@ export function BasicDrag(): ReactElement {
 
   return (
     <DragProvider
+      targetingAlgorithm={pointerToRectDistance}
+      targetingConstraint={basicTargetingConstraint}
       keepOverlayOnDrop
       dragOverlay={({ phase, finish }) => (
         <BasicDragOverlay

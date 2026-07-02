@@ -1,8 +1,10 @@
 import type {
   DragRect,
+  DragPoint,
   DropTarget,
   DragRuntime,
   TargetingAlgorithm,
+  TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 import {
   endDrag,
@@ -31,6 +33,7 @@ export type TrackDomDragInput = {
   dropTargetParent: ParentNode;
   pointerCapture: DomPointerCapture;
   targetingAlgorithm: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
   onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
   onDragEnd?: (drag: DomDragEndEvent, controls: DomDragControls) => void;
@@ -288,12 +291,37 @@ function retargetDrag(
   const activeDropTarget = input.targetingAlgorithm({
     pointerPosition,
     overlayRect: targetingInput.overlayRect,
-    dropTargets: targetingInput.dropTargets,
+    dropTargets: getConstrainedDropTargets(input, {
+      pointerPosition,
+      overlayRect: targetingInput.overlayRect,
+      dropTargets: targetingInput.dropTargets,
+    }),
   });
 
   setActiveDropTarget(input.runtime, {
     dropTargetKey: activeDropTarget?.dropTargetKey ?? null,
   });
+}
+
+function getConstrainedDropTargets(
+  input: TrackDomDragInput,
+  targetingInput: {
+    pointerPosition: DragPoint;
+    overlayRect: DragRect | null;
+    dropTargets: readonly DropTarget[];
+  },
+): readonly DropTarget[] {
+  if (!input.targetingConstraint) {
+    return targetingInput.dropTargets;
+  }
+
+  return targetingInput.dropTargets.filter((dropTarget) =>
+    input.targetingConstraint?.({
+      pointerPosition: targetingInput.pointerPosition,
+      overlayRect: targetingInput.overlayRect,
+      dropTarget,
+    }),
+  );
 }
 
 function emitDragUpdate(

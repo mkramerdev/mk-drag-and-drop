@@ -13,6 +13,7 @@ import {
 import {
   centerToCenter,
   createDragRuntime,
+  maxDistanceToRect,
 } from "@mk-drag-and-drop/core";
 import {
   createDomDragHandler,
@@ -29,6 +30,8 @@ import {
 import {
   createSortableItemElement,
 } from "./sortable-render";
+
+const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 export function mountSortableExample(parent: HTMLElement): void {
   const runtime = createDragRuntime();
@@ -59,6 +62,7 @@ export function mountSortableExample(parent: HTMLElement): void {
     runtime,
     session,
     targetingAlgorithm: centerToCenter,
+    targetingConstraint: sortableTargetingConstraint,
     onDragStart: (event, { pointerPosition, recalculateTargets }) => {
       const item = findDragListItem(dragListItems, event.draggedKey);
       const sourceElement = getItemElement(event.draggedKey);

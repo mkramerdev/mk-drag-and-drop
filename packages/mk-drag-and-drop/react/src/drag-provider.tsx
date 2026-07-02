@@ -5,6 +5,7 @@ import {
   type DragRect,
   type DropTarget,
   type TargetingAlgorithm,
+  type TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 
 type Rect = DragRect;
@@ -44,6 +45,7 @@ type DragProviderProps = {
     dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
     keepOverlayOnDrop?: boolean;
     targetingAlgorithm?: TargetingAlgorithm;
+    targetingConstraint?: TargetingConstraint;
 } & DragProviderLifecycleCallbacks;
 
 type StartDragInput = {
@@ -132,10 +134,12 @@ export class DragRuntime {
       private targetingAlgorithm: TargetingAlgorithm = pointerToCenter,
       private hasDragOverlay = false,
       private keepOverlayOnDrop = false,
+      private targetingConstraint: TargetingConstraint | undefined = undefined,
     ) {}
 
     configure(input: {
       targetingAlgorithm: TargetingAlgorithm;
+      targetingConstraint: TargetingConstraint | undefined;
       hasDragOverlay: boolean;
       keepOverlayOnDrop: boolean;
       lifecycleCallbacks: DragProviderLifecycleCallbacks;
@@ -143,6 +147,7 @@ export class DragRuntime {
       this.hasDragOverlay = input.hasDragOverlay;
       this.keepOverlayOnDrop = input.keepOverlayOnDrop;
       this.targetingAlgorithm = input.targetingAlgorithm;
+      this.targetingConstraint = input.targetingConstraint;
       this.lifecycleCallbacks = input.lifecycleCallbacks;
     }
 
@@ -353,18 +358,25 @@ export class DragRuntime {
     }
 
     private getActiveDropTarget(pointerPosition: Point): string | null {
+      const overlayRect = this.hasDragOverlay
+        ? this.getCurrentDragRect(pointerPosition)
+        : null;
       const activeTarget = this.targetingAlgorithm({
         pointerPosition,
-        overlayRect: this.hasDragOverlay
-          ? this.getCurrentDragRect(pointerPosition)
-          : null,
-        dropTargets: this.getAvailableDropTargets(),
+        overlayRect,
+        dropTargets: this.getAvailableDropTargets({
+          pointerPosition,
+          overlayRect,
+        }),
       });
 
       return activeTarget?.dropTargetKey ?? null;
     }
 
-    private getAvailableDropTargets(): DropTarget[] {
+    private getAvailableDropTargets(input: {
+      pointerPosition: Point;
+      overlayRect: DragRect | null;
+    }): DropTarget[] {
       const dropTargets: DropTarget[] = [];
 
       if (this.draggedGroup === null) {
@@ -376,12 +388,25 @@ export class DragRuntime {
           continue;
         }
 
-        dropTargets.push({
+        const candidateDropTarget = {
           dropTargetKey,
           dropTargetRect: domRectToDragRect(
             dropTarget.element.getBoundingClientRect(),
           ),
-        });
+        };
+
+        if (
+          this.targetingConstraint &&
+          !this.targetingConstraint({
+            pointerPosition: input.pointerPosition,
+            overlayRect: input.overlayRect,
+            dropTarget: candidateDropTarget,
+          })
+        ) {
+          continue;
+        }
+
+        dropTargets.push(candidateDropTarget);
       }
 
       return dropTargets;
@@ -494,6 +519,7 @@ export function DragProvider({
     dragOverlay,
     keepOverlayOnDrop = false,
     targetingAlgorithm = pointerToCenter,
+    targetingConstraint,
     onDragStart,
     onDragUpdate,
     onDragEnd,
@@ -509,11 +535,13 @@ export function DragProvider({
         targetingAlgorithm,
         dragOverlay !== undefined,
         keepOverlayOnDrop,
+        targetingConstraint,
       );
     }
 
     runtimeRef.current.configure({
       targetingAlgorithm,
+      targetingConstraint,
       hasDragOverlay: dragOverlay !== undefined,
       keepOverlayOnDrop,
       lifecycleCallbacks: {

@@ -3,6 +3,7 @@ import type {
   DragRect,
   DragRuntime,
   TargetingAlgorithm,
+  TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 
 export type DomPointerDownEvent = {
@@ -30,6 +31,7 @@ export type CreateDomDragHandlerOptions = {
   runtime: DragRuntime;
   session: DomDragSession;
   targetingAlgorithm?: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
   onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
   onDragEnd?: (drag: DomDragEndEvent, controls: DomDragControls) => void;

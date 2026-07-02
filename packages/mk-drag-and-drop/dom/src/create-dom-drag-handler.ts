@@ -23,6 +23,7 @@ export function createDomDragHandler(
       dropTargetParent,
       pointerCapture: dragStart.pointerCapture,
       targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
+      targetingConstraint: options.targetingConstraint,
       onDragStart: options.onDragStart,
       onDragUpdate: options.onDragUpdate,
       onDragEnd: options.onDragEnd,

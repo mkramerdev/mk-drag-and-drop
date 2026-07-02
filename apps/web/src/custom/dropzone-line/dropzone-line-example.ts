@@ -22,6 +22,7 @@ import {
 import {
   centerToCenter,
   createDragRuntime,
+  maxDistanceToRect,
 } from "@mk-drag-and-drop/core";
 import {
   createDomDragHandler,
@@ -31,6 +32,7 @@ import {
 } from "@mk-drag-and-drop/dom";
 
 const dragRuntime = createDragRuntime();
+const dropzoneLineTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 export function mountDropzoneLineExample(parent: HTMLElement): void {
   const dragSession = createDomDragSession();
@@ -69,6 +71,7 @@ export function mountDropzoneLineExample(parent: HTMLElement): void {
     runtime: dragRuntime,
     session: dragSession,
     targetingAlgorithm: centerToCenter,
+    targetingConstraint: dropzoneLineTargetingConstraint,
     onDragStart: (event, { pointerPosition, recalculateTargets }) => {
       const item = findDragListItem(dragListItems, event.draggedKey);
       const sourceElement = getDropzoneLineItemElement(event.draggedKey);

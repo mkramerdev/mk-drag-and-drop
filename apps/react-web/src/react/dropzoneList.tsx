@@ -4,10 +4,11 @@ import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
 import { Menu } from "lucide-react";
 import { useState, type ReactElement } from "react";
-import { centerToCenter } from "@mk-drag-and-drop/core";
+import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/core";
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
+const dropzoneListTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 const initialItems = [
     { itemId: "dropzone-item-1", label: "Item 1" },
@@ -31,6 +32,7 @@ export function DropzoneList(): ReactElement {
     return (
         <DragProvider
             targetingAlgorithm= {centerToCenter}
+            targetingConstraint={dropzoneListTargetingConstraint}
             dragOverlay={() => (
                 <div className="sortableOverlay">
                     <div className="dragListHandle">

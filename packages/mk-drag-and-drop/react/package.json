@@ -26,6 +26,10 @@
       "types": "./dist/useDroppable.d.ts",
       "import": "./dist/useDroppable.js"
     },
+    "./compose-refs": {
+      "types": "./dist/composeRefs.d.ts",
+      "import": "./dist/composeRefs.js"
+    },
     "./use-sortable": {
       "types": "./dist/useSortable.d.ts",
       "import": "./dist/useSortable.js"

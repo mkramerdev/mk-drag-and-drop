@@ -16,13 +16,18 @@ import {
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
 import { Menu } from "lucide-react";
-import { centerToCenter, type DragRect } from "@mk-drag-and-drop/core";
+import {
+    centerToCenter,
+    maxDistanceToRect,
+    type DragRect,
+} from "@mk-drag-and-drop/core";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const storageKey = "mk-drag-and-drop:sortable-items:v2";
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
 const items = loadItems();
+const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 export function SortableList(): ReactElement {
   const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
@@ -39,6 +44,7 @@ export function SortableList(): ReactElement {
     <DragProvider
       keepOverlayOnDrop
       targetingAlgorithm={centerToCenter}
+      targetingConstraint={sortableTargetingConstraint}
       onDragStart={({ itemId }) => {
         setOverlayItemId(itemId);
         setOverlayTargetRect(null);

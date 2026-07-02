@@ -17,6 +17,7 @@ import {
   type DragRect,
   type DragRuntime,
   type TargetingAlgorithm,
+  type TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 import {
   createDomDragHandler,
@@ -41,6 +42,7 @@ type DragDropConfiguration = {
     subscription: DragDropSubscription,
   ) => () => void;
   targetingAlgorithm?: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
   onDragStart?: (drag: DomDragStartEvent, controls: DomDragControls) => void;
   onDragUpdate?: (drag: DomDragUpdateEvent, controls: DomDragControls) => void;
   onDragEnd?: (drag: DomDragEndEvent, controls: DomDragControls) => void;
@@ -69,6 +71,7 @@ export type DragDropSubscription = {
 export type DragDropProviderProps = {
   children: ReactNode;
   targetingAlgorithm?: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
   onDragStart?: (
     drag: DomDragStartEvent,
     controls: DragDropControls,
@@ -106,6 +109,7 @@ export function DragDropProvider(
   const {
     children,
     targetingAlgorithm,
+    targetingConstraint,
     onDragStart,
     onDragUpdate,
     onDragEnd,
@@ -178,6 +182,7 @@ export function DragDropProvider(
       draggableElements,
       subscribeDrag,
       targetingAlgorithm,
+      targetingConstraint,
       onDragStart: (drag, controls) => {
         const dragControls = createControls(controls);
 
@@ -223,6 +228,7 @@ export function DragDropProvider(
       session,
       subscribeDrag,
       targetingAlgorithm,
+      targetingConstraint,
     ],
   );
 
@@ -278,6 +284,7 @@ export function useDraggable<ElementType extends HTMLElement = HTMLElement>(
         runtime: currentConfiguration.runtime,
         session: currentConfiguration.session,
         targetingAlgorithm: currentConfiguration.targetingAlgorithm,
+        targetingConstraint: currentConfiguration.targetingConstraint,
         onDragStart: currentConfiguration.onDragStart,
         onDragUpdate: currentConfiguration.onDragUpdate,
         onDragEnd: currentConfiguration.onDragEnd,
@@ -554,6 +561,7 @@ export {
   type UseSortableOptions,
   type UseSortableResult,
 } from "./useSortable.js";
+export { composeRefs } from "./composeRefs.js";
 
 function getDragStartTarget(input: {
   rootElement: HTMLElement;
