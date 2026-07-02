@@ -26,19 +26,23 @@ type DropzoneLine = {
 
 export function DropzoneList(): ReactElement {
     const [items, setItems] = useState(initialItems);
+    const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
 
     return (
         <DragProvider
             targetingAlgorithm= {centerToCenter}
-            dragOverlay={({ itemId }) => (
+            dragOverlay={() => (
                 <div className="sortableOverlay">
                     <div className="dragListHandle">
                         <Menu />
                     </div>
-                    <span>{getItemLabel(items, itemId)}</span>
+                    <span>
+                        {overlayItemId ? getItemLabel(items, overlayItemId) : ""}
+                    </span>
                 </div>
             )}
-            onDragStart={() => {
+            onDragStart={({ itemId }) => {
+                setOverlayItemId(itemId);
                 clearActiveDropzoneLines();
             }}
             onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
@@ -48,6 +52,7 @@ export function DropzoneList(): ReactElement {
                 });
             }}
             onDragEnd={() => {
+                setOverlayItemId(null);
                 clearActiveDropzoneLines();
             }}
             onDrop={({ itemId, dropTarget }) => {

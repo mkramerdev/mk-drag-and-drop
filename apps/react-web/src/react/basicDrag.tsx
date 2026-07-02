@@ -47,12 +47,12 @@ export function BasicDrag(): ReactElement {
 
   return (
     <DragProvider
-      dragOverlay={({ itemId }) => (
+      dragOverlay={() => (
         <div className="sortableOverlay">
             <div className="dragListHandle">
                 <Menu />
             </div> 
-            <span>{itemId === draggableItem.itemId ? draggableItem.label : ""}</span>
+            <span>{draggableItem.label}</span>
         </div>
       )}
       onDragStart={() => {

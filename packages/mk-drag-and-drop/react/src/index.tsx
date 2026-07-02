@@ -553,7 +553,7 @@ export {
   useSortable,
   type UseSortableOptions,
   type UseSortableResult,
-} from "./sortable/use-sortable.js";
+} from "./useSortable.js";
 
 function getDragStartTarget(input: {
   rootElement: HTMLElement;

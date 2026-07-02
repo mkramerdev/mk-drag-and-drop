@@ -8,12 +8,12 @@ import {
     type RefCallback,
 } from "react";
 
-type UseSortableItem = {
+export type UseSortableOptions = {
     itemId: string;
     group?: string;
 };
 
-type UseSortableReturn =
+export type UseSortableResult =
     HTMLAttributes<HTMLDivElement> & {
         ref: RefCallback<HTMLDivElement>;
 };
@@ -39,7 +39,7 @@ const defaultSortableGroup = "default";
 export function useSortable({
     itemId,
     group = defaultSortableGroup,
-}: UseSortableItem): UseSortableReturn {
+}: UseSortableOptions): UseSortableResult {
     const runtime = useContext(DragContext);
     const nodeRef = useRef<HTMLDivElement | null>(null);
     const registeredItemIdRef = useRef<string | null>(null);

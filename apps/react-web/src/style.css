@@ -190,6 +190,10 @@ button {
   cursor: inherit;
 }
 
+.sortableOverlayReleasing {
+  transition: transform 180ms ease;
+}
+
 .sortableParent {
   border: 1px solid #555;
   padding: 2rem;

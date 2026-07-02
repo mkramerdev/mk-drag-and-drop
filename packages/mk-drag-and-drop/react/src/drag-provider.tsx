@@ -27,9 +27,22 @@ export type DragState = {
     pointerPosition: Point;
 };
 
+export type DragOverlayPhase = "dragging" | "released";
+
+export type DragOverlayInput = {
+    phase: DragOverlayPhase;
+    finish: () => void;
+};
+
+type DragOverlayRenderState = {
+    dragState: DragState;
+    phase: DragOverlayPhase;
+};
+
 type DragProviderProps = {
     children: ReactNode;
-    dragOverlay?: (drag: DragState) => ReactNode;
+    dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
+    keepOverlayOnDrop?: boolean;
     targetingAlgorithm?: TargetingAlgorithm;
 } & DragProviderLifecycleCallbacks;
 
@@ -71,6 +84,7 @@ export type SortablePlacement = {
 
 export type DragLifecycleHelpers = {
     getSortablePlacement: (itemId: string) => SortablePlacement | null;
+    getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };
 
 type DragProviderLifecycleCallbacks = {
@@ -112,17 +126,22 @@ export class DragRuntime {
     private dropTargetElements = new WeakMap<HTMLElement, string>();
 
     constructor(
-      private setDragState: (dragState: DragState | null) => void,
+      private setOverlayState: (
+        overlayState: DragOverlayRenderState | null,
+      ) => void,
       private targetingAlgorithm: TargetingAlgorithm = pointerToCenter,
       private hasDragOverlay = false,
+      private keepOverlayOnDrop = false,
     ) {}
 
     configure(input: {
       targetingAlgorithm: TargetingAlgorithm;
       hasDragOverlay: boolean;
+      keepOverlayOnDrop: boolean;
       lifecycleCallbacks: DragProviderLifecycleCallbacks;
     }): void {
       this.hasDragOverlay = input.hasDragOverlay;
+      this.keepOverlayOnDrop = input.keepOverlayOnDrop;
       this.targetingAlgorithm = input.targetingAlgorithm;
       this.lifecycleCallbacks = input.lifecycleCallbacks;
     }
@@ -147,7 +166,10 @@ export class DragRuntime {
             pointerPosition: input.pointerPosition,
         };
 
-        this.setDragState(this.dragState);
+        this.setOverlayState({
+          dragState: this.dragState,
+          phase: "dragging",
+        });
         this.suppressTextSelection();
         this.bindWindowListeners();
         this.notifyDragStart({
@@ -170,7 +192,10 @@ export class DragRuntime {
         pointerPosition,
       };
 
-      this.setDragState(this.dragState);
+      this.setOverlayState({
+        dragState: this.dragState,
+        phase: "dragging",
+      });
       this.notifyDragUpdate({
         itemId,
         pointerPosition,
@@ -182,6 +207,7 @@ export class DragRuntime {
     endDrag(): void {
       const itemId = this.draggedId;
       const dropTarget = this.activeDropTarget;
+      const releasedDragState = this.dragState;
 
       this.isDragging = false;
       this.draggedId = null;
@@ -194,7 +220,6 @@ export class DragRuntime {
       this.cleanupWindowListeners = null;
       this.cleanupTextSelectionSuppression?.();
       this.cleanupTextSelectionSuppression = null;
-      this.setDragState(null);
 
       if (itemId) {
         this.notifyDragEnd({
@@ -208,6 +233,15 @@ export class DragRuntime {
             dropTarget,
           });
         }
+      }
+
+      if (this.keepOverlayOnDrop && releasedDragState && this.hasDragOverlay) {
+        this.setOverlayState({
+          dragState: releasedDragState,
+          phase: "released",
+        });
+      } else {
+        this.setOverlayState(null);
       }
     }
 
@@ -258,6 +292,14 @@ export class DragRuntime {
           "next",
         ),
       };
+    }
+
+    getDropTargetRect(dropTargetId: string): DragRect | null {
+      const registration = this.dropTargets.get(dropTargetId);
+
+      return registration
+        ? domRectToDragRect(registration.element.getBoundingClientRect())
+        : null;
     }
 
     subscribe(subscription: DragRuntimeSubscription): () => void {
@@ -397,6 +439,8 @@ export class DragRuntime {
     private createLifecycleHelpers(): DragLifecycleHelpers {
       return {
         getSortablePlacement: (itemId) => this.getSortablePlacement(itemId),
+        getDropTargetRect: (dropTargetId) =>
+          this.getDropTargetRect(dropTargetId),
       };
     }
 
@@ -448,26 +492,30 @@ export const DragContext = createContext<DragRuntime | null>(null);
 export function DragProvider({
     children,
     dragOverlay,
+    keepOverlayOnDrop = false,
     targetingAlgorithm = pointerToCenter,
     onDragStart,
     onDragUpdate,
     onDragEnd,
     onDrop,
 }: DragProviderProps) {
-    const [dragState, setDragState] = useState<DragState | null>(null);
+    const [overlayState, setOverlayState] =
+      useState<DragOverlayRenderState | null>(null);
     const runtimeRef = useRef<DragRuntime | null>(null);
 
     if (runtimeRef.current === null) {
       runtimeRef.current = new DragRuntime(
-        setDragState,
+        setOverlayState,
         targetingAlgorithm,
         dragOverlay !== undefined,
+        keepOverlayOnDrop,
       );
     }
 
     runtimeRef.current.configure({
       targetingAlgorithm,
       hasDragOverlay: dragOverlay !== undefined,
+      keepOverlayOnDrop,
       lifecycleCallbacks: {
         onDragStart,
         onDragUpdate,
@@ -476,12 +524,19 @@ export function DragProvider({
       },
     });
 
+    function finishOverlay(): void {
+      setOverlayState(null);
+    }
+
     return (
       <DragContext value={runtimeRef.current}>
         {children}
-        {dragOverlay && dragState ? (
-          <DragOverlay dragState={dragState}>
-            {dragOverlay(dragState)}
+        {dragOverlay && overlayState ? (
+          <DragOverlay dragState={overlayState.dragState}>
+            {dragOverlay({
+              phase: overlayState.phase,
+              finish: finishOverlay,
+            })}
           </DragOverlay>
         ) : null}
       </DragContext>
