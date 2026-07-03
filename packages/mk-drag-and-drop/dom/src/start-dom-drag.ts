@@ -1,10 +1,10 @@
-import type { DragPoint, DragRuntime } from "@mk-drag-and-drop/core";
-import { DragAlreadyActiveError, startDrag } from "@mk-drag-and-drop/core";
+import type { DragPoint } from "@mk-drag-and-drop/core";
+import { startDomDragRuntime } from "./dom-drag-runtime.js";
 import type { DomPointerCapture } from "./dom-drag-session.js";
-import type { DomPointerDownEvent } from "./types.js";
+import type { DomDragRuntime, DomPointerDownEvent } from "./types.js";
 
 type DomDragStartOptions = {
-  runtime: DragRuntime;
+  runtime: DomDragRuntime;
 };
 
 type DomDragStartResult = {
@@ -26,6 +26,10 @@ export function startDomDrag(
     return null;
   }
 
+  if (options.runtime.isDragging) {
+    return null;
+  }
+
   const previousCursor = dragHandle.style.cursor;
   let didCapturePointer = false;
   let didSetCursor = false;
@@ -36,10 +40,22 @@ export function startDomDrag(
     dragHandle.style.cursor = "grabbing";
     didSetCursor = true;
 
-    startDrag(options.runtime, {
+    const didStartDrag = startDomDragRuntime(options.runtime, {
       draggedKey,
       pointerPosition: pointerEventToDragPoint(event),
     });
+
+    if (!didStartDrag) {
+      if (didCapturePointer && dragHandle.hasPointerCapture(event.pointerId)) {
+        dragHandle.releasePointerCapture(event.pointerId);
+      }
+
+      if (didSetCursor) {
+        dragHandle.style.cursor = previousCursor;
+      }
+
+      return null;
+    }
   } catch (error) {
     if (didCapturePointer && dragHandle.hasPointerCapture(event.pointerId)) {
       dragHandle.releasePointerCapture(event.pointerId);
@@ -47,10 +63,6 @@ export function startDomDrag(
 
     if (didSetCursor) {
       dragHandle.style.cursor = previousCursor;
-    }
-
-    if (error instanceof DragAlreadyActiveError) {
-      return null;
     }
 
     throw error;

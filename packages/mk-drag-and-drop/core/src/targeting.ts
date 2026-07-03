@@ -1,4 +1,18 @@
-import type { DragPoint, DragRect } from "./runtime.js";
+export type DragPoint = {
+  x: number;
+  y: number;
+};
+
+export type DragRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
 
 export type DropTarget = {
   dropTargetKey: string;

@@ -1,5 +1,8 @@
 import { DragContext } from "./drag-provider";
-import { createDragHandler } from "./createDragHandler.js";
+import {
+    createDragHandler,
+    type DragHandlerRuntime,
+} from "./createDragHandler.js";
 import {
     useCallback,
     useContext,
@@ -24,7 +27,7 @@ export function useDraggable({
     itemId,
     group = defaultDraggableGroup,
 }: UseDraggableItem): UseDraggableReturn {
-    const runtime = useContext(DragContext);
+    const runtime = useContext(DragContext) as DragHandlerRuntime | null;
     const nodeRef = useRef<HTMLDivElement | null>(null);
 
     if (!runtime) {

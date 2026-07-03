@@ -2,20 +2,20 @@ import type {
   DragRect,
   DragPoint,
   DropTarget,
-  DragRuntime,
   TargetingAlgorithm,
   TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 import {
-  endDrag,
-  moveDrag,
-  setActiveDropTarget,
-} from "@mk-drag-and-drop/core";
+  endDomDragRuntime,
+  moveDomDragRuntime,
+  setDomActiveDropTarget,
+} from "./dom-drag-runtime.js";
 import { getDomDropTargets } from "./dom-drop-target.js";
 import type {
   DomDragControls,
   DomDragEndEvent,
   DomDropEvent,
+  DomDragRuntime,
   DomDragSession,
   DomDragStartEvent,
   DomDragUpdateEvent,
@@ -28,7 +28,7 @@ export type DomPointerCapture = {
 };
 
 export type TrackDomDragInput = {
-  runtime: DragRuntime;
+  runtime: DomDragRuntime;
   session: DomDragSession;
   dropTargetParent: ParentNode;
   pointerCapture: DomPointerCapture;
@@ -260,7 +260,7 @@ function onPointerMove(
     return;
   }
 
-  moveDrag(input.runtime, {
+  moveDomDragRuntime(input.runtime, {
     pointerPosition: {
       x: event.clientX,
       y: event.clientY,
@@ -298,7 +298,7 @@ function retargetDrag(
     }),
   });
 
-  setActiveDropTarget(input.runtime, {
+  setDomActiveDropTarget(input.runtime, {
     dropTargetKey: activeDropTarget?.dropTargetKey ?? null,
   });
 }
@@ -402,7 +402,7 @@ function releaseDomDrag(
     );
   }
 
-  endDrag(input.runtime);
+  endDomDragRuntime(input.runtime);
 
   if (drop) {
     input.onDrop?.(drop, controls);

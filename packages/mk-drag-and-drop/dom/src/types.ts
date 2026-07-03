@@ -1,7 +1,6 @@
 import type {
   DragPoint,
   DragRect,
-  DragRuntime,
   TargetingAlgorithm,
   TargetingConstraint,
 } from "@mk-drag-and-drop/core";
@@ -22,13 +21,20 @@ export type DomDragSession = {
   requestDropTargetRetarget: (() => void) | null;
 };
 
+export type DomDragRuntime = {
+  isDragging: boolean;
+  draggedKey: string | null;
+  pointerPosition: DragPoint | null;
+  activeDropTargetKey: string | null;
+};
+
 export type DomDragControls = {
   readonly pointerPosition: DragPoint | null;
   recalculateTargets: (overlayRect?: DragRect | null) => void;
 };
 
 export type CreateDomDragHandlerOptions = {
-  runtime: DragRuntime;
+  runtime: DomDragRuntime;
   session: DomDragSession;
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;

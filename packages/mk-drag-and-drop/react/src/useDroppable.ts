@@ -19,11 +19,20 @@ type UseDroppableReturn =
 
 const defaultDroppableGroup = "default";
 
+type DroppableDragRuntime = {
+    registerDropTarget: (
+        targetId: string,
+        element: HTMLElement,
+        group: string,
+    ) => void;
+    unregisterDropTarget: (targetId: string) => void;
+};
+
 export function useDroppable({
     targetId,
     group = defaultDroppableGroup,
 }: UseDroppableItem): UseDroppableReturn {
-    const runtime = useContext(DragContext);
+    const runtime = useContext(DragContext) as DroppableDragRuntime | null;
     const nodeRef = useRef<HTMLDivElement | null>(null);
     const registeredTargetIdRef = useRef<string | null>(null);
 

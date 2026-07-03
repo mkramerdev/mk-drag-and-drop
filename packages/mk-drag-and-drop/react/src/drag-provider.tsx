@@ -1,4 +1,10 @@
-import { createContext, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   pointerToCenter,
@@ -14,7 +20,13 @@ type DragGroup = string;
 type DropTargetRegistration = {
     element: HTMLElement;
     group: DragGroup;
+    documentRect: DragRect;
 };
+
+export type RemeasureDropTargetsInput =
+  | string
+  | string[]
+  | { group: string };
 
 export type Point = {
     x: number;
@@ -112,7 +124,7 @@ export type DragRuntimeSubscription = {
     onDrop?: (event: DropEvent) => void;
 };
 
-export class DragRuntime {
+class DragRuntime {
     isDragging = false;
     draggedId: string | null = null;
     draggedGroup: DragGroup | null = null;
@@ -163,6 +175,7 @@ export class DragRuntime {
         this.draggedGroup = input.group;
         this.pointerPosition = input.pointerPosition;
         this.activeDropTarget = null;
+        this.remeasureDropTargets();
 
         this.dragState = {
             itemId: input.itemId,
@@ -261,7 +274,11 @@ export class DragRuntime {
         this.dropTargetElements.delete(previousTarget.element);
       }
 
-      this.dropTargets.set(id, { element, group });
+      this.dropTargets.set(id, {
+        element,
+        group,
+        documentRect: measureDocumentRect(element),
+      });
       this.dropTargetElements.set(element, id);
     }
 
@@ -303,8 +320,37 @@ export class DragRuntime {
       const registration = this.dropTargets.get(dropTargetId);
 
       return registration
-        ? registration.element.getBoundingClientRect()
+        ? documentRectToViewportRect(registration.documentRect)
         : null;
+    }
+
+    remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
+      if (input === undefined) {
+        for (const dropTarget of this.dropTargets.values()) {
+          dropTarget.documentRect = measureDocumentRect(dropTarget.element);
+        }
+
+        return;
+      }
+
+      if (typeof input === "string") {
+        this.remeasureDropTarget(input);
+        return;
+      }
+
+      if (Array.isArray(input)) {
+        for (const dropTargetId of input) {
+          this.remeasureDropTarget(dropTargetId);
+        }
+
+        return;
+      }
+
+      for (const dropTarget of this.dropTargets.values()) {
+        if (dropTarget.group === input.group) {
+          dropTarget.documentRect = measureDocumentRect(dropTarget.element);
+        }
+      }
     }
 
     subscribe(subscription: DragRuntimeSubscription): () => void {
@@ -390,7 +436,7 @@ export class DragRuntime {
 
         const candidateDropTarget = {
           dropTargetKey,
-          dropTargetRect: dropTarget.element.getBoundingClientRect(),
+          dropTargetRect: documentRectToViewportRect(dropTarget.documentRect),
         };
 
         if (
@@ -408,6 +454,16 @@ export class DragRuntime {
       }
 
       return dropTargets;
+    }
+
+    private remeasureDropTarget(dropTargetId: string): void {
+      const dropTarget = this.dropTargets.get(dropTargetId);
+
+      if (!dropTarget) {
+        return;
+      }
+
+      dropTarget.documentRect = measureDocumentRect(dropTarget.element);
     }
 
     private getCurrentDragRect(pointerPosition: Point): DragRect | null {
@@ -510,7 +566,21 @@ export class DragRuntime {
 
 }
 
-export const DragContext = createContext<DragRuntime | null>(null);
+export const DragContext = createContext<unknown | null>(null);
+
+export function useRemeasureDropTargets(): (
+  input?: RemeasureDropTargetsInput,
+) => void {
+  const runtime = useContext(DragContext) as DragRuntime | null;
+
+  if (!runtime) {
+    throw new Error("useRemeasureDropTargets must be used inside DragProvider");
+  }
+
+  return (input) => {
+    runtime.remeasureDropTargets(input);
+  };
+}
 
 export function DragProvider({
     children,
@@ -577,6 +647,39 @@ function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect
     right: rect.right + deltaX,
     bottom: rect.bottom + deltaY,
     left: rect.left + deltaX,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function measureDocumentRect(element: HTMLElement): DragRect {
+  const viewportRect = element.getBoundingClientRect();
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+
+  return {
+    x: viewportRect.x + scrollX,
+    y: viewportRect.y + scrollY,
+    top: viewportRect.top + scrollY,
+    right: viewportRect.right + scrollX,
+    bottom: viewportRect.bottom + scrollY,
+    left: viewportRect.left + scrollX,
+    width: viewportRect.width,
+    height: viewportRect.height,
+  };
+}
+
+function documentRectToViewportRect(rect: DragRect): DragRect {
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+
+  return {
+    x: rect.x - scrollX,
+    y: rect.y - scrollY,
+    top: rect.top - scrollY,
+    right: rect.right - scrollX,
+    bottom: rect.bottom - scrollY,
+    left: rect.left - scrollX,
     width: rect.width,
     height: rect.height,
   };

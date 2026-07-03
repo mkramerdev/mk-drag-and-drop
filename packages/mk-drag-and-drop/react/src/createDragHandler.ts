@@ -1,12 +1,23 @@
 import type { PointerEventHandler } from "react";
-import type { DragRuntime } from "./drag-provider";
+
+export type DragHandlerRuntime = {
+    startDrag: (input: {
+        itemId: string;
+        group: string;
+        pointerPosition: {
+            x: number;
+            y: number;
+        };
+        sourceRect: DOMRect;
+    }) => void;
+};
 
 const dragHandleSelector = "[data-dnd-drag-handle]";
 
 type CreateDragHandlerInput = {
     itemId: string;
     group: string;
-    runtime: DragRuntime;
+    runtime: DragHandlerRuntime;
     getNode: () => HTMLDivElement | null;
 };
 

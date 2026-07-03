@@ -12,19 +12,19 @@ import {
 } from "react";
 
 import {
-  createDragRuntime,
   type DragPoint,
   type DragRect,
-  type DragRuntime,
   type TargetingAlgorithm,
   type TargetingConstraint,
 } from "@mk-drag-and-drop/core";
 import {
   createDomDragHandler,
+  createDomDragRuntime,
   createDomDragSession,
   type DomDragControls,
   type DomDragEndEvent,
   type DomDragStartEvent,
+  type DomDragRuntime,
   type DomDragSession,
   type DomDragUpdateEvent,
   type DomDropEvent,
@@ -34,7 +34,7 @@ import {
 } from "@mk-drag-and-drop/dom";
 
 type DragDropConfiguration = {
-  runtime: DragRuntime;
+  runtime: DomDragRuntime;
   session: DomDragSession;
   draggableElements: Map<string, HTMLElement>;
   subscribeDrag: (
@@ -115,7 +115,7 @@ export function DragDropProvider(
     onDragEnd,
     onDrop,
   } = props;
-  const runtime = useMemo(() => createDragRuntime(), []);
+  const runtime = useMemo(createDomDragRuntime, []);
   const session = useMemo(createDomDragSession, []);
   const draggableElements = useMemo(() => new Map<string, HTMLElement>(), []);
   const dragSubscriptions = useMemo(
@@ -556,6 +556,10 @@ export function useRequiredDragDropConfiguration(): DragDropConfiguration {
   return configuration;
 }
 
+export {
+  useRemeasureDropTargets,
+  type RemeasureDropTargetsInput,
+} from "./drag-provider.js";
 export {
   useSortable,
   type UseSortableOptions,

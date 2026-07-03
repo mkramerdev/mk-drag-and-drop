@@ -1,4 +1,5 @@
 export { createDomDragHandler } from "./create-dom-drag-handler.js";
+export { createDomDragRuntime } from "./dom-drag-runtime.js";
 export {
   createDomDropTarget,
   getDomDropTargets,
@@ -16,6 +17,7 @@ export type {
   DomDragControls,
   DomDragHandler,
   DomDragEndEvent,
+  DomDragRuntime,
   DomDropEvent,
   DomPointerDownEvent,
   DomDragSession,
