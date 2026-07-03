@@ -7,7 +7,6 @@ export {
   setDomDropTarget,
 } from "./dom-drop-target.js";
 export { createDomDragSession } from "./dom-drag-session.js";
-export { domRectToDragRect } from "./geometry.js";
 export type {
   CreateDomDropTargetOptions,
   DomDropTargetHandle,

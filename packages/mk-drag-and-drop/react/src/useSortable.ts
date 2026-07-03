@@ -1,10 +1,10 @@
 import { DragContext, type DragRuntime } from "./drag-provider";
+import { createDragHandler } from "./createDragHandler.js";
 import {
     useContext,
     useCallback,
     useRef,
     type HTMLAttributes,
-    type PointerEventHandler,
     type RefCallback,
 } from "react";
 
@@ -17,9 +17,6 @@ export type UseSortableResult =
     HTMLAttributes<HTMLDivElement> & {
         ref: RefCallback<HTMLDivElement>;
 };
-
-const dragHandleSelector = "[data-dnd-drag-handle]";
-const sortableItemSelector = "[data-dnd-sortable-item]";
 
 type SortableRegistry = {
     elements: Map<string, HTMLElement>;
@@ -76,70 +73,14 @@ export function useSortable({
     );
 
     return {
-      ref: setNodeRef,
-      onPointerDown: createDragHandler(
-        itemId,
-        group,
-        runtime,
-        registry,
-        () => nodeRef.current,
-      ),
-    };
-}
-
-function createDragHandler(
-    itemId: string,
-    group: string,
-    runtime: DragRuntime,
-    registry: SortableRegistry,
-    getNode: () => HTMLDivElement | null,
-): PointerEventHandler<HTMLDivElement> {
-
-    return (event) => {
-        const node = getNode();
-        if (!node) return;
-        if (!shouldStartDragFromEvent(node, event)) return;
-
-        event.preventDefault();
-        refreshSortableDropTargets(registry, runtime);
-
-        const rect = node.getBoundingClientRect();
-
-        runtime.startDrag({
+        ref: setNodeRef,
+        onPointerDown: createDragHandler({
             itemId,
             group,
-            pointerPosition: {
-                x: event.clientX,
-                y: event.clientY,
-            },
-            sourceRect: domRectToDragRect(rect),
-        });
+            runtime,
+            getNode: () => nodeRef.current,
+        }),
     };
-  }
-
-function shouldStartDragFromEvent(
-    sortableElement: HTMLElement,
-    event: Parameters<PointerEventHandler<HTMLDivElement>>[0],
-): boolean {
-    if (!(event.target instanceof Element)) {
-        return false;
-    }
-
-    const closestSortable = event.target.closest(sortableItemSelector);
-
-    if (closestSortable !== sortableElement) {
-        return false;
-    }
-
-    const hasDragHandle = sortableElement.querySelector(dragHandleSelector) !== null;
-
-    if (!hasDragHandle) {
-        return true;
-    }
-
-    const closestDragHandle = event.target.closest(dragHandleSelector);
-
-    return closestDragHandle !== null && sortableElement.contains(closestDragHandle);
 }
 
 function getSortableRegistry(runtime: DragRuntime): SortableRegistry {
@@ -355,26 +296,4 @@ function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
             child instanceof HTMLElement &&
             child.dataset.dndSortableItem !== undefined,
     );
-}
-
-function domRectToDragRect(rect: DOMRect): {
-    x: number;
-    y: number;
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-    width: number;
-    height: number;
-} {
-    return {
-        x: rect.x,
-        y: rect.y,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-    };
 }

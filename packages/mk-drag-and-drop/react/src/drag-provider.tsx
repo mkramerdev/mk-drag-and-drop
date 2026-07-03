@@ -303,7 +303,7 @@ export class DragRuntime {
       const registration = this.dropTargets.get(dropTargetId);
 
       return registration
-        ? domRectToDragRect(registration.element.getBoundingClientRect())
+        ? registration.element.getBoundingClientRect()
         : null;
     }
 
@@ -390,9 +390,7 @@ export class DragRuntime {
 
         const candidateDropTarget = {
           dropTargetKey,
-          dropTargetRect: domRectToDragRect(
-            dropTarget.element.getBoundingClientRect(),
-          ),
+          dropTargetRect: dropTarget.element.getBoundingClientRect(),
         };
 
         if (
@@ -579,19 +577,6 @@ function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect
     right: rect.right + deltaX,
     bottom: rect.bottom + deltaY,
     left: rect.left + deltaX,
-    width: rect.width,
-    height: rect.height,
-  };
-}
-
-function domRectToDragRect(rect: DOMRect): DragRect {
-  return {
-    x: rect.x,
-    y: rect.y,
-    top: rect.top,
-    right: rect.right,
-    bottom: rect.bottom,
-    left: rect.left,
     width: rect.width,
     height: rect.height,
   };

@@ -1,5 +1,4 @@
 import type { DragRect, DropTarget } from "@mk-drag-and-drop/core";
-import { domRectToDragRect } from "./geometry.js";
 import type { DomDragSession } from "./types.js";
 
 export type DomDropTargetHandle = {
@@ -30,7 +29,7 @@ export function createDomDropTarget(
 }
 
 export function measureDomElement(element: Element): DragRect {
-  return domRectToDragRect(element.getBoundingClientRect());
+  return element.getBoundingClientRect();
 }
 
 export function setDomDropTarget(
