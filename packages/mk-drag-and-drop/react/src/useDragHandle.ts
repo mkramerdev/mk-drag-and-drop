@@ -1,13 +1,15 @@
 import type { HTMLAttributes } from "react";
 
+import { domDragHandleAttribute } from "@mk-drag-and-drop/dom";
+
 type UseDragHandleReturn<ElementType extends HTMLElement> =
   HTMLAttributes<ElementType> & {
     "data-dnd-drag-handle": string;
   };
 
 const dragHandleProps = {
-  "data-dnd-drag-handle": "true",
-} as const;
+  [domDragHandleAttribute]: "true",
+} as { "data-dnd-drag-handle": string };
 
 export function useDragHandle<
   ElementType extends HTMLElement = HTMLElement,

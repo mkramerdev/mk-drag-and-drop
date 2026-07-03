@@ -1,9 +1,13 @@
 import { DragContext } from "./drag-provider";
 import {
+    createDomDroppable,
+    type DomDroppableRuntime,
+} from "@mk-drag-and-drop/dom";
+import {
     useCallback,
     useContext,
+    useEffect,
     useMemo,
-    useRef,
     type HTMLAttributes,
     type RefCallback,
 } from "react";
@@ -20,48 +24,38 @@ type UseDroppableReturn =
 
 const defaultDroppableGroup = "default";
 
-type DroppableDragRuntime = {
-    registerDropTarget: (
-        targetId: string,
-        element: HTMLElement,
-        group: string,
-    ) => void;
-    unregisterDropTarget: (targetId: string) => void;
-};
-
 export function useDroppable({
     targetId,
     group = defaultDroppableGroup,
 }: UseDroppableItem): UseDroppableReturn {
-    const runtime = useContext(DragContext) as DroppableDragRuntime | null;
-    const nodeRef = useRef<HTMLDivElement | null>(null);
-    const registeredTargetIdRef = useRef<string | null>(null);
+    const runtime = useContext(DragContext) as DomDroppableRuntime | null;
 
     if (!runtime) {
         throw new Error("useDroppable must be used inside DragProvider");
     }
 
+    const behavior = useMemo(
+        () =>
+            createDomDroppable({
+                runtime,
+                targetId,
+                group,
+            }),
+        [group, runtime, targetId],
+    );
+
+    useEffect(
+        () => () => {
+            behavior.cleanup();
+        },
+        [behavior],
+    );
+
     const setNodeRef = useCallback(
         (node: HTMLDivElement | null) => {
-            if (registeredTargetIdRef.current !== null) {
-                runtime.unregisterDropTarget(registeredTargetIdRef.current);
-            }
-
-            nodeRef.current = node;
-
-            if (!node) {
-                registeredTargetIdRef.current = null;
-                return;
-            }
-
-            runtime.registerDropTarget(
-                targetId,
-                node,
-                group,
-            );
-            registeredTargetIdRef.current = targetId;
+            behavior.setElement(node);
         },
-        [group, runtime, targetId],
+        [behavior],
     );
 
     return useMemo(

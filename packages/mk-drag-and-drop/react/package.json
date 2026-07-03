@@ -45,8 +45,7 @@
   },
   "dependencies": {
     "@mk-drag-and-drop/core": "workspace:*",
-    "@mk-drag-and-drop/dom": "workspace:*",
-    "@mk-drag-and-drop/sortable": "workspace:*"
+    "@mk-drag-and-drop/dom": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.2.7"

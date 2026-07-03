@@ -13,7 +13,6 @@
     "@mk-drag-and-drop/core": "workspace:*",
     "@mk-drag-and-drop/dom": "workspace:*",
     "@mk-drag-and-drop/react": "workspace:*",
-    "@mk-drag-and-drop/sortable": "workspace:*",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

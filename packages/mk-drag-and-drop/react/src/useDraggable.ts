@@ -1,9 +1,8 @@
 import { DragContext } from "./drag-provider";
 import {
-    createDragHandler,
-    createKeyboardDragHandler,
-    type DragHandlerRuntime,
-} from "./createDragHandler.js";
+    createDomDraggable,
+    type DomDraggableRuntime,
+} from "@mk-drag-and-drop/dom";
 import {
     useCallback,
     useContext,
@@ -29,7 +28,7 @@ export function useDraggable({
     itemId,
     group = defaultDraggableGroup,
 }: UseDraggableItem): UseDraggableReturn {
-    const runtime = useContext(DragContext) as DragHandlerRuntime | null;
+    const runtime = useContext(DragContext) as DomDraggableRuntime | null;
     const nodeRef = useRef<HTMLDivElement | null>(null);
 
     if (!runtime) {
@@ -40,40 +39,30 @@ export function useDraggable({
         nodeRef.current = node;
     }, []);
     const getNode = useCallback(() => nodeRef.current, []);
-    const onPointerDown = useMemo(
-        () =>
-            createDragHandler({
-                itemId,
-                group,
-                runtime,
-                getNode,
-            }),
-        [getNode, group, itemId, runtime],
-    );
-    const onKeyDown = useMemo(
-        () =>
-            createKeyboardDragHandler({
-                itemId,
-                group,
-                runtime,
-                getNode,
-            }),
-        [getNode, group, itemId, runtime],
-    );
     const keyboardDragEnabled = runtime.isKeyboardDragEnabled();
+    const behavior = useMemo(
+        () =>
+            createDomDraggable({
+                itemId,
+                group,
+                runtime,
+                getElement: getNode,
+            }),
+        [getNode, group, itemId, keyboardDragEnabled, runtime],
+    );
 
     return useMemo(() => {
         const dragProps: UseDraggableReturn = {
             ref: setNodeRef,
-            onPointerDown,
+            onPointerDown: behavior.onPointerDown,
         };
 
-        return keyboardDragEnabled
+        return behavior.tabIndex !== undefined
             ? {
                 ...dragProps,
-                tabIndex: 0,
-                onKeyDown,
+                tabIndex: behavior.tabIndex,
+                onKeyDown: behavior.onKeyDown,
             }
             : dragProps;
-    }, [keyboardDragEnabled, onKeyDown, onPointerDown, setNodeRef]);
+    }, [behavior, setNodeRef]);
 }

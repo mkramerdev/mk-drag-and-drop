@@ -51,9 +51,6 @@ importers:
       '@mk-drag-and-drop/react':
         specifier: workspace:*
         version: link:../../packages/mk-drag-and-drop/react
-      '@mk-drag-and-drop/sortable':
-        specifier: workspace:*
-        version: link:../../packages/mk-drag-and-drop/sortable
       lucide-react:
         specifier: ^1.23.0
         version: 1.23.0(react@19.2.7)
@@ -87,19 +84,6 @@ importers:
         version: 5.1.4
 
   apps/web:
-    dependencies:
-      '@mk-drag-and-drop/core':
-        specifier: workspace:*
-        version: link:../../packages/mk-drag-and-drop/core
-      '@mk-drag-and-drop/dom':
-        specifier: workspace:*
-        version: link:../../packages/mk-drag-and-drop/dom
-      '@mk-drag-and-drop/sortable':
-        specifier: workspace:*
-        version: link:../../packages/mk-drag-and-drop/sortable
-      '@repo/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
@@ -109,7 +93,7 @@ importers:
         version: link:../../packages/typescript-config
       eslint:
         specifier: ^8.57.0
-        version: 8.57.0
+        version: 8.57.1
       typescript:
         specifier: 5.5.4
         version: 5.5.4
@@ -171,9 +155,6 @@ importers:
       '@mk-drag-and-drop/dom':
         specifier: workspace:*
         version: link:../dom
-      '@mk-drag-and-drop/sortable':
-        specifier: workspace:*
-        version: link:../sortable
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
@@ -190,21 +171,6 @@ importers:
       react:
         specifier: ^19.2.7
         version: 19.2.7
-      typescript:
-        specifier: 5.5.4
-        version: 5.5.4
-
-  packages/mk-drag-and-drop/sortable:
-    devDependencies:
-      '@repo/eslint-config':
-        specifier: workspace:*
-        version: link:../../eslint-config
-      '@repo/typescript-config':
-        specifier: workspace:*
-        version: link:../../typescript-config
-      eslint:
-        specifier: ^8.57.0
-        version: 8.57.1
       typescript:
         specifier: 5.5.4
         version: 5.5.4
