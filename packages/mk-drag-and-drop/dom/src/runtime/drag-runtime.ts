@@ -20,7 +20,7 @@ import {
 } from "../modifiers/pipeline.js";
 import {
   type ActiveDragModifier,
-  type DragModifier,
+  type DragModifierInput,
 } from "../modifiers/types.js";
 import {
   pointerToCenter,
@@ -57,6 +57,22 @@ import type {
 
 const noopSetOverlayState = (): void => {};
 
+type DragSession =
+  | { status: "idle" }
+  | {
+      status: "dragging";
+      input: ActiveDragInput;
+      itemId: string;
+      group: DragGroup;
+      sourceRect: DragRect;
+      startPointerPosition: Point;
+      rawPointerPosition: Point;
+      pointerPosition: Point;
+      activeDropTarget: string | null;
+    };
+
+type DraggingSession = Extract<DragSession, { status: "dragging" }>;
+
 export class DragRuntime {
   isDragging = false;
   draggedId: string | null = null;
@@ -64,14 +80,15 @@ export class DragRuntime {
   pointerPosition: Point | null = null;
   activeDropTarget: string | null = null;
 
-  private dragState: DragState | null = null;
-  private activeDragInput: ActiveDragInput | null = null;
-  private rawPointerPosition: Point | null = null;
-  private modifiers: readonly DragModifier<any>[] = [];
+  private session: DragSession = { status: "idle" };
+  private modifiers: readonly DragModifierInput[] = [];
   private activeDragModifiers: ActiveDragModifier[] = [];
   private cleanupWindowListeners: (() => void) | null = null;
   private cleanupTextSelectionSuppression: (() => void) | null = null;
+  private queuedPointerPosition: Point | null = null;
+  private pointerFrameId: number | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
+  private disposeCallbacks = new Set<() => void>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private dropTargetRegistry = new DropTargetRegistry();
   private pointerConfiguration: NormalizedPointerConfiguration = {
@@ -131,7 +148,7 @@ export class DragRuntime {
   private keyboardDrag = new KeyboardDragController({
     getConfiguration: () => this.keyboardConfiguration,
     isDragging: () => this.isDragging,
-    getActiveInput: () => this.activeDragInput,
+    getActiveInput: () => this.getActiveInput(),
     start: (input) => {
       this.requestKeyboardDragStart(input);
     },
@@ -208,18 +225,16 @@ export class DragRuntime {
   }
 
   moveKeyboardDrag(direction: KeyboardMoveDirection): void {
-    if (
-      !this.isDragging ||
-      this.activeDragInput !== "keyboard" ||
-      !this.rawPointerPosition
-    ) {
+    const session = this.getDraggingSession();
+
+    if (!session || session.input !== "keyboard") {
       return;
     }
 
     const distance = this.keyboardConfiguration.moveDistance;
     const pointerPosition = {
-      x: this.rawPointerPosition.x,
-      y: this.rawPointerPosition.y,
+      x: session.rawPointerPosition.x,
+      y: session.rawPointerPosition.y,
     };
 
     if (direction === "up") {
@@ -232,59 +247,78 @@ export class DragRuntime {
       pointerPosition.x += distance;
     }
 
-    this.updatePointer(pointerPosition);
+    this.updatePointerNow(pointerPosition);
   }
 
   updatePointer(rawPointerPosition: Point): void {
-    if (!this.isDragging || !this.dragState) {
+    if (this.session.status !== "dragging") {
       return;
     }
 
-    const itemId = this.dragState.itemId;
-    const group = this.draggedGroup;
-    const previousDropTarget = this.activeDropTarget;
+    this.queuedPointerPosition = rawPointerPosition;
 
-    if (group === null) {
+    if (this.pointerFrameId !== null) {
       return;
     }
 
+    this.pointerFrameId = window.requestAnimationFrame(() => {
+      this.pointerFrameId = null;
+      const nextPointerPosition = this.queuedPointerPosition;
+      this.queuedPointerPosition = null;
+
+      if (nextPointerPosition) {
+        this.updatePointerNow(nextPointerPosition);
+      }
+    });
+  }
+
+  private updatePointerNow(rawPointerPosition: Point): void {
+    const session = this.getDraggingSession();
+
+    if (!session) {
+      return;
+    }
+
+    const previousDropTarget = session.activeDropTarget;
     const pointerPosition = applyDragModifiers({
       activeModifiers: this.activeDragModifiers,
-      itemId,
-      group,
-      sourceRect: this.dragState.sourceRect,
-      initialPointerPosition: this.dragState.startPointerPosition,
+      itemId: session.itemId,
+      group: session.group,
+      sourceRect: session.sourceRect,
+      initialPointerPosition: session.startPointerPosition,
       rawPointerPosition,
     });
 
-    this.rawPointerPosition = rawPointerPosition;
-    this.pointerPosition = pointerPosition;
-    this.activeDropTarget = this.getActiveDropTarget(pointerPosition);
-    this.dragState = {
-      ...this.dragState,
+    const nextSession: DraggingSession = {
+      ...session,
+      rawPointerPosition,
       pointerPosition,
+      activeDropTarget: this.getActiveDropTarget(pointerPosition),
     };
+    this.setSession(nextSession);
 
     this.setOverlayState({
-      dragState: this.dragState,
+      dragState: this.createDragState(nextSession),
       phase: "dragging",
     });
     this.notifyDragUpdate({
-      itemId,
+      itemId: nextSession.itemId,
       pointerPosition,
-      activeDropTarget: this.activeDropTarget,
+      activeDropTarget: nextSession.activeDropTarget,
       previousDropTarget,
     });
   }
 
   endDrag(): void {
+    this.flushQueuedPointerUpdate();
     this.finishDrag({
-      dropTarget: this.activeDropTarget,
+      dropTarget: this.getDraggingSession()?.activeDropTarget ?? null,
       keepReleasedOverlay: this.keepOverlayOnDrop,
     });
   }
 
   cancelDrag(): void {
+    this.flushQueuedPointerUpdate();
     this.finishDrag({
       dropTarget: null,
       keepReleasedOverlay: false,
@@ -302,8 +336,15 @@ export class DragRuntime {
   unregisterDropTarget(id: string, element?: HTMLElement): void {
     const removedTarget = this.dropTargetRegistry.unregister(id, element);
 
-    if (removedTarget && this.activeDropTarget === id) {
-      this.activeDropTarget = null;
+    if (
+      removedTarget &&
+      this.session.status === "dragging" &&
+      this.session.activeDropTarget === id
+    ) {
+      this.setSession({
+        ...this.session,
+        activeDropTarget: null,
+      });
     }
   }
 
@@ -311,6 +352,7 @@ export class DragRuntime {
     this.pointerActivation.cancel();
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
+    this.setOverlayState(null);
   }
 
   getSortablePlacement(itemId: string): SortablePlacement | null {
@@ -322,8 +364,10 @@ export class DragRuntime {
   }
 
   getCurrentDragRect(): DragRect | null {
-    return this.pointerPosition
-      ? this.getCurrentDragRectAt(this.pointerPosition)
+    const session = this.getDraggingSession();
+
+    return session
+      ? this.getCurrentDragRectAt(session.pointerPosition)
       : null;
   }
 
@@ -337,6 +381,29 @@ export class DragRuntime {
     return () => {
       this.subscriptions.delete(subscription);
     };
+  }
+
+  onDispose(callback: () => void): () => void {
+    this.disposeCallbacks.add(callback);
+
+    return () => {
+      this.disposeCallbacks.delete(callback);
+    };
+  }
+
+  dispose(): void {
+    this.cleanup();
+
+    for (const disposeCallback of Array.from(this.disposeCallbacks)) {
+      disposeCallback();
+    }
+
+    this.disposeCallbacks.clear();
+    this.subscriptions.clear();
+    this.dropTargetRegistry.clear();
+    this.lifecycleCallbacks = {};
+    this.modifiers = [];
+    this.setOverlayState = noopSetOverlayState;
   }
 
   private startDragNow(input: StartDragInput): void {
@@ -366,24 +433,23 @@ export class DragRuntime {
       rawPointerPosition,
     });
 
-    this.isDragging = true;
-    this.activeDragInput = input.inputType;
-    this.draggedId = input.itemId;
-    this.draggedGroup = input.group;
-    this.rawPointerPosition = rawPointerPosition;
-    this.pointerPosition = effectivePointerPosition;
-    this.activeDropTarget = null;
-    this.remeasureDropTargets();
-
-    this.dragState = {
+    const nextSession: DraggingSession = {
+      status: "dragging",
+      input: input.inputType,
       itemId: input.itemId,
+      group: input.group,
       sourceRect: input.sourceRect,
       startPointerPosition: rawPointerPosition,
+      rawPointerPosition,
       pointerPosition: effectivePointerPosition,
+      activeDropTarget: null,
     };
 
+    this.setSession(nextSession);
+    this.remeasureDropTargets();
+
     this.setOverlayState({
-      dragState: this.dragState,
+      dragState: this.createDragState(nextSession),
       phase: "dragging",
     });
     this.suppressTextSelection();
@@ -405,8 +471,11 @@ export class DragRuntime {
   }): void {
     this.pointerActivation.cancel();
 
-    const itemId = this.draggedId;
-    const releasedDragState = this.dragState;
+    const session = this.getDraggingSession();
+    const itemId = session?.itemId ?? null;
+    const releasedDragState = session
+      ? this.createDragState(session)
+      : null;
 
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
@@ -499,14 +568,8 @@ export class DragRuntime {
   }
 
   private resetActiveDragState(): void {
-    this.isDragging = false;
-    this.activeDragInput = null;
-    this.draggedId = null;
-    this.draggedGroup = null;
-    this.rawPointerPosition = null;
-    this.pointerPosition = null;
-    this.activeDropTarget = null;
-    this.dragState = null;
+    this.cancelQueuedPointerUpdate();
+    this.setSession({ status: "idle" });
     this.activeDragModifiers = [];
   }
 
@@ -517,7 +580,75 @@ export class DragRuntime {
     this.cleanupTextSelectionSuppression = null;
   }
 
+  private flushQueuedPointerUpdate(): void {
+    if (this.pointerFrameId !== null) {
+      window.cancelAnimationFrame(this.pointerFrameId);
+      this.pointerFrameId = null;
+    }
+
+    const nextPointerPosition = this.queuedPointerPosition;
+    this.queuedPointerPosition = null;
+
+    if (nextPointerPosition) {
+      this.updatePointerNow(nextPointerPosition);
+    }
+  }
+
+  private cancelQueuedPointerUpdate(): void {
+    if (this.pointerFrameId !== null) {
+      window.cancelAnimationFrame(this.pointerFrameId);
+      this.pointerFrameId = null;
+    }
+
+    this.queuedPointerPosition = null;
+  }
+
+  private setSession(session: DragSession): void {
+    this.session = session;
+    this.syncPublicDragFields();
+  }
+
+  private syncPublicDragFields(): void {
+    if (this.session.status === "idle") {
+      this.isDragging = false;
+      this.draggedId = null;
+      this.draggedGroup = null;
+      this.pointerPosition = null;
+      this.activeDropTarget = null;
+      return;
+    }
+
+    this.isDragging = true;
+    this.draggedId = this.session.itemId;
+    this.draggedGroup = this.session.group;
+    this.pointerPosition = this.session.pointerPosition;
+    this.activeDropTarget = this.session.activeDropTarget;
+  }
+
+  private getActiveInput(): ActiveDragInput | null {
+    return this.session.status === "dragging" ? this.session.input : null;
+  }
+
+  private getDraggingSession(): DraggingSession | null {
+    return this.session.status === "dragging" ? this.session : null;
+  }
+
+  private createDragState(session: DraggingSession): DragState {
+    return {
+      itemId: session.itemId,
+      sourceRect: session.sourceRect,
+      startPointerPosition: session.startPointerPosition,
+      pointerPosition: session.pointerPosition,
+    };
+  }
+
   private getActiveDropTarget(pointerPosition: Point): string | null {
+    const session = this.getDraggingSession();
+
+    if (!session) {
+      return null;
+    }
+
     const overlayRect = this.hasDragOverlay
       ? this.getCurrentDragRectAt(pointerPosition)
       : null;
@@ -525,6 +656,7 @@ export class DragRuntime {
       pointerPosition,
       overlayRect,
       dropTargets: this.getAvailableDropTargets({
+        group: session.group,
         pointerPosition,
         overlayRect,
       }),
@@ -534,11 +666,12 @@ export class DragRuntime {
   }
 
   private getAvailableDropTargets(input: {
+    group: DragGroup;
     pointerPosition: Point;
     overlayRect: DragRect | null;
   }): DropTarget[] {
     return this.dropTargetRegistry.getAvailableDropTargets({
-      group: this.draggedGroup,
+      group: input.group,
       pointerPosition: input.pointerPosition,
       overlayRect: input.overlayRect,
       targetingConstraint: this.targetingConstraint,
@@ -546,13 +679,15 @@ export class DragRuntime {
   }
 
   private getCurrentDragRectAt(pointerPosition: Point): DragRect | null {
-    if (!this.dragState) {
+    const session = this.getDraggingSession();
+
+    if (!session) {
       return null;
     }
 
     return getOverlayRect({
-      sourceRect: this.dragState.sourceRect,
-      initialPointerPosition: this.dragState.startPointerPosition,
+      sourceRect: session.sourceRect,
+      initialPointerPosition: session.startPointerPosition,
       pointerPosition,
     });
   }

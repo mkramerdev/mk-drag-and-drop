@@ -2,15 +2,20 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 
 import {
   DragRuntime,
   pointerToCenter,
+  type DragEndEvent,
   type DragLifecycleCallbacks,
-  type DragModifier,
+  type DragModifierInput,
   type DragOverlayRenderState,
+  type DragStartEvent,
+  type DragUpdateEvent,
+  type DropEvent,
   type KeyboardConfiguration,
   type PointerConfiguration,
   type TargetingAlgorithm,
@@ -35,6 +40,7 @@ export type {
   DragEndEvent,
   DragLifecycleHelpers,
   DragModifier,
+  DragModifierInput,
   DragModifierSetupInput,
   DragModifierTransformInput,
   DragOverlayPhase,
@@ -51,19 +57,40 @@ export type {
   SortablePlacement,
 } from "@mk-drag-and-drop/dom";
 
+export type DragAnnouncements = {
+  onDragStart?: (event: DragStartEvent) => string | null;
+  onDragUpdate?: (event: DragUpdateEvent) => string | null;
+  onDragEnd?: (event: DragEndEvent) => string | null;
+  onDrop?: (event: DropEvent) => string | null;
+};
+
 type DragProviderProps = {
   children: ReactNode;
+  announcements?: DragAnnouncements;
   dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
   keyboardConfiguration?: KeyboardConfiguration;
   keepOverlayOnDrop?: boolean;
-  modifiers?: readonly DragModifier<any>[];
+  modifiers?: readonly DragModifierInput[];
   pointerConfiguration?: PointerConfiguration;
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
 } & DragLifecycleCallbacks;
 
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
 export function DragProvider({
   children,
+  announcements,
   dragOverlay,
   keyboardConfiguration,
   keepOverlayOnDrop = false,
@@ -78,6 +105,10 @@ export function DragProvider({
 }: DragProviderProps) {
   const [overlayState, setOverlayState] =
     useState<DragOverlayRenderState | null>(null);
+  const [announcementState, setAnnouncementState] = useState({
+    id: 0,
+    message: "",
+  });
   const runtimeRef = useRef<DragRuntime | null>(null);
 
   if (runtimeRef.current === null) {
@@ -96,10 +127,22 @@ export function DragProvider({
     hasDragOverlay: dragOverlay !== undefined,
     keepOverlayOnDrop,
     lifecycleCallbacks: {
-      onDragStart,
-      onDragUpdate,
-      onDragEnd,
-      onDrop,
+      onDragStart: (event, helpers) => {
+        onDragStart?.(event, helpers);
+        announce(announcements?.onDragStart?.(event));
+      },
+      onDragUpdate: (event, helpers) => {
+        onDragUpdate?.(event, helpers);
+        announce(announcements?.onDragUpdate?.(event));
+      },
+      onDragEnd: (event, helpers) => {
+        onDragEnd?.(event, helpers);
+        announce(announcements?.onDragEnd?.(event));
+      },
+      onDrop: (event, helpers) => {
+        onDrop?.(event, helpers);
+        announce(announcements?.onDrop?.(event));
+      },
     },
     keyboardConfiguration,
     modifiers,
@@ -110,9 +153,20 @@ export function DragProvider({
     const runtime = runtimeRef.current;
 
     return () => {
-      runtime?.cleanup();
+      runtime?.dispose();
     };
   }, []);
+
+  function announce(message: string | null | undefined): void {
+    if (message === undefined || message === null) {
+      return;
+    }
+
+    setAnnouncementState((currentAnnouncementState) => ({
+      id: currentAnnouncementState.id + 1,
+      message,
+    }));
+  }
 
   function finishOverlay(): void {
     setOverlayState(null);
@@ -128,6 +182,19 @@ export function DragProvider({
             finish: finishOverlay,
           })}
         </DragOverlay>
+      ) : null}
+      {announcements ? (
+        <div
+          aria-atomic="true"
+          aria-live="polite"
+          style={visuallyHiddenStyle}
+        >
+          {announcementState.message ? (
+            <span key={announcementState.id}>
+              {announcementState.message}
+            </span>
+          ) : null}
+        </div>
       ) : null}
     </DragContext>
   );

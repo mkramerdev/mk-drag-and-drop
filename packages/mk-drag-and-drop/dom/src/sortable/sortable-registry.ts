@@ -1,6 +1,7 @@
 import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
 import {
+  cancelSortableDropTargetGroupRemeasure,
   clearSortableDraggedState,
   moveSortablePreview,
   remeasureSortableDropTargetGroup,
@@ -32,6 +33,7 @@ export type DomSortableRuntime = DomDraggableRuntime & {
       dropTarget: string;
     }) => void;
   }) => () => void;
+  onDispose?: (callback: () => void) => () => void;
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
 };
 
@@ -64,7 +66,7 @@ export function getSortableRegistry(
     snapshots: new Map(),
   };
 
-  runtime.subscribe({
+  const unsubscribe = runtime.subscribe({
     onDragStart: (event) => {
       snapshotSortableElement(registry, event.itemId);
     },
@@ -109,6 +111,18 @@ export function getSortableRegistry(
       });
     },
   });
+  let unsubscribeDispose: (() => void) | undefined;
+  const cleanupRegistry = (): void => {
+    unsubscribe();
+    unsubscribeDispose?.();
+    cancelSortableDropTargetGroupRemeasure(runtime);
+    registry.elements.clear();
+    registry.groups.clear();
+    registry.snapshots.clear();
+    sortableRegistries.delete(runtime);
+  };
+
+  unsubscribeDispose = runtime.onDispose?.(cleanupRegistry);
 
   sortableRegistries.set(runtime, registry);
 

@@ -3,7 +3,7 @@ import type {
   KeyboardConfiguration,
   PointerConfiguration,
 } from "../input/config.js";
-import type { DragModifier } from "../modifiers/types.js";
+import type { DragModifierInput } from "../modifiers/types.js";
 import type {
   TargetingAlgorithm,
   TargetingConstraint,
@@ -72,6 +72,6 @@ export type DragRuntimeConfigureInput = {
   keepOverlayOnDrop: boolean;
   lifecycleCallbacks: DragLifecycleCallbacks;
   keyboardConfiguration?: KeyboardConfiguration;
-  modifiers?: readonly DragModifier<any>[];
+  modifiers?: readonly DragModifierInput[];
   pointerConfiguration?: PointerConfiguration;
 };

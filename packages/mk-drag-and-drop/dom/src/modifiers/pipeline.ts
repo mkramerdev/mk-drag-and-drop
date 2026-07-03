@@ -3,17 +3,40 @@ import { getOverlayRect } from "../geometry/overlay.js";
 import type {
   ActiveDragModifier,
   DragModifier,
+  DragModifierInput,
   DragModifierSetupInput,
 } from "./types.js";
 
+export function createActiveModifier<State>(
+  modifier: DragModifier<State>,
+  setupInput: DragModifierSetupInput,
+): ActiveDragModifier;
+export function createActiveModifier(
+  modifier: DragModifierInput,
+  setupInput: DragModifierSetupInput,
+): ActiveDragModifier;
+export function createActiveModifier(
+  modifier: DragModifierInput,
+  setupInput: DragModifierSetupInput,
+): ActiveDragModifier {
+  const state = modifier.setup?.(setupInput);
+
+  return {
+    transform: (input) =>
+      modifier.transform({
+        ...input,
+        state,
+      }),
+  };
+}
+
 export function createActiveDragModifiers(input: {
-  modifiers: readonly DragModifier<any>[];
+  modifiers: readonly DragModifierInput[];
   setupInput: DragModifierSetupInput;
 }): ActiveDragModifier[] {
-  return input.modifiers.map((modifier) => ({
-    modifier,
-    state: modifier.setup?.(input.setupInput),
-  }));
+  return input.modifiers.map((modifier) =>
+    createActiveModifier(modifier, input.setupInput),
+  );
 }
 
 export function applyDragModifiers(input: {
@@ -33,7 +56,7 @@ export function applyDragModifiers(input: {
       pointerPosition,
     });
 
-    pointerPosition = activeModifier.modifier.transform({
+    pointerPosition = activeModifier.transform({
       itemId: input.itemId,
       group: input.group,
       sourceRect: input.sourceRect,
@@ -41,7 +64,6 @@ export function applyDragModifiers(input: {
       rawPointerPosition: input.rawPointerPosition,
       pointerPosition,
       overlayRect,
-      state: activeModifier.state,
     });
   }
 

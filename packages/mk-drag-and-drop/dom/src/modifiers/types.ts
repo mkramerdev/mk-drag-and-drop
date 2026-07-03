@@ -23,7 +23,17 @@ export type DragModifier<State = unknown> = {
   transform: (input: DragModifierTransformInput<State>) => DragPoint;
 };
 
+type DragModifierInputTransform = {
+  bivarianceHack(input: DragModifierTransformInput<unknown>): DragPoint;
+}["bivarianceHack"];
+
+export type DragModifierInput = {
+  setup?: (input: DragModifierSetupInput) => unknown;
+  transform: DragModifierInputTransform;
+};
+
 export type ActiveDragModifier = {
-  modifier: DragModifier<any>;
-  state: any;
+  transform: (
+    input: Omit<DragModifierTransformInput<unknown>, "state">,
+  ) => DragPoint;
 };

@@ -75,6 +75,11 @@ export class DropTargetRegistry {
     return true;
   }
 
+  clear(): void {
+    this.dropTargets.clear();
+    this.dropTargetElements = new WeakMap<HTMLElement, string>();
+  }
+
   remeasure(input?: RemeasureDropTargetsInput): void {
     if (input === undefined) {
       for (const dropTarget of this.dropTargets.values()) {

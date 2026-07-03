@@ -5,6 +5,11 @@ import type {
 
 type SortablePlacementSide = "before" | "after";
 
+const pendingRemeasureFrames = new WeakMap<
+  DomSortableRuntime,
+  Map<string, number>
+>();
+
 export function snapshotSortableElement(
   registry: SortableRegistry,
   itemId: string,
@@ -167,7 +172,7 @@ export function remeasureSortableDropTargetGroup(input: {
     return;
   }
 
-  input.runtime.remeasureDropTargets({ group });
+  scheduleSortableDropTargetGroupRemeasure(input.runtime, group);
 }
 
 export function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
@@ -176,4 +181,48 @@ export function getSortableItemChildren(listElement: HTMLElement): HTMLElement[]
       child instanceof HTMLElement &&
       child.dataset.dndSortableItem !== undefined,
   );
+}
+
+export function cancelSortableDropTargetGroupRemeasure(
+  runtime: DomSortableRuntime,
+): void {
+  const pendingFrames = pendingRemeasureFrames.get(runtime);
+
+  if (!pendingFrames) {
+    return;
+  }
+
+  for (const frameId of pendingFrames.values()) {
+    window.cancelAnimationFrame(frameId);
+  }
+
+  pendingRemeasureFrames.delete(runtime);
+}
+
+function scheduleSortableDropTargetGroupRemeasure(
+  runtime: DomSortableRuntime,
+  group: string,
+): void {
+  let pendingFrames = pendingRemeasureFrames.get(runtime);
+
+  if (!pendingFrames) {
+    pendingFrames = new Map();
+    pendingRemeasureFrames.set(runtime, pendingFrames);
+  }
+
+  if (pendingFrames.has(group)) {
+    return;
+  }
+
+  const frameId = window.requestAnimationFrame(() => {
+    pendingFrames?.delete(group);
+
+    if (pendingFrames?.size === 0) {
+      pendingRemeasureFrames.delete(runtime);
+    }
+
+    runtime.remeasureDropTargets({ group });
+  });
+
+  pendingFrames.set(group, frameId);
 }
