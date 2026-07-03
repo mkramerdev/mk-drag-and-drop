@@ -13,6 +13,7 @@ import {
     type HTMLAttributes,
     type RefCallback,
 } from "react";
+import type { DragRect } from "@mk-drag-and-drop/core";
 
 export type UseSortableOptions = {
     itemId: string;
@@ -36,6 +37,13 @@ type SortableSnapshot = {
     nextSibling: ChildNode | null;
 };
 
+type Point = {
+    x: number;
+    y: number;
+};
+
+type SortablePlacementSide = "before" | "after";
+
 type SortableDragRuntime = DragHandlerRuntime & {
     registerDropTarget: (
         itemId: string,
@@ -43,6 +51,9 @@ type SortableDragRuntime = DragHandlerRuntime & {
         group: string,
     ) => void;
     unregisterDropTarget: (itemId: string) => void;
+    pointerPosition: Point | null;
+    getCurrentDragRect: () => DragRect | null;
+    getDropTargetRect: (dropTargetId: string) => DragRect | null;
     subscribe: (subscription: {
         onDragStart?: (event: { itemId: string }) => void;
         onDragUpdate?: (event: {
@@ -134,10 +145,9 @@ function getSortableRegistry(runtime: SortableDragRuntime): SortableRegistry {
         },
         onDragUpdate: (event) => {
             if (
-                !shouldMoveSortablePreview({
+                !isSortablePreviewTarget({
                     draggedItemId: event.itemId,
                     activeDropTarget: event.activeDropTarget,
-                    previousDropTarget: event.previousDropTarget,
                 })
             ) {
                 return;
@@ -219,14 +229,12 @@ function snapshotSortableElement(
     });
 }
 
-function shouldMoveSortablePreview(input: {
+function isSortablePreviewTarget(input: {
     draggedItemId: string;
     activeDropTarget: string | null;
-    previousDropTarget: string | null;
 }): boolean {
     return (
         input.activeDropTarget !== null &&
-        input.activeDropTarget !== input.previousDropTarget &&
         input.activeDropTarget !== input.draggedItemId
     );
 }
@@ -247,11 +255,20 @@ function moveSortablePreview(input: {
     const draggedElement = input.registry.elements.get(input.draggedItemId);
     const targetElement = input.registry.elements.get(input.activeDropTarget);
     const listElement = draggedElement?.parentElement ?? targetElement?.parentElement;
+    const targetRect = input.runtime.getDropTargetRect(input.activeDropTarget);
+    const placement = targetRect
+        ? getSortablePreviewPlacement({
+            runtime: input.runtime,
+            draggedItemId: input.draggedItemId,
+            targetRect,
+        })
+        : null;
 
     if (
         !draggedElement ||
         !targetElement ||
         !listElement ||
+        !placement ||
         draggedElement.parentElement !== listElement ||
         targetElement.parentElement !== listElement
     ) {
@@ -270,7 +287,17 @@ function moveSortablePreview(input: {
         return;
     }
 
-    if (draggedIndex < targetIndex) {
+    if (
+        isSortablePreviewAlreadyPlaced({
+            draggedElement,
+            targetElement,
+            placement,
+        })
+    ) {
+        return;
+    }
+
+    if (placement === "after") {
         targetElement.after(draggedElement);
     } else {
         targetElement.before(draggedElement);
@@ -281,6 +308,39 @@ function moveSortablePreview(input: {
         runtime: input.runtime,
         itemId: input.draggedItemId,
     });
+}
+
+function getSortablePreviewPlacement(input: {
+    runtime: SortableDragRuntime;
+    draggedItemId: string;
+    targetRect: DragRect;
+}): SortablePlacementSide | null {
+    const draggedRect = input.runtime.getCurrentDragRect();
+    const remeasuredDraggedRect = input.runtime.getDropTargetRect(
+        input.draggedItemId,
+    );
+    const draggedHeight = remeasuredDraggedRect?.height ?? draggedRect?.height;
+    const draggedCenterY = draggedRect
+        ? draggedRect.top + (draggedHeight ?? draggedRect.height) / 2
+        : input.runtime.pointerPosition?.y;
+
+    if (draggedCenterY === undefined) {
+        return null;
+    }
+
+    return draggedCenterY < input.targetRect.top + input.targetRect.height / 2
+        ? "before"
+        : "after";
+}
+
+function isSortablePreviewAlreadyPlaced(input: {
+    draggedElement: HTMLElement;
+    targetElement: HTMLElement;
+    placement: SortablePlacementSide;
+}): boolean {
+    return input.placement === "before"
+        ? input.draggedElement.nextElementSibling === input.targetElement
+        : input.draggedElement.previousElementSibling === input.targetElement;
 }
 
 function restoreSortableSnapshot(

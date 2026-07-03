@@ -39,6 +39,7 @@ export function createDragHandler({
         }
 
         event.preventDefault();
+        event.stopPropagation();
 
         runtime.startDrag({
             itemId,

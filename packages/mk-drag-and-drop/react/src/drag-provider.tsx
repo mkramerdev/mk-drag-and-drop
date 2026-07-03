@@ -324,6 +324,12 @@ class DragRuntime {
         : null;
     }
 
+    getCurrentDragRect(): DragRect | null {
+      return this.pointerPosition
+        ? this.getCurrentDragRectAt(this.pointerPosition)
+        : null;
+    }
+
     remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
       if (input === undefined) {
         for (const dropTarget of this.dropTargets.values()) {
@@ -405,7 +411,7 @@ class DragRuntime {
 
     private getActiveDropTarget(pointerPosition: Point): string | null {
       const overlayRect = this.hasDragOverlay
-        ? this.getCurrentDragRect(pointerPosition)
+        ? this.getCurrentDragRectAt(pointerPosition)
         : null;
       const activeTarget = this.targetingAlgorithm({
         pointerPosition,
@@ -466,7 +472,7 @@ class DragRuntime {
       dropTarget.documentRect = measureDocumentRect(dropTarget.element);
     }
 
-    private getCurrentDragRect(pointerPosition: Point): DragRect | null {
+    private getCurrentDragRectAt(pointerPosition: Point): DragRect | null {
       if (!this.dragState) {
         return null;
       }
