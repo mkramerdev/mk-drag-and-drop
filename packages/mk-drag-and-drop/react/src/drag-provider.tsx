@@ -48,6 +48,7 @@ export type {
   DragStartEvent,
   DragState,
   DragUpdateEvent,
+  DropPlacement,
   DropEvent,
   KeyboardCommand,
   KeyboardConfiguration,

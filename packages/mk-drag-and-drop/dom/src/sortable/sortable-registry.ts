@@ -15,12 +15,28 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     itemId: string,
     element: HTMLElement,
     group: string,
+    options?: {
+      containerId?: string | null;
+      kind?: "item" | "container";
+    },
   ) => void;
   unregisterDropTarget: (itemId: string, element?: HTMLElement) => void;
+  getDropTargetRegistration: (
+    dropTargetId: string,
+    group?: string,
+    kind?: "item" | "container",
+  ) => {
+    id: string;
+    element: HTMLElement;
+    group: string;
+    containerId: string | null;
+    kind: "item" | "container";
+  } | null;
   subscribe: (subscription: {
     onDragStart?: (event: { itemId: string }) => void;
     onDragUpdate?: (event: {
       itemId: string;
+      pointerPosition: { x: number; y: number };
       activeDropTarget: string | null;
       previousDropTarget: string | null;
     }) => void;
@@ -85,17 +101,16 @@ export function getSortableRegistry(
         runtime,
         draggedItemId: event.itemId,
         activeDropTarget: event.activeDropTarget,
+        pointerPosition: event.pointerPosition,
       });
     },
     onDragEnd: (event) => {
-      if (event.dropTarget === null) {
-        if (restoreSortableSnapshot(registry, event.itemId)) {
-          remeasureSortableDropTargetGroup({
-            registry,
-            runtime,
-            itemId: event.itemId,
-          });
-        }
+      if (restoreSortableSnapshot(registry, event.itemId)) {
+        remeasureSortableDropTargetGroup({
+          registry,
+          runtime,
+          itemId: event.itemId,
+        });
       }
 
       clearSortableDraggedState(registry, event.itemId);
@@ -134,12 +149,16 @@ export function registerSortableElement(input: {
   runtime: DomSortableRuntime;
   itemId: string;
   group: string;
+  containerId?: string | null;
   element: HTMLElement;
 }): void {
   input.element.dataset.dndSortableItem = "true";
   input.registry.elements.set(input.itemId, input.element);
   input.registry.groups.set(input.itemId, input.group);
-  input.runtime.registerDropTarget(input.itemId, input.element, input.group);
+  input.runtime.registerDropTarget(input.itemId, input.element, input.group, {
+    containerId: input.containerId ?? null,
+    kind: "item",
+  });
 }
 
 export function unregisterSortableElement(input: {

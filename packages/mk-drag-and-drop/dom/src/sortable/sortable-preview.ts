@@ -43,6 +43,7 @@ export function moveSortablePreview(input: {
   runtime: DomSortableRuntime;
   draggedItemId: string;
   activeDropTarget: string | null;
+  pointerPosition: { x: number; y: number };
 }): void {
   if (
     input.activeDropTarget === null ||
@@ -52,33 +53,56 @@ export function moveSortablePreview(input: {
   }
 
   const draggedElement = input.registry.elements.get(input.draggedItemId);
-  const targetElement = input.registry.elements.get(input.activeDropTarget);
-  const listElement = draggedElement?.parentElement ?? targetElement?.parentElement;
+  const draggedGroup = input.registry.groups.get(input.draggedItemId);
 
-  if (
-    !draggedElement ||
-    !targetElement ||
-    !listElement ||
-    draggedElement.parentElement !== listElement ||
-    targetElement.parentElement !== listElement
-  ) {
+  if (!draggedElement || !draggedGroup) {
+    return;
+  }
+
+  const target = input.runtime.getDropTargetRegistration(
+    input.activeDropTarget,
+    draggedGroup,
+  );
+
+  if (!target) {
+    return;
+  }
+
+  if (target.kind === "container") {
+    moveSortablePreviewIntoContainer({
+      draggedElement,
+      targetElement: target.element,
+    });
+
+    remeasureSortableDropTargetGroup({
+      registry: input.registry,
+      runtime: input.runtime,
+      itemId: input.draggedItemId,
+    });
+    return;
+  }
+
+  const targetElement = target.element;
+  const listElement = targetElement.parentElement;
+
+  if (!listElement) {
     return;
   }
 
   const sortableElements = getSortableItemChildren(listElement);
-  const draggedIndex = sortableElements.indexOf(draggedElement);
+  const draggedIndex =
+    draggedElement.parentElement === listElement
+      ? sortableElements.indexOf(draggedElement)
+      : -1;
   const targetIndex = sortableElements.indexOf(targetElement);
   const placement = getSortablePreviewPlacement({
     draggedIndex,
     targetIndex,
+    targetElement,
+    pointerPosition: input.pointerPosition,
   });
 
-  if (
-    draggedIndex === -1 ||
-    targetIndex === -1 ||
-    draggedIndex === targetIndex ||
-    placement === null
-  ) {
+  if (targetIndex === -1 || placement === null) {
     return;
   }
 
@@ -108,7 +132,16 @@ export function moveSortablePreview(input: {
 export function getSortablePreviewPlacement(input: {
   draggedIndex: number;
   targetIndex: number;
+  targetElement: HTMLElement;
+  pointerPosition: { x: number; y: number };
 }): SortablePlacementSide | null {
+  if (input.draggedIndex === -1) {
+    return getPointerPlacementSide({
+      targetElement: input.targetElement,
+      pointerPosition: input.pointerPosition,
+    });
+  }
+
   if (input.targetIndex > input.draggedIndex) {
     return "after";
   }
@@ -136,7 +169,7 @@ export function restoreSortableSnapshot(
 ): boolean {
   const snapshot = registry.snapshots.get(itemId);
 
-  if (!snapshot || snapshot.element.parentElement !== snapshot.parent) {
+  if (!snapshot) {
     return false;
   }
 
@@ -181,6 +214,76 @@ export function getSortableItemChildren(listElement: HTMLElement): HTMLElement[]
       child instanceof HTMLElement &&
       child.dataset.dndSortableItem !== undefined,
   );
+}
+
+function moveSortablePreviewIntoContainer(input: {
+  draggedElement: HTMLElement;
+  targetElement: HTMLElement;
+}): void {
+  if (
+    input.draggedElement.parentElement === input.targetElement &&
+    input.draggedElement.nextElementSibling === null
+  ) {
+    return;
+  }
+
+  input.targetElement.append(input.draggedElement);
+}
+
+function getPointerPlacementSide(input: {
+  targetElement: HTMLElement;
+  pointerPosition: { x: number; y: number };
+}): SortablePlacementSide {
+  const rect = input.targetElement.getBoundingClientRect();
+  const axis = getSortableLayoutAxis(input.targetElement);
+
+  if (axis === "horizontal") {
+    return input.pointerPosition.x >= rect.left + rect.width / 2
+      ? "after"
+      : "before";
+  }
+
+  return input.pointerPosition.y >= rect.top + rect.height / 2
+    ? "after"
+    : "before";
+}
+
+function getSortableLayoutAxis(
+  targetElement: HTMLElement,
+): "horizontal" | "vertical" {
+  const parent = targetElement.parentElement;
+
+  if (!parent) {
+    return "vertical";
+  }
+
+  const childRects = getSortableItemChildren(parent).map((child) =>
+    child.getBoundingClientRect(),
+  );
+
+  if (childRects.length >= 2) {
+    const horizontalSpread = getCenterSpread(childRects, "x");
+    const verticalSpread = getCenterSpread(childRects, "y");
+
+    return horizontalSpread > verticalSpread ? "horizontal" : "vertical";
+  }
+
+  const targetRect = targetElement.getBoundingClientRect();
+
+  return targetRect.height > targetRect.width ? "horizontal" : "vertical";
+}
+
+function getCenterSpread(
+  rects: DOMRect[],
+  axis: "x" | "y",
+): number {
+  const centers = rects.map((rect) =>
+    axis === "x"
+      ? rect.left + rect.width / 2
+      : rect.top + rect.height / 2,
+  );
+
+  return Math.max(...centers) - Math.min(...centers);
 }
 
 export function cancelSortableDropTargetGroupRemeasure(

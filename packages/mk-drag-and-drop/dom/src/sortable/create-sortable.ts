@@ -14,6 +14,7 @@ export type CreateDomSortableInput = {
   runtime: DomSortableRuntime;
   itemId: string;
   group?: string;
+  containerId?: string | null;
   getElement: () => HTMLElement | null;
 };
 
@@ -72,6 +73,7 @@ export function createDomSortable(
         runtime: input.runtime,
         itemId: input.itemId,
         group,
+        containerId: input.containerId ?? null,
         element,
       });
       registeredElement = element;

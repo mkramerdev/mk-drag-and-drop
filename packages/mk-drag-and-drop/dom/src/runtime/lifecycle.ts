@@ -1,5 +1,8 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
-import type { SortablePlacement } from "./drop-target-registry.js";
+import type {
+  DropPlacement,
+  SortablePlacement,
+} from "./drop-target-registry.js";
 
 export type DragStartEvent = {
   itemId: string;
@@ -25,6 +28,7 @@ export type DropEvent = {
 };
 
 export type DragLifecycleHelpers = {
+  getDropPlacement: (itemId?: string) => DropPlacement | null;
   getSortablePlacement: (itemId: string) => SortablePlacement | null;
   getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };

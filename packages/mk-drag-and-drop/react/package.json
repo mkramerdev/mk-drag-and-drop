@@ -22,6 +22,10 @@
       "types": "./dist/hooks/use-draggable.d.ts",
       "import": "./dist/hooks/use-draggable.js"
     },
+    "./use-drop-container": {
+      "types": "./dist/hooks/use-drop-container.d.ts",
+      "import": "./dist/hooks/use-drop-container.js"
+    },
     "./use-droppable": {
       "types": "./dist/hooks/use-droppable.d.ts",
       "import": "./dist/hooks/use-droppable.js"
@@ -41,7 +45,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
-    "lint": "eslint \"src/**/*.{ts,tsx}\""
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@mk-drag-and-drop/dom": "workspace:*"
@@ -52,9 +58,17 @@
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.6.4",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "eslint": "^8.57.0",
+    "jsdom": "^24.1.3",
     "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vitest": "^2.1.9",
     "typescript": "5.5.4"
   }
 }

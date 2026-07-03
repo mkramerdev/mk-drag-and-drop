@@ -14,6 +14,7 @@ import { DragContext } from "../drag-context.js";
 export type UseSortableOptions = {
   itemId: string;
   group?: string;
+  containerId?: string | null;
 };
 
 export type UseSortableResult = HTMLAttributes<HTMLDivElement> & {
@@ -25,6 +26,7 @@ const defaultSortableGroup = "default";
 export function useSortable({
   itemId,
   group = defaultSortableGroup,
+  containerId = null,
 }: UseSortableOptions): UseSortableResult {
   const runtime = useContext(DragContext);
   const nodeRef = useRef<HTMLDivElement | null>(null);
@@ -41,9 +43,10 @@ export function useSortable({
         runtime,
         itemId,
         group,
+        containerId,
         getElement,
       }),
-    [getElement, group, itemId, keyboardDragEnabled, runtime],
+    [containerId, getElement, group, itemId, keyboardDragEnabled, runtime],
   );
 
   const setNodeRef = useCallback(
