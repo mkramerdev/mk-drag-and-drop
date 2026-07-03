@@ -547,13 +547,14 @@ function shouldIncludeContainerCandidate(input: {
     return false;
   }
 
-  const childItemCandidates = input.itemCandidates.filter(
+  const hasCurrentChildItem = input.itemCandidates.some(
     (itemCandidate) =>
-      itemCandidate.registration.containerId ===
-      input.containerCandidate.registration.id,
+      itemCandidate.registration.element.isConnected &&
+      itemCandidate.registration.element.parentElement ===
+        input.containerCandidate.registration.element,
   );
 
-  return childItemCandidates.length === 0;
+  return !hasCurrentChildItem;
 }
 
 function isPointInsideRect(point: DragPoint, rect: DragRect): boolean {

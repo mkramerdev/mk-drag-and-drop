@@ -16,7 +16,10 @@ import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
 import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
-import type { TargetingConstraint } from "@mk-drag-and-drop/dom";
+import {
+  getDistanceToRect,
+  type TargetingConstraint,
+} from "@mk-drag-and-drop/dom";
 
 type ParentItem = {
   parentId: string;
@@ -55,23 +58,41 @@ const groupedChildGroup = "grouped-children";
 const groupedDropTargetAttribute = "data-grouped-drop-target-id";
 const groupedActiveDropTargetAttribute = "data-grouped-active-drop-target";
 const groupedInsideTargetPrefix = "grouped:children:inside:";
+const groupedChildTargetPrefix = "grouped:children:";
+const groupedInsideTargetMaxYDistance = 0;
+const groupedChildLineTargetMaxYDistance = 24;
 
 const groupedTargetingConstraint: TargetingConstraint = ({
   pointerPosition,
   dropTarget,
 }) => {
-  if (!dropTarget.dropTargetKey.startsWith(groupedInsideTargetPrefix)) {
-    return true;
+  const targetId = dropTarget.dropTargetKey;
+
+  if (targetId.startsWith(groupedInsideTargetPrefix)) {
+    const distance = getDistanceToRect(
+      pointerPosition,
+      dropTarget.dropTargetRect,
+    );
+
+    return distance.x === 0 && distance.y <= groupedInsideTargetMaxYDistance;
   }
 
-  const rect = dropTarget.dropTargetRect;
+  const parsedTarget = parseChildDropTargetId(targetId);
 
-  return (
-    pointerPosition.x >= rect.left &&
-    pointerPosition.x <= rect.right &&
-    pointerPosition.y >= rect.top &&
-    pointerPosition.y <= rect.bottom
-  );
+  if (parsedTarget?.type === "index") {
+    const distance = getDistanceToRect(
+      pointerPosition,
+      dropTarget.dropTargetRect,
+    );
+
+    return distance.x === 0 && distance.y <= groupedChildLineTargetMaxYDistance;
+  }
+
+  if (targetId.startsWith(groupedChildTargetPrefix)) {
+    return false;
+  }
+
+  return true;
 };
 
 const initialParentsById: Record<string, ParentItem> = {
@@ -233,7 +254,7 @@ export function GroupedExample(): ReactElement {
   return (
     <DragProvider
       targetingConstraint={groupedTargetingConstraint}
-      pointerConfiguration={{ activationDelay: 10000 }}
+      pointerConfiguration={{ activationDelay: 100 }}
       dragOverlay={() => (
         <GroupedDragOverlay
           overlayDrag={overlayDrag}

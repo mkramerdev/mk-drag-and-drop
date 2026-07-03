@@ -1,6 +1,10 @@
 import type { DragRect } from "../geometry/rects.js";
 import { rectToDragRect } from "../geometry/rects.js";
-import type { DragModifier } from "./types.js";
+import type { DragModifier, DragModifierSetupInput } from "./types.js";
+
+export type RestrictToContainerResolver = (
+  input: DragModifierSetupInput,
+) => HTMLElement | null;
 
 export function lockToXAxis(): DragModifier {
   return {
@@ -21,11 +25,11 @@ export function lockToYAxis(): DragModifier {
 }
 
 export function restrictToContainer(
-  getContainer: () => HTMLElement | null,
+  getContainer: RestrictToContainerResolver,
 ): DragModifier<DragRect | null> {
   return {
-    setup: () => {
-      const container = getContainer();
+    setup: (input) => {
+      const container = getContainer(input);
 
       return container
         ? rectToDragRect(container.getBoundingClientRect())

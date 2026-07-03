@@ -1,5 +1,8 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
-import { getOverlayRect } from "../geometry/overlay.js";
+import {
+  getOverlayRect,
+  type DragOverlayMeasurement,
+} from "../geometry/overlay.js";
 import type {
   ActiveDragModifier,
   DragModifier,
@@ -46,6 +49,7 @@ export function applyDragModifiers(input: {
   sourceRect: DragRect;
   initialPointerPosition: DragPoint;
   rawPointerPosition: DragPoint;
+  overlayMeasurement?: DragOverlayMeasurement | null;
 }): DragPoint {
   let pointerPosition = input.rawPointerPosition;
 
@@ -54,6 +58,7 @@ export function applyDragModifiers(input: {
       sourceRect: input.sourceRect,
       initialPointerPosition: input.initialPointerPosition,
       pointerPosition,
+      overlayMeasurement: input.overlayMeasurement,
     });
 
     pointerPosition = activeModifier.transform({

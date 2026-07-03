@@ -2,6 +2,7 @@ import type {
   KeyboardConfiguration,
   PointerConfiguration,
 } from "../input/config.js";
+import { rectToDragRect } from "../geometry/rects.js";
 import type { DragModifierInput } from "../modifiers/types.js";
 import {
   DragRuntime,
@@ -155,6 +156,7 @@ export function createDragController(
 
   function renderOverlay(overlayState: DragOverlayRenderState | null): void {
     if (disposed || overlayState === null || !currentOptions.dragOverlay) {
+      runtime.setOverlayRect(null);
       removeOverlay();
       return;
     }
@@ -166,6 +168,7 @@ export function createDragController(
     });
 
     if (!overlayElement) {
+      runtime.setOverlayRect(null);
       removeOverlay();
       return;
     }
@@ -186,6 +189,9 @@ export function createDragController(
     wrapper.style.pointerEvents = "none";
     wrapper.style.zIndex = "9999";
     wrapper.replaceChildren(overlayElement);
+    runtime.setOverlayRect(
+      rectToDragRect(overlayElement.getBoundingClientRect()),
+    );
   }
 
   function getOverlayWrapper(overlayRoot: HTMLElement): HTMLElement {

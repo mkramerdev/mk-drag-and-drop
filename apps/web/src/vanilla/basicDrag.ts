@@ -5,6 +5,7 @@ import {
   createDragHandle,
   maxDistanceToRect,
   pointerToRectDistance,
+  restrictToContainer,
   type DragController,
   type DragControllerOverlayInput,
   type DragRect,
@@ -43,6 +44,9 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   const controller = createDragController({
     targetingAlgorithm: pointerToRectDistance,
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
+    modifiers: [
+      restrictToContainer(({ group }) => (group === basicGroup ? root : null)),
+    ],
     keepOverlayOnDrop: true,
     dragOverlay: createDragOverlay,
     onDragStart() {

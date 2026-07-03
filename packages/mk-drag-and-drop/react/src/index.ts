@@ -22,6 +22,7 @@ export {
   type KeyboardCommand,
   type KeyboardConfiguration,
   type PointerConfiguration,
+  type ReactRestrictToContainerInput,
   type RemeasureDropTargetsInput,
   type SortablePlacement,
 } from "./drag-provider.js";

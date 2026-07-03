@@ -3,6 +3,7 @@ import type {
   SortableRegistry,
   SortableSnapshot,
 } from "./sortable-registry.js";
+import { restoreSortableDraggedAttribute } from "./sortable-registry.js";
 
 type SortablePlacementSide = "before" | "after";
 
@@ -208,7 +209,11 @@ export function clearSortableDraggedState(
     registry.elements.get(itemId) ?? registry.snapshots.get(itemId)?.element;
 
   if (element) {
-    delete element.dataset.dndDragged;
+    restoreSortableDraggedAttribute({
+      registry,
+      itemId,
+      element,
+    });
   }
 }
 

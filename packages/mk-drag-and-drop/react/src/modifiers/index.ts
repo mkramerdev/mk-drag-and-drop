@@ -1,2 +1,5 @@
 export { lockToXAxis, lockToYAxis } from "@mk-drag-and-drop/dom";
-export { restrictToContainer } from "./restrict-to-container.js";
+export {
+  restrictToContainer,
+  type ReactRestrictToContainerInput,
+} from "./restrict-to-container.js";

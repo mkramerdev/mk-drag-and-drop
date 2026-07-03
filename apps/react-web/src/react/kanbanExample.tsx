@@ -1,7 +1,17 @@
-import { useState, type ReactElement } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import { GripVertical } from "lucide-react";
 
-import { DragProvider } from "@mk-drag-and-drop/react/drag-provider";
+import {
+  DragProvider,
+  restrictToContainer,
+} from "@mk-drag-and-drop/react/drag-provider";
+import { composeRefs } from "@mk-drag-and-drop/react/compose-refs";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useDropContainer } from "@mk-drag-and-drop/react/use-drop-container";
 import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
@@ -93,16 +103,26 @@ const initialKanbanState: KanbanState = {
 };
 
 export function KanbanExample(): ReactElement {
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const [kanbanState, setKanbanState] = useState<KanbanState>(
     () => initialKanbanState,
   );
   const [overlayDrag, setOverlayDrag] = useState<KanbanOverlayDrag | null>(
     null,
   );
+  const modifiers = useMemo(
+    () => [
+      restrictToContainer(({ group }) =>
+        group === kanbanCardGroup ? boardRef.current : null,
+      ),
+    ],
+    [],
+  );
 
   return (
     <DragProvider
       targetingAlgorithm={centerToCenter}
+      modifiers={modifiers}
       dragOverlay={() => (
         <KanbanDragOverlay overlayDrag={overlayDrag} kanbanState={kanbanState} />
       )}
@@ -139,7 +159,11 @@ export function KanbanExample(): ReactElement {
         });
       }}
     >
-      <KanbanBoardView kanbanState={kanbanState} overlayDrag={overlayDrag} />
+      <KanbanBoardView
+        kanbanState={kanbanState}
+        overlayDrag={overlayDrag}
+        boardRef={boardRef}
+      />
     </DragProvider>
   );
 }
@@ -192,19 +216,30 @@ function KanbanDragOverlay({
 function KanbanBoardView({
   kanbanState,
   overlayDrag,
+  boardRef,
 }: {
   kanbanState: KanbanState;
   overlayDrag: KanbanOverlayDrag | null;
+  boardRef: RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const boardContainer = useDropContainer({
     containerId: boardContainerId,
     group: kanbanColumnGroup,
   });
+  const { ref: boardContainerRef, ...boardContainerProps } = boardContainer;
+  const composedBoardRef = useMemo(
+    () => composeRefs(boardContainerRef, boardRef),
+    [boardContainerRef, boardRef],
+  );
 
   return (
     <section className="examplePanel kanbanExamplePanel">
       <h2 className="exampleTitle">Kanban</h2>
-      <div {...boardContainer} className="kanbanBoard">
+      <div
+        {...boardContainerProps}
+        ref={composedBoardRef}
+        className="kanbanBoard"
+      >
         {kanbanState.columns.map((column) => (
           <KanbanColumnView
             key={column.id}

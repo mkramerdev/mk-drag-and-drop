@@ -54,9 +54,16 @@ export type DomSortableRuntime = DomDraggableRuntime & {
 };
 
 export type SortableRegistry = {
+  attributeSnapshots: Map<string, SortableAttributeSnapshot>;
   elements: Map<string, HTMLElement>;
   groups: Map<string, string>;
   snapshots: Map<string, SortableSnapshot>;
+};
+
+export type SortableAttributeSnapshot = {
+  element: HTMLElement;
+  sortableItem: string | null;
+  dragged: string | null;
 };
 
 export type SortableSnapshot = {
@@ -79,6 +86,7 @@ export function getSortableRegistry(
   }
 
   const registry: SortableRegistry = {
+    attributeSnapshots: new Map(),
     elements: new Map(),
     groups: new Map(),
     snapshots: new Map(),
@@ -135,6 +143,7 @@ export function getSortableRegistry(
     cancelSortableDropTargetGroupRemeasure(runtime);
     registry.elements.clear();
     registry.groups.clear();
+    registry.attributeSnapshots.clear();
     registry.snapshots.clear();
     sortableRegistries.delete(runtime);
   };
@@ -154,7 +163,17 @@ export function registerSortableElement(input: {
   containerId?: string | null;
   element: HTMLElement;
 }): void {
-  input.element.dataset.dndSortableItem = "true";
+  const existingSnapshot = input.registry.attributeSnapshots.get(input.itemId);
+
+  if (!existingSnapshot || existingSnapshot.element !== input.element) {
+    input.registry.attributeSnapshots.set(input.itemId, {
+      element: input.element,
+      sortableItem: input.element.getAttribute("data-dnd-sortable-item"),
+      dragged: input.element.getAttribute("data-dnd-dragged"),
+    });
+  }
+
+  input.element.setAttribute("data-dnd-sortable-item", "true");
   input.registry.elements.set(input.itemId, input.element);
   input.registry.groups.set(input.itemId, input.group);
   input.runtime.registerDropTarget(input.itemId, input.element, input.group, {
@@ -179,7 +198,62 @@ export function unregisterSortableElement(input: {
   }
 
   if (input.element) {
-    delete input.element.dataset.dndSortableItem;
-    delete input.element.dataset.dndDragged;
+    restoreSortableInternalAttributes({
+      registry: input.registry,
+      itemId: input.itemId,
+      element: input.element,
+    });
   }
+}
+
+export function restoreSortableInternalAttributes(input: {
+  registry: SortableRegistry;
+  itemId: string | null;
+  element: HTMLElement;
+}): void {
+  const snapshot = input.itemId
+    ? input.registry.attributeSnapshots.get(input.itemId)
+    : null;
+
+  restoreAttribute(
+    input.element,
+    "data-dnd-sortable-item",
+    snapshot?.element === input.element ? snapshot.sortableItem : null,
+  );
+  restoreAttribute(
+    input.element,
+    "data-dnd-dragged",
+    snapshot?.element === input.element ? snapshot.dragged : null,
+  );
+
+  if (input.itemId) {
+    input.registry.attributeSnapshots.delete(input.itemId);
+  }
+}
+
+export function restoreSortableDraggedAttribute(input: {
+  registry: SortableRegistry;
+  itemId: string;
+  element: HTMLElement;
+}): void {
+  const snapshot = input.registry.attributeSnapshots.get(input.itemId);
+
+  restoreAttribute(
+    input.element,
+    "data-dnd-dragged",
+    snapshot?.element === input.element ? snapshot.dragged : null,
+  );
+}
+
+function restoreAttribute(
+  element: HTMLElement,
+  attribute: string,
+  value: string | null,
+): void {
+  if (value === null) {
+    element.removeAttribute(attribute);
+    return;
+  }
+
+  element.setAttribute(attribute, value);
 }

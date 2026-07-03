@@ -246,6 +246,26 @@ describe("createDomSortable", () => {
     expect(runtime.getDropTargetRect("a")).toBeNull();
   });
 
+  it("restores prior internal sortable attribute values on behavior cleanup", () => {
+    const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
+    item.setAttribute("data-dnd-sortable-item", "custom-sortable");
+    item.setAttribute("data-dnd-dragged", "custom-dragged");
+    const sortable = createDomSortable({
+      runtime,
+      itemId: "a",
+      group: "rows",
+      getElement: () => item,
+    });
+
+    sortable.setElement(item);
+    expect(item.getAttribute("data-dnd-sortable-item")).toBe("true");
+
+    sortable.cleanup();
+
+    expect(item.getAttribute("data-dnd-sortable-item")).toBe("custom-sortable");
+    expect(item.getAttribute("data-dnd-dragged")).toBe("custom-dragged");
+  });
+
   it("returns same-container drop placement", () => {
     const { elements, behaviors } = createSortableList("list");
     const [a, b, c] = elements;
@@ -379,6 +399,43 @@ describe("createDomSortable", () => {
       sourceContainerId: "left",
       containerId: "right",
       previousItemId: "b",
+      nextItemId: null,
+    });
+  });
+
+  it("targets a source container after its only item preview moved out", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b"],
+    });
+    let placement: DropPlacement | null = null;
+    configureRuntimeCallbacks({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getDropPlacement(itemId);
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 18 });
+    raf.flush();
+
+    expect(Array.from(right.container.children)).toEqual([right.b, left.a]);
+    expect(Array.from(left.container.children)).toEqual([]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 25, clientY: 100 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("left");
+    expect(Array.from(left.container.children)).toEqual([left.a]);
+    expect(Array.from(right.container.children)).toEqual([right.b]);
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 25, clientY: 100 });
+
+    expect(placement).toEqual({
+      itemId: "a",
+      dropTarget: "left",
+      sourceContainerId: "left",
+      containerId: "left",
+      previousItemId: null,
       nextItemId: null,
     });
   });

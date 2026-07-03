@@ -48,4 +48,31 @@ describe("React utilities", () => {
 
     expect(modifier.transform(transformInput)).toEqual({ x: 90, y: 90 });
   });
+
+  it("restrictToContainer delegates resolver inputs to the DOM modifier", () => {
+    const container = document.createElement("div");
+    stubBoundingClientRect(
+      container,
+      createRect({ left: 0, top: 0, width: 100, height: 100 }),
+    );
+    const setupInput = {
+      itemId: "item-1",
+      group: "items",
+      sourceRect: createRect({ width: 20, height: 20 }),
+      initialPointerPosition: { x: 10, y: 10 },
+    };
+    const resolver = vi.fn(() => container);
+    const modifier = restrictToContainer(resolver);
+    const state = modifier.setup?.(setupInput) ?? null;
+    const transformInput: DragModifierTransformInput<typeof state> = {
+      ...setupInput,
+      rawPointerPosition: { x: 120, y: 120 },
+      pointerPosition: { x: 120, y: 120 },
+      overlayRect: createRect({ left: 110, top: 110, width: 20, height: 20 }),
+      state,
+    };
+
+    expect(resolver).toHaveBeenCalledWith(setupInput);
+    expect(modifier.transform(transformInput)).toEqual({ x: 90, y: 90 });
+  });
 });

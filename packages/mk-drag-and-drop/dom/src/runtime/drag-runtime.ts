@@ -1,6 +1,10 @@
 import type { DragRect } from "../geometry/rects.js";
 import { measureDomElement } from "../geometry/measurement.js";
-import { getOverlayRect } from "../geometry/overlay.js";
+import {
+  getOverlayMeasurement,
+  getOverlayRect,
+  type DragOverlayMeasurement,
+} from "../geometry/overlay.js";
 import {
   defaultKeyboardConfiguration,
   normalizeKeyboardConfiguration,
@@ -71,6 +75,7 @@ type DragSession =
       sourceRect: DragRect;
       sourceContainerId: string | null;
       sourceSortablePlacement: SortablePlacement | null;
+      overlayMeasurement: DragOverlayMeasurement | null;
       startPointerPosition: Point;
       rawPointerPosition: Point;
       pointerPosition: Point;
@@ -301,6 +306,7 @@ export class DragRuntime {
       sourceRect: session.sourceRect,
       initialPointerPosition: session.startPointerPosition,
       rawPointerPosition,
+      overlayMeasurement: session.overlayMeasurement,
     });
 
     const nextSession: DraggingSession = {
@@ -471,6 +477,38 @@ export class DragRuntime {
       : null;
   }
 
+  setOverlayRect(overlayRect: DragRect | null): void {
+    const session = this.getDraggingSession();
+
+    if (!session) {
+      return;
+    }
+
+    const overlayMeasurement = overlayRect
+      ? getOverlayMeasurement({
+          sourceRect: session.sourceRect,
+          initialPointerPosition: session.startPointerPosition,
+          pointerPosition: session.pointerPosition,
+          overlayRect,
+        })
+      : null;
+
+    if (
+      areOverlayMeasurementsEqual(
+        session.overlayMeasurement,
+        overlayMeasurement,
+      )
+    ) {
+      return;
+    }
+
+    this.setSession({
+      ...session,
+      overlayMeasurement,
+    });
+    this.updatePointerNow(session.rawPointerPosition);
+  }
+
   remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
     this.dropTargetRegistry.remeasure(input);
   }
@@ -551,6 +589,7 @@ export class DragRuntime {
       sourceRect: input.sourceRect,
       sourceContainerId,
       sourceSortablePlacement,
+      overlayMeasurement: null,
       startPointerPosition: rawPointerPosition,
       rawPointerPosition,
       pointerPosition: effectivePointerPosition,
@@ -828,6 +867,7 @@ export class DragRuntime {
       sourceRect: session.sourceRect,
       initialPointerPosition: session.startPointerPosition,
       pointerPosition,
+      overlayMeasurement: session.overlayMeasurement,
     });
   }
 
@@ -904,6 +944,30 @@ export class DragRuntime {
       subscription.onDrop?.(event);
     }
   }
+}
+
+function areOverlayMeasurementsEqual(
+  previous: DragOverlayMeasurement | null,
+  next: DragOverlayMeasurement | null,
+): boolean {
+  if (previous === next) {
+    return true;
+  }
+
+  if (!previous || !next) {
+    return false;
+  }
+
+  return (
+    areNearlyEqual(previous.offsetX, next.offsetX) &&
+    areNearlyEqual(previous.offsetY, next.offsetY) &&
+    areNearlyEqual(previous.width, next.width) &&
+    areNearlyEqual(previous.height, next.height)
+  );
+}
+
+function areNearlyEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.5;
 }
 
 export function createDragRuntime(

@@ -10,6 +10,7 @@ import {
 
 import {
     DragProvider,
+    lockToYAxis,
     type DragOverlayPhase,
 } from "@mk-drag-and-drop/react/drag-provider";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
@@ -26,6 +27,7 @@ const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
 const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
+const sortableModifiers = [lockToYAxis()] as const;
 
 export function SortableList(): ReactElement {
   const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export function SortableList(): ReactElement {
   return (
     <DragProvider
       keepOverlayOnDrop
+      modifiers={sortableModifiers}
       targetingAlgorithm={centerToCenter}
       targetingConstraint={sortableTargetingConstraint}
       onDragStart={({ itemId }) => {

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import {
   type DragLifecycleCallbacks,
   type DragModifierInput,
   type DragOverlayRenderState,
+  type DragRect,
   type DragStartEvent,
   type DragUpdateEvent,
   type DropEvent,
@@ -34,6 +36,7 @@ export {
   lockToXAxis,
   lockToYAxis,
   restrictToContainer,
+  type ReactRestrictToContainerInput,
 } from "./modifiers/index.js";
 export type { DragOverlayInput } from "./drag-overlay.js";
 export type {
@@ -173,11 +176,21 @@ export function DragProvider({
     setOverlayState(null);
   }
 
+  const handleOverlayRectChange = useCallback(
+    (overlayRect: DragRect | null): void => {
+      runtimeRef.current?.setOverlayRect(overlayRect);
+    },
+    [],
+  );
+
   return (
     <DragContext value={runtimeRef.current}>
       {children}
       {dragOverlay && overlayState ? (
-        <DragOverlay dragState={overlayState.dragState}>
+        <DragOverlay
+          dragState={overlayState.dragState}
+          onOverlayRectChange={handleOverlayRectChange}
+        >
           {dragOverlay({
             phase: overlayState.phase,
             finish: finishOverlay,
