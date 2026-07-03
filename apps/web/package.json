@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.ts\""
   },
+  "dependencies": {
+    "@mk-drag-and-drop/dom": "workspace:*"
+  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",

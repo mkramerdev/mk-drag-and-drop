@@ -139,7 +139,7 @@ export function KanbanExample(): ReactElement {
         });
       }}
     >
-      <KanbanBoardView kanbanState={kanbanState} />
+      <KanbanBoardView kanbanState={kanbanState} overlayDrag={overlayDrag} />
     </DragProvider>
   );
 }
@@ -191,8 +191,10 @@ function KanbanDragOverlay({
 
 function KanbanBoardView({
   kanbanState,
+  overlayDrag,
 }: {
   kanbanState: KanbanState;
+  overlayDrag: KanbanOverlayDrag | null;
 }): ReactElement {
   const boardContainer = useDropContainer({
     containerId: boardContainerId,
@@ -208,6 +210,7 @@ function KanbanBoardView({
             key={column.id}
             column={column}
             cardsById={kanbanState.cardsById}
+            overlayDrag={overlayDrag}
           />
         ))}
       </div>
@@ -218,9 +221,11 @@ function KanbanBoardView({
 function KanbanColumnView({
   column,
   cardsById,
+  overlayDrag,
 }: {
   column: KanbanColumn;
   cardsById: Record<string, KanbanCard>;
+  overlayDrag: KanbanOverlayDrag | null;
 }): ReactElement {
   const columnSortable = useSortable({
     itemId: column.id,
@@ -234,7 +239,14 @@ function KanbanColumnView({
   const handle = useDragHandle<HTMLButtonElement>();
 
   return (
-    <section {...columnSortable} className="kanbanColumn">
+    <section
+      {...columnSortable}
+      className={
+        overlayDrag?.type === "column" && overlayDrag.itemId === column.id
+          ? "kanbanColumn kanbanColumnDragging"
+          : "kanbanColumn"
+      }
+    >
       <header className="kanbanColumnHeader">
         <button
           {...handle}
@@ -252,7 +264,14 @@ function KanbanColumnView({
           const card = cardsById[cardId];
 
           return card ? (
-            <KanbanCardView key={card.id} card={card} columnId={column.id} />
+            <KanbanCardView
+              key={card.id}
+              card={card}
+              columnId={column.id}
+              isDragging={
+                overlayDrag?.type === "card" && overlayDrag.itemId === card.id
+              }
+            />
           ) : null;
         })}
       </div>
@@ -263,9 +282,11 @@ function KanbanColumnView({
 function KanbanCardView({
   card,
   columnId,
+  isDragging,
 }: {
   card: KanbanCard;
   columnId: string;
+  isDragging: boolean;
 }): ReactElement {
   const sortable = useSortable({
     itemId: card.id,
@@ -274,7 +295,10 @@ function KanbanCardView({
   });
 
   return (
-    <article {...sortable} className="kanbanCard">
+    <article
+      {...sortable}
+      className={isDragging ? "kanbanCard kanbanCardDragging" : "kanbanCard"}
+    >
       <span className="kanbanCardLabel">{card.label}</span>
       <span className="kanbanCardTitle">{card.title}</span>
     </article>

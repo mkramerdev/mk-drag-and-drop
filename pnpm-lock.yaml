@@ -81,6 +81,10 @@ importers:
         version: 5.1.4
 
   apps/web:
+    dependencies:
+      '@mk-drag-and-drop/dom':
+        specifier: workspace:*
+        version: link:../../packages/mk-drag-and-drop/dom
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*

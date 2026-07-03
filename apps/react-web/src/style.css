@@ -102,11 +102,11 @@ button {
   opacity: 0;
 }
 
-.dragListDropTarget[data-dnd-active-drop-target="true"] .dragListDropIndicator {
+.dragListDropTarget[data-dropzone-line-active="true"] .dragListDropIndicator {
   opacity: 1;
 }
 
-.sortableList .dragListItem[data-dnd-active-drop-target="true"] {
+.sortableList .dragListItem[data-sortable-list-active-drop-target="true"] {
   background-color: #166534;
 }
 
@@ -220,7 +220,7 @@ button {
   cursor: grabbing;
 }
 
-.sortableItem[data-dnd-dragged="true"] {
+.sortableItemDragging {
   opacity: 0.4;
 }
 
@@ -235,7 +235,7 @@ button {
   flex-direction: column;
 }
 
-.droppableContainer[data-dnd-active-drop-target="true"] {
+.droppableContainer[data-basic-active-drop-target="true"] {
   border-color: #38bdf8;
 }
 
@@ -280,7 +280,7 @@ button {
   opacity: 0;
 }
 
-.dropzoneListLine[data-dnd-active-drop-target="true"] .dropzoneListLineIndicator {
+.dropzoneListLine[data-dropzone-line-active="true"] .dropzoneListLineIndicator {
   opacity: 1;
 }
 
@@ -323,7 +323,7 @@ button {
   border-radius: 0.5rem;
 }
 
-.treeRow[data-dnd-active-drop-target="true"] {
+.treeRow[data-tree-active-drop-target="true"] {
   border-color: #38bdf8;
   background-color: #164e63;
 }
@@ -390,7 +390,7 @@ button {
   opacity: 0;
 }
 
-.treeDropzoneLine[data-dnd-active-drop-target="true"] .treeDropzoneLineIndicator {
+.treeDropzoneLine[data-tree-active-drop-target="true"] .treeDropzoneLineIndicator {
   opacity: 1;
 }
 
@@ -451,7 +451,7 @@ button {
   box-sizing: border-box;
 }
 
-.groupedParentRow[data-dnd-active-drop-target="true"] {
+.groupedParentRow[data-grouped-active-drop-target="true"] {
   background-color: rgba(34, 197, 94, 0.16);
   box-shadow: inset 0 0 0 1px #22c55e;
 }
@@ -554,7 +554,7 @@ button {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
 }
 
-.groupedChildDropzoneLine[data-dnd-active-drop-target="true"] .groupedChildDropzoneIndicator {
+.groupedChildDropzoneLine[data-grouped-active-drop-target="true"] .groupedChildDropzoneIndicator {
   opacity: 1;
 }
 
@@ -624,7 +624,7 @@ button {
   box-sizing: border-box;
 }
 
-.kanbanColumn[data-dnd-dragged="true"] {
+.kanbanColumnDragging {
   opacity: 0.5;
 }
 
@@ -714,7 +714,7 @@ button {
   cursor: grabbing;
 }
 
-.kanbanCard[data-dnd-dragged="true"] {
+.kanbanCardDragging {
   opacity: 0.45;
 }
 

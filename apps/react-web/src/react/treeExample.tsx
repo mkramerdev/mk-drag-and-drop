@@ -1,5 +1,6 @@
 import {
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactElement,
@@ -126,6 +127,7 @@ const seedItems: TreeItem[] = [
 const initialExpandedItemIds = ["design", "components"];
 
 export function TreeExample(): ReactElement {
+  const rootRef = useRef<HTMLElement | null>(null);
   const [treeState, setTreeState] = useState<TreeState>(() =>
     createTreeState(seedItems),
   );
@@ -163,17 +165,18 @@ export function TreeExample(): ReactElement {
       )}
       onDragStart={({ itemId }) => {
         setOverlayItemId(itemId);
-        clearActiveTreeDropTargets();
+        clearActiveTreeDropTargets(rootRef.current);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
         updateActiveTreeDropTarget({
+          root: rootRef.current,
           activeDropTarget,
           previousDropTarget,
         });
       }}
       onDragEnd={() => {
         setOverlayItemId(null);
-        clearActiveTreeDropTargets();
+        clearActiveTreeDropTargets(rootRef.current);
       }}
       onDrop={({ itemId, dropTarget }) => {
         setTreeState((currentTreeState) =>
@@ -181,7 +184,7 @@ export function TreeExample(): ReactElement {
         );
       }}
     >
-      <section className="examplePanel treeExamplePanel">
+      <section ref={rootRef} className="examplePanel treeExamplePanel">
         <h2 className="exampleTitle">Tree</h2>
         <div className="treeExample" role="tree">
           {projection.entries.map((entry) =>
@@ -656,9 +659,11 @@ function getRectCenter(rect: { left: number; top: number; width: number; height:
 }
 
 function updateActiveTreeDropTarget({
+  root,
   activeDropTarget,
   previousDropTarget,
 }: {
+  root: ParentNode | null;
   activeDropTarget: string | null;
   previousDropTarget: string | null;
 }): void {
@@ -666,17 +671,18 @@ function updateActiveTreeDropTarget({
     return;
   }
 
-  setTreeDropTargetActive(previousDropTarget, false);
-  setTreeDropTargetActive(activeDropTarget, true);
+  setTreeDropTargetActive(root, previousDropTarget, false);
+  setTreeDropTargetActive(root, activeDropTarget, true);
 }
 
-function clearActiveTreeDropTargets(): void {
-  getTreeDropTargetElements().forEach((element) => {
-    delete element.dataset.dndActiveDropTarget;
+function clearActiveTreeDropTargets(root: ParentNode | null): void {
+  getTreeDropTargetElements(root).forEach((element) => {
+    delete element.dataset.treeActiveDropTarget;
   });
 }
 
 function setTreeDropTargetActive(
+  root: ParentNode | null,
   dropTargetId: string | null,
   isActive: boolean,
 ): void {
@@ -684,19 +690,21 @@ function setTreeDropTargetActive(
     return;
   }
 
-  getTreeDropTargetElements().forEach((element) => {
+  getTreeDropTargetElements(root).forEach((element) => {
     if (element.dataset.treeDropTargetId !== dropTargetId) {
       return;
     }
 
     if (isActive) {
-      element.dataset.dndActiveDropTarget = "true";
+      element.dataset.treeActiveDropTarget = "true";
     } else {
-      delete element.dataset.dndActiveDropTarget;
+      delete element.dataset.treeActiveDropTarget;
     }
   });
 }
 
-function getTreeDropTargetElements(): NodeListOf<HTMLElement> {
-  return document.querySelectorAll("[data-tree-drop-target-id]");
+function getTreeDropTargetElements(
+  root: ParentNode | null,
+): NodeListOf<HTMLElement> {
+  return (root ?? document).querySelectorAll("[data-tree-drop-target-id]");
 }

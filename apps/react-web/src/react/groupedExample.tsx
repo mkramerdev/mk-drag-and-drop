@@ -1,4 +1,10 @@
-import { Fragment, useLayoutEffect, useState, type ReactElement } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 
 import {
@@ -47,6 +53,7 @@ type GroupedOverlayDrag =
 const groupedParentGroup = "grouped-parents";
 const groupedChildGroup = "grouped-children";
 const groupedDropTargetAttribute = "data-grouped-drop-target-id";
+const groupedActiveDropTargetAttribute = "data-grouped-active-drop-target";
 const groupedInsideTargetPrefix = "grouped:children:inside:";
 
 const groupedTargetingConstraint: TargetingConstraint = ({
@@ -142,6 +149,7 @@ const initialChildOrder = [
 ];
 
 export function GroupedExample(): ReactElement {
+  const rootRef = useRef<HTMLElement | null>(null);
   const [parentsById] = useState<Record<string, ParentItem>>(
     () => initialParentsById,
   );
@@ -235,7 +243,7 @@ export function GroupedExample(): ReactElement {
         />
       )}
       onDragStart={({ itemId }) => {
-        clearActiveGroupedDropTargets();
+        clearActiveGroupedDropTargets(rootRef.current);
         setActiveDraggedParentId(parentsById[itemId] ? itemId : null);
         setOverlayDrag(
           parentsById[itemId]
@@ -247,18 +255,19 @@ export function GroupedExample(): ReactElement {
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
         updateActiveGroupedDropTarget({
+          root: rootRef.current,
           activeDropTarget,
           previousDropTarget,
         });
       }}
       onDragEnd={() => {
-        clearActiveGroupedDropTargets();
+        clearActiveGroupedDropTargets(rootRef.current);
         setActiveDraggedParentId(null);
         setOverlayDrag(null);
       }}
       onDrop={handleDrop}
     >
-      <section className="examplePanel groupedExamplePanel">
+      <section ref={rootRef} className="examplePanel groupedExamplePanel">
         <h2 className="exampleTitle">Grouped drag and drop</h2>
         <div className="groupedExample">
           {parentOrder.map((parentId) => {
@@ -672,17 +681,18 @@ function getChildIndexTargetId(parentId: string, index: number): string {
   return `grouped:children:${parentId}:index:${index}`;
 }
 
-function clearActiveGroupedDropTargets(): void {
+function clearActiveGroupedDropTargets(root: ParentNode | null): void {
   for (const element of Array.from(
-    document.querySelectorAll<HTMLElement>(
-      `[${groupedDropTargetAttribute}][data-dnd-active-drop-target="true"]`,
+    (root ?? document).querySelectorAll<HTMLElement>(
+      `[${groupedDropTargetAttribute}][${groupedActiveDropTargetAttribute}="true"]`,
     ),
   )) {
-    delete element.dataset.dndActiveDropTarget;
+    delete element.dataset.groupedActiveDropTarget;
   }
 }
 
 function updateActiveGroupedDropTarget(input: {
+  root: ParentNode | null;
   activeDropTarget: string | null;
   previousDropTarget: string | null;
 }): void {
@@ -692,11 +702,12 @@ function updateActiveGroupedDropTarget(input: {
 
   if (input.previousDropTarget) {
     const previousElement = getGroupedDropTargetElement(
+      input.root,
       input.previousDropTarget,
     );
 
     if (previousElement) {
-      delete previousElement.dataset.dndActiveDropTarget;
+      delete previousElement.dataset.groupedActiveDropTarget;
     }
   }
 
@@ -704,17 +715,21 @@ function updateActiveGroupedDropTarget(input: {
     return;
   }
 
-  const activeElement = getGroupedDropTargetElement(input.activeDropTarget);
+  const activeElement = getGroupedDropTargetElement(
+    input.root,
+    input.activeDropTarget,
+  );
 
   if (activeElement) {
-    activeElement.dataset.dndActiveDropTarget = "true";
+    activeElement.dataset.groupedActiveDropTarget = "true";
   }
 }
 
 function getGroupedDropTargetElement(
+  root: ParentNode | null,
   dropTargetId: string,
 ): HTMLElement | null {
-  return document.querySelector<HTMLElement>(
+  return (root ?? document).querySelector<HTMLElement>(
     `[${groupedDropTargetAttribute}="${CSS.escape(dropTargetId)}"]`,
   );
 }

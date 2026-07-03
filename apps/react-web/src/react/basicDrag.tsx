@@ -47,6 +47,7 @@ type MovePreview = {
 };
 
 export function BasicDrag(): ReactElement {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [itemContainer, setItemContainer] = useState(rootContainer.targetId);
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
   const [overlayTargetRect, setOverlayTargetRect] = useState<DragRect | null>(
@@ -81,16 +82,17 @@ export function BasicDrag(): ReactElement {
       )}
       onDragStart={() => {
         setOverlayTargetRect(null);
-        clearActiveDroppableContainers();
+        clearActiveDroppableContainers(rootRef.current);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
         updateActiveDroppableContainer({
+            root: rootRef.current,
             activeDropTarget,
             previousDropTarget,
         });
       }}
       onDragEnd={() => {
-        clearActiveDroppableContainers();
+        clearActiveDroppableContainers(rootRef.current);
       }}
       onDrop={({ itemId, dropTarget }, { getDropTargetRect }) => {
         if (
@@ -111,7 +113,7 @@ export function BasicDrag(): ReactElement {
         });
       }}
     >
-        <div className="draggableItemContainer">
+        <div ref={rootRef} className="draggableItemContainer">
             <DroppableContainer targetId={rootContainer.targetId}>
                 <span>{rootContainer.label}</span>
                 {itemContainer === rootContainer.targetId ? (
@@ -344,9 +346,11 @@ function DroppableContainer({
 }
 
 function updateActiveDroppableContainer({
+    root,
     activeDropTarget,
     previousDropTarget,
 }: {
+    root: ParentNode | null;
     activeDropTarget: string | null;
     previousDropTarget: string | null;
 }): void {
@@ -354,17 +358,18 @@ function updateActiveDroppableContainer({
         return;
     }
 
-    setDroppableContainerActive(previousDropTarget, false);
-    setDroppableContainerActive(activeDropTarget, true);
+    setDroppableContainerActive(root, previousDropTarget, false);
+    setDroppableContainerActive(root, activeDropTarget, true);
 }
 
-function clearActiveDroppableContainers(): void {
-    getDroppableContainerElements().forEach((element) => {
-        delete element.dataset.dndActiveDropTarget;
+function clearActiveDroppableContainers(root: ParentNode | null): void {
+    getDroppableContainerElements(root).forEach((element) => {
+        delete element.dataset.basicActiveDropTarget;
     });
 }
 
 function setDroppableContainerActive(
+    root: ParentNode | null,
     dropTarget: string | null,
     isActive: boolean,
 ): void {
@@ -372,21 +377,23 @@ function setDroppableContainerActive(
         return;
     }
 
-    getDroppableContainerElements().forEach((element) => {
+    getDroppableContainerElements(root).forEach((element) => {
         if (element.dataset.basicDropTargetId !== dropTarget) {
             return;
         }
 
         if (isActive) {
-            element.dataset.dndActiveDropTarget = "true";
+            element.dataset.basicActiveDropTarget = "true";
         } else {
-            delete element.dataset.dndActiveDropTarget;
+            delete element.dataset.basicActiveDropTarget;
         }
     });
 }
 
-function getDroppableContainerElements(): NodeListOf<HTMLElement> {
-    return document.querySelectorAll("[data-basic-drop-target-id]");
+function getDroppableContainerElements(
+    root: ParentNode | null,
+): NodeListOf<HTMLElement> {
+    return (root ?? document).querySelectorAll("[data-basic-drop-target-id]");
 }
 
 function getRectCenterX(rect: Pick<DOMRect, "left" | "width">): number {

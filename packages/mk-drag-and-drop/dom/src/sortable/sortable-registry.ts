@@ -62,7 +62,9 @@ export type SortableRegistry = {
 export type SortableSnapshot = {
   element: HTMLElement;
   parent: HTMLElement;
+  previousSibling: ChildNode | null;
   nextSibling: ChildNode | null;
+  childIndex: number;
 };
 
 const sortableRegistries = new WeakMap<DomSortableRuntime, SortableRegistry>();

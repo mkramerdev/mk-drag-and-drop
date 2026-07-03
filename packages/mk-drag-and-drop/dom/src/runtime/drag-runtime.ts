@@ -70,6 +70,7 @@ type DragSession =
       group: DragGroup;
       sourceRect: DragRect;
       sourceContainerId: string | null;
+      sourceSortablePlacement: SortablePlacement | null;
       startPointerPosition: Point;
       rawPointerPosition: Point;
       pointerPosition: Point;
@@ -101,6 +102,7 @@ export class DragRuntime {
     group: DragGroup;
     dropTarget: string | null;
     sourceContainerId: string | null;
+    sourceSortablePlacement: SortablePlacement | null;
   } | null = null;
   private lastDropPlacement: DropPlacement | null = null;
   private pointerConfiguration: NormalizedPointerConfiguration = {
@@ -388,11 +390,21 @@ export class DragRuntime {
     const placement = this.getDropPlacement(itemId);
 
     if (placement) {
-      return {
+      if (!hasRelativeSortablePlacement(placement)) {
+        return null;
+      }
+
+      const sortablePlacement = {
         itemId: placement.itemId,
         previousItemId: placement.previousItemId,
         nextItemId: placement.nextItemId,
       };
+
+      if (isSameSortablePlacement(sortablePlacement, this.getSourceSortablePlacement())) {
+        return null;
+      }
+
+      return sortablePlacement;
     }
 
     return this.dropTargetRegistry.getSortablePlacement(itemId);
@@ -526,6 +538,10 @@ export class DragRuntime {
         input.group,
         "item",
       )?.containerId ?? null;
+    const sourceSortablePlacement = this.dropTargetRegistry.getSortablePlacement(
+      input.itemId,
+      input.group,
+    );
 
     const nextSession: DraggingSession = {
       status: "dragging",
@@ -534,6 +550,7 @@ export class DragRuntime {
       group: input.group,
       sourceRect: input.sourceRect,
       sourceContainerId,
+      sourceSortablePlacement,
       startPointerPosition: rawPointerPosition,
       rawPointerPosition,
       pointerPosition: effectivePointerPosition,
@@ -576,6 +593,7 @@ export class DragRuntime {
           group: session.group,
           dropTarget: input.dropTarget,
           sourceContainerId: session.sourceContainerId,
+          sourceSortablePlacement: session.sourceSortablePlacement,
         }
       : null;
     this.lastDropPlacement = this.lastDropPlacementInput
@@ -746,6 +764,14 @@ export class DragRuntime {
     return this.session.status === "dragging" ? this.session : null;
   }
 
+  private getSourceSortablePlacement(): SortablePlacement | null {
+    const session = this.getDraggingSession();
+
+    return session
+      ? session.sourceSortablePlacement
+      : this.lastDropPlacementInput?.sourceSortablePlacement ?? null;
+  }
+
   private createDragState(session: DraggingSession): DragState {
     return {
       itemId: session.itemId,
@@ -884,4 +910,20 @@ export function createDragRuntime(
   options?: DragRuntimeOptions,
 ): DragRuntime {
   return new DragRuntime(options);
+}
+
+function hasRelativeSortablePlacement(placement: DropPlacement): boolean {
+  return placement.previousItemId !== null || placement.nextItemId !== null;
+}
+
+function isSameSortablePlacement(
+  placement: SortablePlacement,
+  sourcePlacement: SortablePlacement | null,
+): boolean {
+  return (
+    sourcePlacement !== null &&
+    placement.itemId === sourcePlacement.itemId &&
+    placement.previousItemId === sourcePlacement.previousItemId &&
+    placement.nextItemId === sourcePlacement.nextItemId
+  );
 }

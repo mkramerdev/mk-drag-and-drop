@@ -1,6 +1,7 @@
 import type {
   DomSortableRuntime,
   SortableRegistry,
+  SortableSnapshot,
 } from "./sortable-registry.js";
 
 type SortablePlacementSide = "before" | "after";
@@ -24,7 +25,12 @@ export function snapshotSortableElement(
   registry.snapshots.set(itemId, {
     element,
     parent: element.parentElement,
+    previousSibling: element.previousSibling,
     nextSibling: element.nextSibling,
+    childIndex: Array.prototype.indexOf.call(
+      element.parentElement.childNodes,
+      element,
+    ) as number,
   });
 }
 
@@ -95,6 +101,20 @@ export function moveSortablePreview(input: {
       ? sortableElements.indexOf(draggedElement)
       : -1;
   const targetIndex = sortableElements.indexOf(targetElement);
+  const isBlockedBySkippedSibling = isPreviewBlockedBySkippedSortableSibling({
+    registry: input.registry,
+    draggedGroup,
+    sortableElements,
+    draggedIndex,
+    targetIndex,
+    targetElement,
+    pointerPosition: input.pointerPosition,
+  });
+
+  if (isBlockedBySkippedSibling) {
+    return;
+  }
+
   const placement = getSortablePreviewPlacement({
     draggedIndex,
     targetIndex,
@@ -173,12 +193,10 @@ export function restoreSortableSnapshot(
     return false;
   }
 
-  if (snapshot.nextSibling?.parentNode === snapshot.parent) {
-    snapshot.parent.insertBefore(snapshot.element, snapshot.nextSibling);
-    return true;
-  }
-
-  snapshot.parent.append(snapshot.element);
+  snapshot.parent.insertBefore(
+    snapshot.element,
+    getSnapshotRestoreReferenceNode(snapshot),
+  );
   return true;
 }
 
@@ -216,18 +234,124 @@ export function getSortableItemChildren(listElement: HTMLElement): HTMLElement[]
   );
 }
 
+function isPreviewBlockedBySkippedSortableSibling(input: {
+  registry: SortableRegistry;
+  draggedGroup: string;
+  sortableElements: HTMLElement[];
+  draggedIndex: number;
+  targetIndex: number;
+  targetElement: HTMLElement;
+  pointerPosition: { x: number; y: number };
+}): boolean {
+  if (input.draggedIndex === -1 || input.targetIndex === -1) {
+    return false;
+  }
+
+  const startIndex = Math.min(input.draggedIndex, input.targetIndex) + 1;
+  const endIndex = Math.max(input.draggedIndex, input.targetIndex);
+  const targetDistance = getPointToRectCenterDistance(
+    input.pointerPosition,
+    input.targetElement.getBoundingClientRect(),
+  );
+
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const sibling = input.sortableElements[index];
+    const siblingItemId = getSortableItemId(input.registry, sibling);
+
+    if (!siblingItemId) {
+      continue;
+    }
+
+    const siblingGroup = input.registry.groups.get(siblingItemId);
+
+    if (siblingGroup === input.draggedGroup) {
+      continue;
+    }
+
+    const siblingDistance = getPointToRectCenterDistance(
+      input.pointerPosition,
+      sibling.getBoundingClientRect(),
+    );
+
+    if (siblingDistance <= targetDistance) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getSortableItemId(
+  registry: SortableRegistry,
+  element: HTMLElement,
+): string | null {
+  for (const [itemId, sortableElement] of registry.elements) {
+    if (sortableElement === element) {
+      return itemId;
+    }
+  }
+
+  return null;
+}
+
+function getPointToRectCenterDistance(
+  point: { x: number; y: number },
+  rect: DOMRect,
+): number {
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const distanceX = point.x - centerX;
+  const distanceY = point.y - centerY;
+
+  return distanceX * distanceX + distanceY * distanceY;
+}
+
 function moveSortablePreviewIntoContainer(input: {
   draggedElement: HTMLElement;
   targetElement: HTMLElement;
 }): void {
   if (
     input.draggedElement.parentElement === input.targetElement &&
-    input.draggedElement.nextElementSibling === null
+    input.draggedElement.previousSibling === null
   ) {
     return;
   }
 
-  input.targetElement.append(input.draggedElement);
+  input.targetElement.insertBefore(
+    input.draggedElement,
+    input.targetElement.firstChild,
+  );
+}
+
+function getSnapshotRestoreReferenceNode(
+  snapshot: SortableSnapshot,
+): ChildNode | null {
+  if (
+    snapshot.nextSibling &&
+    snapshot.nextSibling !== snapshot.element &&
+    snapshot.nextSibling.parentNode === snapshot.parent
+  ) {
+    return snapshot.nextSibling;
+  }
+
+  if (
+    snapshot.previousSibling &&
+    snapshot.previousSibling !== snapshot.element &&
+    snapshot.previousSibling.parentNode === snapshot.parent
+  ) {
+    const referenceNode = snapshot.previousSibling.nextSibling;
+    return referenceNode === snapshot.element
+      ? snapshot.element.nextSibling
+      : referenceNode;
+  }
+
+  const indexedReferenceNode = snapshot.parent.childNodes.item(
+    snapshot.childIndex,
+  );
+
+  return indexedReferenceNode === snapshot.element
+    ? snapshot.element.nextSibling
+    : indexedReferenceNode;
 }
 
 function getPointerPlacementSide(input: {

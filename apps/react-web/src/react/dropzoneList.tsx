@@ -3,7 +3,7 @@ import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
 import { Menu } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement } from "react";
 import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/dom";
 
 const dropzoneListGroup = "dropzone-list";
@@ -26,6 +26,7 @@ type DropzoneLine = {
 };
 
 export function DropzoneList(): ReactElement {
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const [items, setItems] = useState(initialItems);
     const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
 
@@ -45,17 +46,18 @@ export function DropzoneList(): ReactElement {
             )}
             onDragStart={({ itemId }) => {
                 setOverlayItemId(itemId);
-                clearActiveDropzoneLines();
+                clearActiveDropzoneLines(rootRef.current);
             }}
             onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
                 updateActiveDropzoneLine({
+                    root: rootRef.current,
                     activeDropTarget,
                     previousDropTarget,
                 });
             }}
             onDragEnd={() => {
                 setOverlayItemId(null);
-                clearActiveDropzoneLines();
+                clearActiveDropzoneLines(rootRef.current);
             }}
             onDrop={({ itemId, dropTarget }) => {
                 setItems((currentItems) =>
@@ -63,7 +65,7 @@ export function DropzoneList(): ReactElement {
                 );
             }}
         >
-            <div className="dropzoneList">
+            <div ref={rootRef} className="dropzoneList">
                 {items.map((item) => (
                     <FragmentWithDropzone key={item.itemId} item={item} />
                 ))}
@@ -188,9 +190,11 @@ function getItemLabel(items: readonly DropzoneListItem[], itemId: string): strin
 }
 
 function updateActiveDropzoneLine({
+    root,
     activeDropTarget,
     previousDropTarget,
 }: {
+    root: ParentNode | null;
     activeDropTarget: string | null;
     previousDropTarget: string | null;
 }): void {
@@ -198,17 +202,18 @@ function updateActiveDropzoneLine({
         return;
     }
 
-    setDropzoneLineActive(previousDropTarget, false);
-    setDropzoneLineActive(activeDropTarget, true);
+    setDropzoneLineActive(root, previousDropTarget, false);
+    setDropzoneLineActive(root, activeDropTarget, true);
 }
 
-function clearActiveDropzoneLines(): void {
-    getDropzoneLineElements().forEach((element) => {
-        delete element.dataset.dndActiveDropTarget;
+function clearActiveDropzoneLines(root: ParentNode | null): void {
+    getDropzoneLineElements(root).forEach((element) => {
+        delete element.dataset.dropzoneLineActive;
     });
 }
 
 function setDropzoneLineActive(
+    root: ParentNode | null,
     dropTarget: string | null,
     isActive: boolean,
 ): void {
@@ -216,19 +221,21 @@ function setDropzoneLineActive(
         return;
     }
 
-    getDropzoneLineElements().forEach((element) => {
+    getDropzoneLineElements(root).forEach((element) => {
         if (element.dataset.dropzoneLineTargetId !== dropTarget) {
             return;
         }
 
         if (isActive) {
-            element.dataset.dndActiveDropTarget = "true";
+            element.dataset.dropzoneLineActive = "true";
         } else {
-            delete element.dataset.dndActiveDropTarget;
+            delete element.dataset.dropzoneLineActive;
         }
     });
 }
 
-function getDropzoneLineElements(): NodeListOf<HTMLElement> {
-    return document.querySelectorAll("[data-dropzone-line-target-id]");
+function getDropzoneLineElements(
+    root: ParentNode | null,
+): NodeListOf<HTMLElement> {
+    return (root ?? document).querySelectorAll("[data-dropzone-line-target-id]");
 }

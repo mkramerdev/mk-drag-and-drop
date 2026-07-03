@@ -1,0 +1,129 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  createDragController,
+  createDraggable,
+  type DragController,
+} from "../src/index.js";
+import {
+  createRect,
+  dispatchKeyDown,
+  dispatchPointerDown,
+  stubBoundingClientRect,
+} from "./test-utils.js";
+
+describe("createDraggable", () => {
+  let controller: DragController | null = null;
+
+  afterEach(() => {
+    controller?.dispose();
+    controller = null;
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("starts pointer drags through createDomDraggable", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement();
+
+    createDraggable({ controller, element, itemId: "item" });
+    dispatchPointerDown(element, { pointerId: 1, clientX: 4, clientY: 5 });
+
+    expect(controller.runtime.isDragging).toBe(true);
+    expect(onDragStart).toHaveBeenCalledWith(
+      {
+        itemId: "item",
+        pointerPosition: { x: 4, y: 5 },
+        sourceRect: createRect({ width: 20, height: 20 }),
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("binds keyboard drag when keyboard dragging is enabled", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement();
+    element.setAttribute("tabindex", "7");
+
+    const cleanup = createDraggable({ controller, element, itemId: "item" });
+
+    expect(element.getAttribute("tabindex")).toBe("0");
+
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(true);
+    expect(onDragStart).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: "item" }),
+      expect.any(Object),
+    );
+
+    cleanup();
+
+    expect(element.getAttribute("tabindex")).toBe("7");
+  });
+
+  it("does not bind keyboard drag when keyboard dragging is disabled", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({
+      keyboardConfiguration: { enabled: false },
+      onDragStart,
+    });
+    const element = createMeasuredElement();
+
+    createDraggable({ controller, element, itemId: "item" });
+
+    expect(element.hasAttribute("tabindex")).toBe(false);
+
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("cleans up listeners idempotently and restores previous tabindex", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement();
+    element.setAttribute("tabindex", "3");
+
+    const cleanup = createDraggable({ controller, element, itemId: "item" });
+
+    cleanup();
+    cleanup();
+
+    expect(element.getAttribute("tabindex")).toBe("3");
+
+    dispatchPointerDown(element, { pointerId: 1 });
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("removes listeners and restores DOM state when the controller is disposed", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement();
+    element.setAttribute("tabindex", "2");
+
+    createDraggable({ controller, element, itemId: "item" });
+    controller.dispose();
+
+    expect(element.getAttribute("tabindex")).toBe("2");
+
+    dispatchPointerDown(element, { pointerId: 1 });
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+});
+
+function createMeasuredElement(): HTMLElement {
+  const element = document.createElement("div");
+  document.body.append(element);
+  stubBoundingClientRect(element, createRect({ width: 20, height: 20 }));
+  return element;
+}

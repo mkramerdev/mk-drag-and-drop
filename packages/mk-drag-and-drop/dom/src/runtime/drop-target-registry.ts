@@ -321,18 +321,25 @@ export class DropTargetRegistry {
     const { element } = registration;
     const itemGroup = registration.group;
 
+    const previousItemId = this.getNearestSortableSiblingItemId(
+      element.previousElementSibling,
+      itemGroup,
+      "previous",
+    );
+    const nextItemId = this.getNearestSortableSiblingItemId(
+      element.nextElementSibling,
+      itemGroup,
+      "next",
+    );
+
+    if (previousItemId === null && nextItemId === null) {
+      return null;
+    }
+
     return {
       itemId,
-      previousItemId: this.getNearestSortableSiblingItemId(
-        element.previousElementSibling,
-        itemGroup,
-        "previous",
-      ),
-      nextItemId: this.getNearestSortableSiblingItemId(
-        element.nextElementSibling,
-        itemGroup,
-        "next",
-      ),
+      previousItemId,
+      nextItemId,
     };
   }
 

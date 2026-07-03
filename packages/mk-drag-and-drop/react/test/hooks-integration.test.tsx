@@ -2,7 +2,7 @@ import { StrictMode, useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DragRuntime } from "@mk-drag-and-drop/dom";
+import { DragRuntime, type SortablePlacement } from "@mk-drag-and-drop/dom";
 import {
   DragProvider,
   useDragHandle,
@@ -433,6 +433,99 @@ describe("React integration flows", () => {
     ).toEqual(["card-b", "card-a"]);
     raf.restore();
   });
+
+  it("updates sortable final order through React state on drop", () => {
+    const raf = installMockRaf();
+    render(<StatefulSortableList />);
+    const list = screen.getByTestId("stateful-sortable-list");
+    const a = screen.getByTestId("stateful-sortable-a");
+    const b = screen.getByTestId("stateful-sortable-b");
+    stubBoundingClientRect(a, createRect({ top: 0, width: 20, height: 20 }));
+    stubBoundingClientRect(b, createRect({ top: 30, width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(a, { pointerId: 1, clientX: 10, clientY: 10 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    });
+
+    expect(
+      Array.from(list.children).map((element) =>
+        element.getAttribute("data-testid"),
+      ),
+    ).toEqual(["stateful-sortable-b", "stateful-sortable-a"]);
+    raf.restore();
+  });
+
+  it("does not reorder an isolated sortable item with no valid targets", () => {
+    const raf = installMockRaf();
+    render(<StatefulSortableListWithIsolatedItem />);
+    const list = screen.getByTestId("isolated-sortable-list");
+    const isolated = screen.getByTestId("isolated-sortable-isolated");
+    const b = screen.getByTestId("isolated-sortable-b");
+    stubBoundingClientRect(
+      screen.getByTestId("isolated-sortable-a"),
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      isolated,
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(b, createRect({ top: 60, width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(isolated, { pointerId: 1, clientX: 10, clientY: 40 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 70 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 70 });
+    });
+
+    expect(
+      Array.from(list.children).map((element) =>
+        element.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "isolated-sortable-a",
+      "isolated-sortable-isolated",
+      "isolated-sortable-b",
+    ]);
+    raf.restore();
+  });
+
+  it("does not reorder a sortable item while the pointer is closer to a skipped-group item", () => {
+    const raf = installMockRaf();
+    render(<StatefulSortableListWithIsolatedItem />);
+    const list = screen.getByTestId("isolated-sortable-list");
+    const a = screen.getByTestId("isolated-sortable-a");
+    stubBoundingClientRect(a, createRect({ top: 0, width: 20, height: 20 }));
+    stubBoundingClientRect(
+      screen.getByTestId("isolated-sortable-isolated"),
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("isolated-sortable-b"),
+      createRect({ top: 60, width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(a, { pointerId: 1, clientX: 10, clientY: 10 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    });
+
+    expect(
+      Array.from(list.children).map((element) =>
+        element.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "isolated-sortable-a",
+      "isolated-sortable-isolated",
+      "isolated-sortable-b",
+    ]);
+    raf.restore();
+  });
 });
 
 function UseDraggableOutside() {
@@ -648,4 +741,122 @@ function getKanbanInsertIndex(
   }
 
   return cardIds.length;
+}
+
+function StatefulSortableList() {
+  const [items, setItems] = useState(["a", "b"]);
+
+  return (
+    <DragProvider
+      onDrop={({ itemId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(itemId);
+
+        if (!placement) {
+          return;
+        }
+
+        setItems((currentItems) =>
+          moveSortableIdsToPlacement(currentItems, placement),
+        );
+      }}
+    >
+      <div data-testid="stateful-sortable-list">
+        {items.map((itemId) => (
+          <StatefulSortableItem key={itemId} itemId={itemId} />
+        ))}
+      </div>
+    </DragProvider>
+  );
+}
+
+function StatefulSortableItem({ itemId }: { itemId: string }) {
+  const sortable = useSortable({
+    itemId,
+    group: "stateful-sortable",
+  });
+
+  return (
+    <div {...sortable} data-testid={`stateful-sortable-${itemId}`}>
+      Item {itemId}
+    </div>
+  );
+}
+
+function moveSortableIdsToPlacement(
+  items: readonly string[],
+  placement: SortablePlacement,
+): string[] {
+  const withoutItem = items.filter((item) => item !== placement.itemId);
+
+  if (placement.previousItemId !== null) {
+    const previousIndex = withoutItem.indexOf(placement.previousItemId);
+
+    if (previousIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, previousIndex + 1),
+      placement.itemId,
+      ...withoutItem.slice(previousIndex + 1),
+    ];
+  }
+
+  if (placement.nextItemId !== null) {
+    const nextIndex = withoutItem.indexOf(placement.nextItemId);
+
+    if (nextIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, nextIndex),
+      placement.itemId,
+      ...withoutItem.slice(nextIndex),
+    ];
+  }
+
+  return [...items];
+}
+
+function StatefulSortableListWithIsolatedItem() {
+  const [items, setItems] = useState(["a", "isolated", "b"]);
+
+  return (
+    <DragProvider
+      onDrop={({ itemId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(itemId);
+
+        if (!placement) {
+          return;
+        }
+
+        setItems((currentItems) =>
+          moveSortableIdsToPlacement(currentItems, placement),
+        );
+      }}
+    >
+      <div data-testid="isolated-sortable-list">
+        {items.map((itemId) => (
+          <IsolatedSortableItem key={itemId} itemId={itemId} />
+        ))}
+      </div>
+    </DragProvider>
+  );
+}
+
+function IsolatedSortableItem({ itemId }: { itemId: string }) {
+  const sortable = useSortable({
+    itemId,
+    group:
+      itemId === "isolated"
+        ? "isolated-sortable"
+        : "shared-isolated-sortable",
+  });
+
+  return (
+    <div {...sortable} data-testid={`isolated-sortable-${itemId}`}>
+      Item {itemId}
+    </div>
+  );
 }

@@ -103,6 +103,23 @@ describe("createDomSortable", () => {
     expect(a.dataset.dndSortableItem).toBe("true");
   });
 
+  it("restores snapshot position without falling back to end when the original next sibling is removed", () => {
+    const { elements, behaviors } = createFourItemSortableList();
+    const [a, b, c, d] = elements;
+
+    behaviors.b.onPointerDown(createPointerHandlerEvent({ target: b }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 100 });
+    raf.flush();
+
+    expect(Array.from(b.parentElement?.children ?? [])).toEqual([a, c, d, b]);
+
+    c.remove();
+    dispatchPointerCancel(window, { pointerId: 1 });
+    raf.flush();
+
+    expect(Array.from(b.parentElement?.children ?? [])).toEqual([a, b, d]);
+  });
+
   it("uses original order for same-container preview placement", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
@@ -112,6 +129,80 @@ describe("createDomSortable", () => {
     raf.flush();
 
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+  });
+
+  it("returns no sortable placement for an isolated self-target drop", () => {
+    const { isolated, behaviors } = createMixedGroupSortableList();
+    let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
+    configureRuntimeCallbacks({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getSortablePlacement(itemId);
+      },
+    });
+
+    behaviors.isolated.onPointerDown(
+      createPointerHandlerEvent({ target: isolated }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 65 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("isolated");
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 65 });
+
+    expect(placement).toBeNull();
+  });
+
+  it("skips different-group sortable items when targeting", () => {
+    const { rows, behaviors } = createMixedGroupSortableList();
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: rows.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 55 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("c");
+  });
+
+  it("does not move past a skipped-group sibling while the pointer is closer to that sibling", () => {
+    const { rows, isolated, behaviors } = createMixedGroupSortableList();
+    const { a, c } = rows;
+    let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
+    configureRuntimeCallbacks({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getSortablePlacement(itemId);
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("c");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([
+      a,
+      isolated,
+      c,
+    ]);
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+
+    expect(placement).toBeNull();
+  });
+
+  it("moves past a skipped-group sibling once the pointer is closer to the same-group target", () => {
+    const { rows, isolated, behaviors } = createMixedGroupSortableList();
+    const { a, c } = rows;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 56 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("c");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([
+      isolated,
+      c,
+      a,
+    ]);
   });
 
   it("batches sortable group remeasurement while a group remeasure is pending", () => {
@@ -157,7 +248,7 @@ describe("createDomSortable", () => {
 
   it("returns same-container drop placement", () => {
     const { elements, behaviors } = createSortableList("list");
-    const [a] = elements;
+    const [a, b, c] = elements;
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
       onDrop: ({ itemId }, helpers) => {
@@ -168,6 +259,9 @@ describe("createDomSortable", () => {
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
     raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
     expect(placement).toEqual({
@@ -178,6 +272,26 @@ describe("createDomSortable", () => {
       previousItemId: "b",
       nextItemId: "c",
     });
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("restores preview DOM and skips drop when a sortable drop becomes invalid", () => {
+    const { elements, behaviors } = createSortableList("list");
+    const [a, b, c] = elements;
+    const onDrop = vi.fn();
+    configureRuntimeCallbacks({ onDrop });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    runtime.unregisterDropTarget("b", b);
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
   it("returns cross-container drop placement", () => {
@@ -211,6 +325,8 @@ describe("createDomSortable", () => {
       previousItemId: "b",
       nextItemId: "c",
     });
+    expect(Array.from(left.container.children)).toEqual([left.a]);
+    expect(Array.from(right.container.children)).toEqual([right.b, right.c]);
   });
 
   it("prefers item targets over a non-empty container inside the item span", () => {
@@ -294,9 +410,11 @@ describe("createDomSortable", () => {
       previousItemId: null,
       nextItemId: null,
     });
+    expect(Array.from(left.container.children)).toEqual([left.a]);
+    expect(Array.from(right.container.children)).toEqual([]);
   });
 
-  it("returns append placement through an item target in a non-empty container", () => {
+  it("returns after-item placement through an item target in a non-empty container", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b"],
     });
@@ -406,6 +524,120 @@ describe("createDomSortable", () => {
       behaviors: {
         a: behaviorA,
         b: behaviorB,
+        c: behaviorC,
+      },
+    };
+  }
+
+  function createFourItemSortableList() {
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    const b = createSortableElement(
+      "b",
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    const c = createSortableElement(
+      "c",
+      createRect({ top: 60, width: 20, height: 20 }),
+    );
+    const d = createSortableElement(
+      "d",
+      createRect({ top: 90, width: 20, height: 20 }),
+    );
+    list.append(a, b, c, d);
+    const behaviorA = createDomSortable({
+      runtime,
+      itemId: "a",
+      group: "rows",
+      getElement: () => a,
+    });
+    const behaviorB = createDomSortable({
+      runtime,
+      itemId: "b",
+      group: "rows",
+      getElement: () => b,
+    });
+    const behaviorC = createDomSortable({
+      runtime,
+      itemId: "c",
+      group: "rows",
+      getElement: () => c,
+    });
+    const behaviorD = createDomSortable({
+      runtime,
+      itemId: "d",
+      group: "rows",
+      getElement: () => d,
+    });
+
+    behaviorA.setElement(a);
+    behaviorB.setElement(b);
+    behaviorC.setElement(c);
+    behaviorD.setElement(d);
+
+    return {
+      elements: [a, b, c, d] as const,
+      behaviors: {
+        a: behaviorA,
+        b: behaviorB,
+        c: behaviorC,
+        d: behaviorD,
+      },
+    };
+  }
+
+  function createMixedGroupSortableList() {
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    const isolated = createSortableElement(
+      "isolated",
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    const c = createSortableElement(
+      "c",
+      createRect({ top: 60, width: 20, height: 20 }),
+    );
+    list.append(a, isolated, c);
+    const behaviorA = createDomSortable({
+      runtime,
+      itemId: "a",
+      group: "rows",
+      getElement: () => a,
+    });
+    const behaviorIsolated = createDomSortable({
+      runtime,
+      itemId: "isolated",
+      group: "isolated-rows",
+      getElement: () => isolated,
+    });
+    const behaviorC = createDomSortable({
+      runtime,
+      itemId: "c",
+      group: "rows",
+      getElement: () => c,
+    });
+
+    behaviorA.setElement(a);
+    behaviorIsolated.setElement(isolated);
+    behaviorC.setElement(c);
+
+    return {
+      rows: {
+        a,
+        c,
+      },
+      isolated,
+      behaviors: {
+        a: behaviorA,
+        isolated: behaviorIsolated,
         c: behaviorC,
       },
     };

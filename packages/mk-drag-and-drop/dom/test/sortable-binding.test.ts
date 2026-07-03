@@ -1,0 +1,269 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  createDragController,
+  createDropContainer,
+  createSortable,
+  type DragController,
+  type DropPlacement,
+} from "../src/index.js";
+import {
+  createRect,
+  dispatchKeyDown,
+  dispatchPointerDown,
+  dispatchPointerMove,
+  dispatchPointerUp,
+  installMockRaf,
+  stubBoundingClientRect,
+} from "./test-utils.js";
+
+describe("createSortable", () => {
+  let controller: DragController | null = null;
+  let raf: ReturnType<typeof installMockRaf> | null = null;
+
+  afterEach(() => {
+    controller?.dispose();
+    controller = null;
+    raf?.restore();
+    raf = null;
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("registers sortable items that participate in sortable drops", () => {
+    let placement: DropPlacement | null = null;
+    const { list, a, b } = setupSortablePair({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getDropPlacement(itemId);
+      },
+    });
+
+    expect(controller?.runtime.getDropTargetRect("a")).toEqual(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+
+    dragToTarget(a, b);
+
+    expect(Array.from(list.children)).toEqual([a, b]);
+    expect(placement).toEqual({
+      itemId: "a",
+      dropTarget: "b",
+      sourceContainerId: null,
+      containerId: null,
+      previousItemId: "b",
+      nextItemId: null,
+    });
+  });
+
+  it("starts pointer drags through createDomSortable", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+
+    createSortable({ controller, element, itemId: "item" });
+    dispatchPointerDown(element, { pointerId: 1, clientX: 3, clientY: 4 });
+
+    expect(controller.runtime.isDragging).toBe(true);
+    expect(onDragStart).toHaveBeenCalledWith(
+      {
+        itemId: "item",
+        pointerPosition: { x: 3, y: 4 },
+        sourceRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("binds keyboard drag when keyboard dragging is enabled", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    element.setAttribute("tabindex", "7");
+
+    const cleanup = createSortable({ controller, element, itemId: "item" });
+
+    expect(element.getAttribute("tabindex")).toBe("0");
+
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(true);
+    expect(onDragStart).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: "item" }),
+      expect.any(Object),
+    );
+
+    cleanup();
+
+    expect(element.getAttribute("tabindex")).toBe("7");
+  });
+
+  it("does not bind keyboard drag when keyboard dragging is disabled", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({
+      keyboardConfiguration: { enabled: false },
+      onDragStart,
+    });
+    const element = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+
+    createSortable({ controller, element, itemId: "item" });
+
+    expect(element.hasAttribute("tabindex")).toBe(false);
+
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("passes container metadata into sortable registration", () => {
+    let placement: DropPlacement | null = null;
+    controller = createDragController({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getDropPlacement(itemId);
+      },
+    });
+    raf = installMockRaf();
+    const container = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 80, height: 120 }),
+    );
+    const a = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const b = createMeasuredElement(
+      createRect({ left: 0, top: 30, width: 20, height: 20 }),
+    );
+    container.append(a, b);
+
+    createDropContainer({
+      controller,
+      element: container,
+      containerId: "column-a",
+      group: "cards",
+    });
+    createSortable({
+      controller,
+      element: a,
+      itemId: "a",
+      group: "cards",
+      containerId: "column-a",
+    });
+    createSortable({
+      controller,
+      element: b,
+      itemId: "b",
+      group: "cards",
+      containerId: "column-a",
+    });
+
+    dragToTarget(a, b);
+
+    expect(placement).toEqual({
+      itemId: "a",
+      dropTarget: "b",
+      sourceContainerId: "column-a",
+      containerId: "column-a",
+      previousItemId: "b",
+      nextItemId: null,
+    });
+  });
+
+  it("cleans up listeners and sortable registration idempotently", () => {
+    const onDrop = vi.fn();
+    const { a, b, cleanupA } = setupSortablePair({ onDrop });
+
+    cleanupA();
+    cleanupA();
+
+    expect(controller?.runtime.getDropTargetRect("a")).toBeNull();
+
+    dragToTarget(a, b);
+
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("cleans up sortable listeners and registration when the controller is disposed", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const element = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    element.setAttribute("tabindex", "2");
+
+    createSortable({ controller, element, itemId: "item" });
+    controller.dispose();
+
+    expect(element.getAttribute("tabindex")).toBe("2");
+    expect(controller.runtime.getDropTargetRect("item")).toBeNull();
+
+    dispatchPointerDown(element, { pointerId: 1 });
+    dispatchKeyDown(element, "Space");
+
+    expect(controller.runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  function setupSortablePair(input: {
+    onDrop?: NonNullable<Parameters<typeof createDragController>[0]>["onDrop"];
+  }): {
+    list: HTMLElement;
+    a: HTMLElement;
+    b: HTMLElement;
+    cleanupA: () => void;
+    cleanupB: () => void;
+  } {
+    controller = createDragController({
+      onDrop: input.onDrop,
+    });
+    raf = installMockRaf();
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const b = createMeasuredElement(
+      createRect({ left: 0, top: 30, width: 20, height: 20 }),
+    );
+    list.append(a, b);
+
+    const cleanupA = createSortable({ controller, element: a, itemId: "a" });
+    const cleanupB = createSortable({ controller, element: b, itemId: "b" });
+
+    return {
+      list,
+      a,
+      b,
+      cleanupA,
+      cleanupB,
+    };
+  }
+
+  function dragToTarget(source: HTMLElement, target: HTMLElement): void {
+    const targetRect = target.getBoundingClientRect();
+
+    dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: targetRect.left + targetRect.width / 2,
+      clientY: targetRect.top + targetRect.height / 2,
+    });
+    raf?.flush();
+    dispatchPointerUp(window, {
+      pointerId: 1,
+      clientX: targetRect.left + targetRect.width / 2,
+      clientY: targetRect.top + targetRect.height / 2,
+    });
+  }
+});
+
+function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
+  const element = document.createElement("div");
+  document.body.append(element);
+  stubBoundingClientRect(element, rect);
+  return element;
+}

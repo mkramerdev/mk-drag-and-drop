@@ -2,6 +2,7 @@ export * from "./geometry/index.js";
 export * from "./targeting/index.js";
 export * from "./input/index.js";
 export * from "./runtime/index.js";
+export * from "./controller/index.js";
 export * from "./draggable/index.js";
 export * from "./droppable/index.js";
 export * from "./sortable/index.js";
