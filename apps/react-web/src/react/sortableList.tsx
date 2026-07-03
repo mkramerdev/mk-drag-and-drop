@@ -20,7 +20,7 @@ import {
     centerToCenter,
     maxDistanceToRect,
     type DragRect,
-} from "@mk-drag-and-drop/core";
+} from "@mk-drag-and-drop/dom";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const storageKey = "mk-drag-and-drop:sortable-items:v2";

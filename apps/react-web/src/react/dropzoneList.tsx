@@ -4,7 +4,7 @@ import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
 import { Menu } from "lucide-react";
 import { useState, type ReactElement } from "react";
-import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/core";
+import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/dom";
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";

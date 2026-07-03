@@ -1,5 +1,3 @@
-import type { DragRect } from "@mk-drag-and-drop/core";
-
 import type {
   DomSortableRuntime,
   SortableRegistry,
@@ -51,20 +49,11 @@ export function moveSortablePreview(input: {
   const draggedElement = input.registry.elements.get(input.draggedItemId);
   const targetElement = input.registry.elements.get(input.activeDropTarget);
   const listElement = draggedElement?.parentElement ?? targetElement?.parentElement;
-  const targetRect = input.runtime.getDropTargetRect(input.activeDropTarget);
-  const placement = targetRect
-    ? getSortablePreviewPlacement({
-        runtime: input.runtime,
-        draggedItemId: input.draggedItemId,
-        targetRect,
-      })
-    : null;
 
   if (
     !draggedElement ||
     !targetElement ||
     !listElement ||
-    !placement ||
     draggedElement.parentElement !== listElement ||
     targetElement.parentElement !== listElement
   ) {
@@ -74,11 +63,16 @@ export function moveSortablePreview(input: {
   const sortableElements = getSortableItemChildren(listElement);
   const draggedIndex = sortableElements.indexOf(draggedElement);
   const targetIndex = sortableElements.indexOf(targetElement);
+  const placement = getSortablePreviewPlacement({
+    draggedIndex,
+    targetIndex,
+  });
 
   if (
     draggedIndex === -1 ||
     targetIndex === -1 ||
-    draggedIndex === targetIndex
+    draggedIndex === targetIndex ||
+    placement === null
   ) {
     return;
   }
@@ -107,26 +101,18 @@ export function moveSortablePreview(input: {
 }
 
 export function getSortablePreviewPlacement(input: {
-  runtime: DomSortableRuntime;
-  draggedItemId: string;
-  targetRect: DragRect;
+  draggedIndex: number;
+  targetIndex: number;
 }): SortablePlacementSide | null {
-  const draggedRect = input.runtime.getCurrentDragRect();
-  const remeasuredDraggedRect = input.runtime.getDropTargetRect(
-    input.draggedItemId,
-  );
-  const draggedHeight = remeasuredDraggedRect?.height ?? draggedRect?.height;
-  const draggedCenterY = draggedRect
-    ? draggedRect.top + (draggedHeight ?? draggedRect.height) / 2
-    : input.runtime.pointerPosition?.y;
-
-  if (draggedCenterY === undefined) {
-    return null;
+  if (input.targetIndex > input.draggedIndex) {
+    return "after";
   }
 
-  return draggedCenterY < input.targetRect.top + input.targetRect.height / 2
-    ? "before"
-    : "after";
+  if (input.targetIndex < input.draggedIndex) {
+    return "before";
+  }
+
+  return null;
 }
 
 export function isSortablePreviewAlreadyPlaced(input: {

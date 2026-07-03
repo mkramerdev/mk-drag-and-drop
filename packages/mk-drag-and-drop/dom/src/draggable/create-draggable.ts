@@ -1,4 +1,4 @@
-import type { DragPoint } from "@mk-drag-and-drop/core";
+import type { DragPoint } from "../geometry/rects.js";
 
 import {
   shouldHandleKeyboardDragFromTarget,

@@ -10,7 +10,6 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
-    "@mk-drag-and-drop/core": "workspace:*",
     "@mk-drag-and-drop/dom": "workspace:*",
     "@mk-drag-and-drop/react": "workspace:*",
     "lucide-react": "^1.23.0",

@@ -15,24 +15,24 @@
       "import": "./dist/drag-provider.js"
     },
     "./use-drag-handle": {
-      "types": "./dist/useDragHandle.d.ts",
-      "import": "./dist/useDragHandle.js"
+      "types": "./dist/hooks/use-drag-handle.d.ts",
+      "import": "./dist/hooks/use-drag-handle.js"
     },
     "./use-draggable": {
-      "types": "./dist/useDraggable.d.ts",
-      "import": "./dist/useDraggable.js"
+      "types": "./dist/hooks/use-draggable.d.ts",
+      "import": "./dist/hooks/use-draggable.js"
     },
     "./use-droppable": {
-      "types": "./dist/useDroppable.d.ts",
-      "import": "./dist/useDroppable.js"
+      "types": "./dist/hooks/use-droppable.d.ts",
+      "import": "./dist/hooks/use-droppable.js"
     },
     "./compose-refs": {
-      "types": "./dist/composeRefs.d.ts",
-      "import": "./dist/composeRefs.js"
+      "types": "./dist/utils/compose-refs.d.ts",
+      "import": "./dist/utils/compose-refs.js"
     },
     "./use-sortable": {
-      "types": "./dist/useSortable.d.ts",
-      "import": "./dist/useSortable.js"
+      "types": "./dist/hooks/use-sortable.d.ts",
+      "import": "./dist/hooks/use-sortable.js"
     }
   },
   "files": [
@@ -44,7 +44,6 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
-    "@mk-drag-and-drop/core": "workspace:*",
     "@mk-drag-and-drop/dom": "workspace:*"
   },
   "peerDependencies": {

@@ -1,34 +1,35 @@
 import {
-  createContext,
-  useCallback,
-  useContext,
   useRef,
   useState,
   type ReactNode,
-  type RefObject,
 } from "react";
 
 import {
-  pointerToCenter,
-  type DragRect,
-  type TargetingAlgorithm,
-  type TargetingConstraint,
-} from "@mk-drag-and-drop/core";
-import {
   DragRuntime,
-  lockToXAxis as domLockToXAxis,
-  lockToYAxis as domLockToYAxis,
-  restrictToContainer as domRestrictToContainer,
+  pointerToCenter,
   type DragLifecycleCallbacks,
   type DragModifier,
-  type DragOverlayPhase,
   type DragOverlayRenderState,
-  type DragState,
   type KeyboardConfiguration,
   type PointerConfiguration,
-  type RemeasureDropTargetsInput,
+  type TargetingAlgorithm,
+  type TargetingConstraint,
 } from "@mk-drag-and-drop/dom";
 
+import { DragContext } from "./drag-context.js";
+import {
+  DragOverlay,
+  type DragOverlayInput,
+} from "./drag-overlay.js";
+
+export { DragContext } from "./drag-context.js";
+export { useRemeasureDropTargets } from "./hooks/use-remeasure-drop-targets.js";
+export {
+  lockToXAxis,
+  lockToYAxis,
+  restrictToContainer,
+} from "./modifiers/index.js";
+export type { DragOverlayInput } from "./drag-overlay.js";
 export type {
   DragEndEvent,
   DragLifecycleHelpers,
@@ -49,11 +50,6 @@ export type {
   SortablePlacement,
 } from "@mk-drag-and-drop/dom";
 
-export type DragOverlayInput = {
-  phase: DragOverlayPhase;
-  finish: () => void;
-};
-
 type DragProviderProps = {
   children: ReactNode;
   dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
@@ -64,25 +60,6 @@ type DragProviderProps = {
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
 } & DragLifecycleCallbacks;
-
-export const DragContext = createContext<unknown | null>(null);
-
-export function useRemeasureDropTargets(): (
-  input?: RemeasureDropTargetsInput,
-) => void {
-  const runtime = useContext(DragContext) as DragRuntime | null;
-
-  if (!runtime) {
-    throw new Error("useRemeasureDropTargets must be used inside DragProvider");
-  }
-
-  return useCallback(
-    (input?: RemeasureDropTargetsInput) => {
-      runtime.remeasureDropTargets(input);
-    },
-    [runtime],
-  );
-}
 
 export function DragProvider({
   children,
@@ -144,47 +121,5 @@ export function DragProvider({
         </DragOverlay>
       ) : null}
     </DragContext>
-  );
-}
-
-export function lockToXAxis(): DragModifier {
-  return domLockToXAxis();
-}
-
-export function lockToYAxis(): DragModifier {
-  return domLockToYAxis();
-}
-
-export function restrictToContainer(
-  containerRef: RefObject<HTMLElement | null>,
-): DragModifier<DragRect | null> {
-  return domRestrictToContainer(() => containerRef.current);
-}
-
-function DragOverlay({
-  dragState,
-  children,
-}: {
-  dragState: DragState;
-  children: ReactNode;
-}) {
-  const x = dragState.pointerPosition.x - dragState.startPointerPosition.x;
-  const y = dragState.pointerPosition.y - dragState.startPointerPosition.y;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        left: dragState.sourceRect.left,
-        top: dragState.sourceRect.top,
-        width: dragState.sourceRect.width,
-        height: dragState.sourceRect.height,
-        pointerEvents: "auto",
-        zIndex: 9999,
-        transform: `translate3d(${x}px, ${y}px, 0)`,
-      }}
-    >
-      {children}
-    </div>
   );
 }

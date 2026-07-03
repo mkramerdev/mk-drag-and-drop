@@ -10,7 +10,7 @@ import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
 import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
-import type { TargetingConstraint } from "@mk-drag-and-drop/core";
+import type { TargetingConstraint } from "@mk-drag-and-drop/dom";
 
 type ParentItem = {
   parentId: string;

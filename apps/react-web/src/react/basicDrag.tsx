@@ -21,7 +21,7 @@ import {
     maxDistanceToRect,
     pointerToRectDistance,
     type DragRect,
-} from "@mk-drag-and-drop/core";
+} from "@mk-drag-and-drop/dom";
 
 const draggableItem = {
     itemId: "draggable",

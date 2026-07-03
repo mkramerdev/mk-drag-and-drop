@@ -1,5 +1,3 @@
-import type { DragPoint, DragRect } from "@mk-drag-and-drop/core";
-
 import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
 import {
@@ -18,9 +16,6 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     group: string,
   ) => void;
   unregisterDropTarget: (itemId: string) => void;
-  pointerPosition: DragPoint | null;
-  getCurrentDragRect: () => DragRect | null;
-  getDropTargetRect: (dropTargetId: string) => DragRect | null;
   subscribe: (subscription: {
     onDragStart?: (event: { itemId: string }) => void;
     onDragUpdate?: (event: {

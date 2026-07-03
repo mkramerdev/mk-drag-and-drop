@@ -1,15 +1,11 @@
-import type {
-  DragPoint,
-  DragRect,
-  DropTarget,
-  TargetingConstraint,
-} from "@mk-drag-and-drop/core";
+import type { DragPoint, DragRect } from "../geometry/rects.js";
+import type { DropTarget, TargetingConstraint } from "../targeting/index.js";
 
 import {
   documentRectToViewportRect,
-  emptyDragRect,
   measureDocumentRect,
-} from "../geometry.js";
+} from "../geometry/measurement.js";
+import { emptyDragRect } from "../geometry/rects.js";
 
 export type DragGroup = string;
 

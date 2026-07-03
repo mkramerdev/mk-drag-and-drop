@@ -22,12 +22,12 @@ export {
   type RemeasureDropTargetsInput,
   type SortablePlacement,
 } from "./drag-provider.js";
-export { useDragHandle } from "./useDragHandle.js";
-export { useDraggable } from "./useDraggable.js";
-export { useDroppable } from "./useDroppable.js";
+export { useDragHandle } from "./hooks/use-drag-handle.js";
+export { useDraggable } from "./hooks/use-draggable.js";
+export { useDroppable } from "./hooks/use-droppable.js";
 export {
   useSortable,
   type UseSortableOptions,
   type UseSortableResult,
-} from "./useSortable.js";
-export { composeRefs } from "./composeRefs.js";
+} from "./hooks/use-sortable.js";
+export { composeRefs } from "./utils/compose-refs.js";

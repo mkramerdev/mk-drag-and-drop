@@ -1,58 +1,10 @@
-export type DragPoint = {
-  x: number;
-  y: number;
-};
-
-export type DragRect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-};
-
-export type DropTarget = {
-  dropTargetKey: string;
-  dropTargetRect: DragRect;
-};
-
-export type TargetingAlgorithmInput = {
-  pointerPosition: DragPoint;
-  overlayRect: DragRect | null;
-  dropTargets: readonly DropTarget[];
-};
-
-export type TargetingAlgorithmMode = "pointer" | "rect";
-
-export type TargetingAlgorithm = {
-  (input: TargetingAlgorithmInput): DropTarget | null;
-  mode: TargetingAlgorithmMode;
-};
-
-export type TargetingConstraintInput = {
-  pointerPosition: DragPoint;
-  overlayRect: DragRect | null;
-  dropTarget: DropTarget;
-};
-
-export type TargetingConstraint = {
-  (input: TargetingConstraintInput): boolean;
-};
-
-export type RectDistance = {
-  x: number;
-  y: number;
-  distance: number;
-};
-
-export type MaxDistanceToRectOptions = {
-  maxDistance?: number;
-  maxXDistance?: number;
-  maxYDistance?: number;
-};
+import type { DragPoint, DragRect } from "../geometry/rects.js";
+import { getDistanceToRect } from "./constraints.js";
+import type {
+  DropTarget,
+  TargetingAlgorithm,
+  TargetingAlgorithmInput,
+} from "./types.js";
 
 export const pointerToCenter: TargetingAlgorithm = Object.assign(
   ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
@@ -76,54 +28,6 @@ export const pointerToRectDistance: TargetingAlgorithm = Object.assign(
     findClosestTargetByRectDistance(pointerPosition, dropTargets),
   { mode: "pointer" as const },
 );
-
-export function maxDistanceToRect(
-  options: MaxDistanceToRectOptions,
-): TargetingConstraint {
-  return ({ pointerPosition, dropTarget }) => {
-    const distance = getDistanceToRect(
-      pointerPosition,
-      dropTarget.dropTargetRect,
-    );
-
-    if (
-      options.maxXDistance !== undefined &&
-      distance.x > options.maxXDistance
-    ) {
-      return false;
-    }
-
-    if (
-      options.maxYDistance !== undefined &&
-      distance.y > options.maxYDistance
-    ) {
-      return false;
-    }
-
-    if (
-      options.maxDistance !== undefined &&
-      distance.distance > options.maxDistance
-    ) {
-      return false;
-    }
-
-    return true;
-  };
-}
-
-export function getDistanceToRect(
-  point: DragPoint,
-  rect: DragRect,
-): RectDistance {
-  const x = getAxisDistance(point.x, rect.left, rect.right);
-  const y = getAxisDistance(point.y, rect.top, rect.bottom);
-
-  return {
-    x,
-    y,
-    distance: Math.sqrt(x * x + y * y),
-  };
-}
 
 function findClosestTarget(
   point: DragPoint,
@@ -187,20 +91,4 @@ function getSquaredRectDistance(point: DragPoint, rect: DragRect): number {
   const distance = getDistanceToRect(point, rect);
 
   return distance.x * distance.x + distance.y * distance.y;
-}
-
-function getAxisDistance(
-  value: number,
-  min: number,
-  max: number,
-): number {
-  if (value < min) {
-    return min - value;
-  }
-
-  if (value > max) {
-    return value - max;
-  }
-
-  return 0;
 }

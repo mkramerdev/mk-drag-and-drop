@@ -19,9 +19,6 @@
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "lint": "eslint \"src/**/*.ts\""
   },
-  "dependencies": {
-    "@mk-drag-and-drop/core": "workspace:*"
-  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",

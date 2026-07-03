@@ -11,13 +11,13 @@ import { composeRefs } from "@mk-drag-and-drop/react/compose-refs";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
 import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
 import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
-import { getDistanceToRect } from "@mk-drag-and-drop/core";
+import { getDistanceToRect } from "@mk-drag-and-drop/dom";
 import type {
   DropTarget,
   TargetingAlgorithm,
   TargetingConstraint,
   TargetingAlgorithmInput,
-} from "@mk-drag-and-drop/core";
+} from "@mk-drag-and-drop/dom";
 
 const treeGroup = "tree-example";
 const rootToken = "root";

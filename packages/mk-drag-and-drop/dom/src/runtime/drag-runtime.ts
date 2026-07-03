@@ -1,141 +1,59 @@
-import {
-  pointerToCenter,
-  type DragPoint,
-  type DragRect,
-  type DropTarget,
-  type TargetingAlgorithm,
-  type TargetingConstraint,
-} from "@mk-drag-and-drop/core";
-
-import { getOverlayRect, measureDomElement } from "../geometry.js";
+import type { DragRect } from "../geometry/rects.js";
+import { measureDomElement } from "../geometry/measurement.js";
+import { getOverlayRect } from "../geometry/overlay.js";
 import {
   defaultKeyboardConfiguration,
   normalizeKeyboardConfiguration,
   normalizePointerConfiguration,
-  type KeyboardConfiguration,
   type NormalizedKeyboardConfiguration,
   type NormalizedPointerConfiguration,
-  type PointerConfiguration,
 } from "../input/config.js";
 import {
   KeyboardDragController,
-  type KeyboardDragStartInput,
   type KeyboardMoveDirection,
   type SourceKeyboardDragKeyDownInput as KeyboardSourceKeyDownInput,
 } from "../input/keyboard-drag.js";
-import {
-  PointerActivationController,
-  type PointerDragActivationRequest,
-} from "../input/pointer-activation.js";
+import { PointerActivationController } from "../input/pointer-activation.js";
 import {
   applyDragModifiers,
   createActiveDragModifiers,
+} from "../modifiers/pipeline.js";
+import {
   type ActiveDragModifier,
   type DragModifier,
-} from "../modifiers.js";
+} from "../modifiers/types.js";
+import {
+  pointerToCenter,
+  type DropTarget,
+  type TargetingAlgorithm,
+  type TargetingConstraint,
+} from "../targeting/index.js";
 import {
   DropTargetRegistry,
   type DragGroup,
   type RemeasureDropTargetsInput,
   type SortablePlacement,
 } from "./drop-target-registry.js";
-
-export type Point = DragPoint;
-
-export type ActiveDragInput = "pointer" | "keyboard";
-
-export type DragState = {
-  itemId: string;
-  sourceRect: DragRect;
-  startPointerPosition: Point;
-  pointerPosition: Point;
-};
-
-export type DragOverlayPhase = "dragging" | "released";
-
-export type DragOverlayRenderState = {
-  dragState: DragState;
-  phase: DragOverlayPhase;
-};
-
-export type RequestDragStartInput = PointerDragActivationRequest;
-
-export type StartDragInput = {
-  itemId: string;
-  group: DragGroup;
-  inputType: ActiveDragInput;
-  pointerPosition: Point;
-  sourceRect: DragRect;
-};
-
-export type RequestKeyboardDragStartInput = KeyboardDragStartInput;
-
-export type DragStartEvent = {
-  itemId: string;
-  pointerPosition: Point;
-  sourceRect: DragRect;
-};
-
-export type DragUpdateEvent = {
-  itemId: string;
-  pointerPosition: Point;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-};
-
-export type DragEndEvent = {
-  itemId: string;
-  dropTarget: string | null;
-};
-
-export type DropEvent = {
-  itemId: string;
-  dropTarget: string;
-};
-
-export type DragLifecycleHelpers = {
-  getSortablePlacement: (itemId: string) => SortablePlacement | null;
-  getDropTargetRect: (dropTargetId: string) => DragRect | null;
-};
-
-export type DragLifecycleCallbacks = {
-  onDragStart?: (
-    event: DragStartEvent,
-    helpers: DragLifecycleHelpers,
-  ) => void;
-  onDragUpdate?: (
-    event: DragUpdateEvent,
-    helpers: DragLifecycleHelpers,
-  ) => void;
-  onDragEnd?: (event: DragEndEvent, helpers: DragLifecycleHelpers) => void;
-  onDrop?: (event: DropEvent, helpers: DragLifecycleHelpers) => void;
-};
-
-export type DragRuntimeSubscription = {
-  onDragStart?: (event: DragStartEvent) => void;
-  onDragUpdate?: (event: DragUpdateEvent) => void;
-  onDragEnd?: (event: DragEndEvent) => void;
-  onDrop?: (event: DropEvent) => void;
-};
-
-export type DragRuntimeOptions = {
-  setOverlayState?: (overlayState: DragOverlayRenderState | null) => void;
-  targetingAlgorithm?: TargetingAlgorithm;
-  targetingConstraint?: TargetingConstraint;
-  hasDragOverlay?: boolean;
-  keepOverlayOnDrop?: boolean;
-};
-
-export type DragRuntimeConfigureInput = {
-  targetingAlgorithm: TargetingAlgorithm;
-  targetingConstraint: TargetingConstraint | undefined;
-  hasDragOverlay: boolean;
-  keepOverlayOnDrop: boolean;
-  lifecycleCallbacks: DragLifecycleCallbacks;
-  keyboardConfiguration?: KeyboardConfiguration;
-  modifiers?: readonly DragModifier<any>[];
-  pointerConfiguration?: PointerConfiguration;
-};
+import type {
+  DragEndEvent,
+  DragLifecycleCallbacks,
+  DragLifecycleHelpers,
+  DragRuntimeSubscription,
+  DragStartEvent,
+  DragUpdateEvent,
+  DropEvent,
+} from "./lifecycle.js";
+import type {
+  ActiveDragInput,
+  DragOverlayRenderState,
+  DragRuntimeConfigureInput,
+  DragRuntimeOptions,
+  DragState,
+  Point,
+  RequestDragStartInput,
+  RequestKeyboardDragStartInput,
+  StartDragInput,
+} from "./types.js";
 
 const noopSetOverlayState = (): void => {};
 
