@@ -39,13 +39,21 @@ export type DragOverlayRenderState = {
 
 export type RequestDragStartInput = PointerDragActivationRequest;
 
-export type StartDragInput = {
+type BaseStartDragInput = {
   itemId: string;
   group: DragGroup;
-  inputType: ActiveDragInput;
   pointerPosition: Point;
   sourceRect: DragRect;
 };
+
+export type StartDragInput =
+  | (BaseStartDragInput & {
+      inputType: "pointer";
+      pointerId: number;
+    })
+  | (BaseStartDragInput & {
+      inputType: "keyboard";
+    });
 
 export type RequestKeyboardDragStartInput = KeyboardDragStartInput;
 

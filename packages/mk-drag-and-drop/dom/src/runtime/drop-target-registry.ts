@@ -39,9 +39,14 @@ export class DropTargetRegistry {
 
   register(id: string, element: HTMLElement, group: DragGroup): void {
     const previousTarget = this.dropTargets.get(id);
+    const previousElementTargetId = this.dropTargetElements.get(element);
 
     if (previousTarget && previousTarget.element !== element) {
       this.dropTargetElements.delete(previousTarget.element);
+    }
+
+    if (previousElementTargetId && previousElementTargetId !== id) {
+      this.dropTargets.delete(previousElementTargetId);
     }
 
     const registration = {
@@ -55,14 +60,19 @@ export class DropTargetRegistry {
     this.remeasureRegistration(registration);
   }
 
-  unregister(id: string): void {
+  unregister(id: string, element?: HTMLElement): boolean {
     const target = this.dropTargets.get(id);
 
-    if (target) {
+    if (!target || (element && target.element !== element)) {
+      return false;
+    }
+
+    if (this.dropTargetElements.get(target.element) === id) {
       this.dropTargetElements.delete(target.element);
     }
 
     this.dropTargets.delete(id);
+    return true;
   }
 
   remeasure(input?: RemeasureDropTargetsInput): void {

@@ -15,7 +15,7 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     element: HTMLElement,
     group: string,
   ) => void;
-  unregisterDropTarget: (itemId: string) => void;
+  unregisterDropTarget: (itemId: string, element?: HTMLElement) => void;
   subscribe: (subscription: {
     onDragStart?: (event: { itemId: string }) => void;
     onDragUpdate?: (event: {
@@ -135,7 +135,7 @@ export function unregisterSortableElement(input: {
   element: HTMLElement | null;
 }): void {
   if (input.itemId !== null) {
-    input.runtime.unregisterDropTarget(input.itemId);
+    input.runtime.unregisterDropTarget(input.itemId, input.element ?? undefined);
 
     if (input.registry.elements.get(input.itemId) === input.element) {
       input.registry.elements.delete(input.itemId);

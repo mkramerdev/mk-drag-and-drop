@@ -14,6 +14,7 @@ export type ActivatedPointerDrag = {
   itemId: string;
   group: string;
   element: HTMLElement;
+  pointerId: number;
   initialPointerPosition: DragPoint;
   latestPointerPosition: DragPoint;
 };
@@ -144,6 +145,7 @@ export class PointerActivationController {
       itemId: pendingActivation.itemId,
       group: pendingActivation.group,
       element: pendingActivation.element,
+      pointerId: pendingActivation.pointerId,
       initialPointerPosition: pendingActivation.initialPointerPosition,
       latestPointerPosition: pendingActivation.latestPointerPosition,
     });

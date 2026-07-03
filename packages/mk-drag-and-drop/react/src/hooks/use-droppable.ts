@@ -1,7 +1,6 @@
 import {
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   type HTMLAttributes,
   type RefCallback,
@@ -40,13 +39,6 @@ export function useDroppable({
         group,
       }),
     [group, runtime, targetId],
-  );
-
-  useEffect(
-    () => () => {
-      behavior.cleanup();
-    },
-    [behavior],
   );
 
   const setNodeRef = useCallback(

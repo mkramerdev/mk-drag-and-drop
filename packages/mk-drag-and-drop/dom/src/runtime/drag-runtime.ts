@@ -91,10 +91,15 @@ export class DragRuntime {
     getConfiguration: () => this.pointerConfiguration,
     isDragging: () => this.isDragging,
     startImmediately: (request) => {
+      if (!request.element.isConnected) {
+        return;
+      }
+
       this.startDragNow({
         itemId: request.itemId,
         group: request.group,
         inputType: "pointer",
+        pointerId: request.pointerId,
         pointerPosition: request.pointerPosition,
         sourceRect: measureDomElement(request.element),
       });
@@ -108,6 +113,7 @@ export class DragRuntime {
         itemId: activation.itemId,
         group: activation.group,
         inputType: "pointer",
+        pointerId: activation.pointerId,
         pointerPosition: activation.initialPointerPosition,
         sourceRect: measureDomElement(activation.element),
       });
@@ -293,8 +299,18 @@ export class DragRuntime {
     this.dropTargetRegistry.register(id, element, group);
   }
 
-  unregisterDropTarget(id: string): void {
-    this.dropTargetRegistry.unregister(id);
+  unregisterDropTarget(id: string, element?: HTMLElement): void {
+    const removedTarget = this.dropTargetRegistry.unregister(id, element);
+
+    if (removedTarget && this.activeDropTarget === id) {
+      this.activeDropTarget = null;
+    }
+  }
+
+  cleanup(): void {
+    this.pointerActivation.cancel();
+    this.resetActiveDragState();
+    this.cleanupActiveDragResources();
   }
 
   getSortablePlacement(itemId: string): SortablePlacement | null {
@@ -372,7 +388,7 @@ export class DragRuntime {
     });
     this.suppressTextSelection();
     if (input.inputType === "pointer") {
-      this.bindPointerWindowListeners();
+      this.bindPointerWindowListeners(input.pointerId);
     } else {
       this.bindKeyboardWindowListeners();
     }
@@ -392,20 +408,8 @@ export class DragRuntime {
     const itemId = this.draggedId;
     const releasedDragState = this.dragState;
 
-    this.isDragging = false;
-    this.activeDragInput = null;
-    this.draggedId = null;
-    this.draggedGroup = null;
-    this.rawPointerPosition = null;
-    this.pointerPosition = null;
-    this.activeDropTarget = null;
-    this.dragState = null;
-    this.activeDragModifiers = [];
-
-    this.cleanupWindowListeners?.();
-    this.cleanupWindowListeners = null;
-    this.cleanupTextSelectionSuppression?.();
-    this.cleanupTextSelectionSuppression = null;
+    this.resetActiveDragState();
+    this.cleanupActiveDragResources();
 
     if (itemId) {
       this.notifyDragEnd({
@@ -431,28 +435,44 @@ export class DragRuntime {
     }
   }
 
-  private bindPointerWindowListeners(): void {
+  private bindPointerWindowListeners(pointerId: number): void {
     this.cleanupWindowListeners?.();
 
     const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerId !== pointerId) {
+        return;
+      }
+
       this.updatePointer({
         x: event.clientX,
         y: event.clientY,
       });
     };
 
-    const handlePointerEnd = (): void => {
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (event.pointerId !== pointerId) {
+        return;
+      }
+
       this.endDrag();
     };
 
+    const handlePointerCancel = (event: PointerEvent): void => {
+      if (event.pointerId !== pointerId) {
+        return;
+      }
+
+      this.cancelDrag();
+    };
+
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
 
     this.cleanupWindowListeners = () => {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
     };
   }
 
@@ -476,6 +496,25 @@ export class DragRuntime {
       root.style.userSelect = previousRootUserSelect;
       body.style.userSelect = previousBodyUserSelect;
     };
+  }
+
+  private resetActiveDragState(): void {
+    this.isDragging = false;
+    this.activeDragInput = null;
+    this.draggedId = null;
+    this.draggedGroup = null;
+    this.rawPointerPosition = null;
+    this.pointerPosition = null;
+    this.activeDropTarget = null;
+    this.dragState = null;
+    this.activeDragModifiers = [];
+  }
+
+  private cleanupActiveDragResources(): void {
+    this.cleanupWindowListeners?.();
+    this.cleanupWindowListeners = null;
+    this.cleanupTextSelectionSuppression?.();
+    this.cleanupTextSelectionSuppression = null;
   }
 
   private getActiveDropTarget(pointerPosition: Point): string | null {

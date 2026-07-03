@@ -1,7 +1,6 @@
 import {
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   type HTMLAttributes,
@@ -51,13 +50,6 @@ export function useSortable({
     (node: HTMLDivElement | null) => {
       nodeRef.current = node;
       behavior.setElement(node);
-    },
-    [behavior],
-  );
-
-  useEffect(
-    () => () => {
-      behavior.cleanup();
     },
     [behavior],
   );

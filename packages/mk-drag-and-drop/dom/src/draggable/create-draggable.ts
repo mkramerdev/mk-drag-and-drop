@@ -34,6 +34,8 @@ export type DomDraggablePointerDownEvent = {
   preventDefault: () => void;
   stopPropagation: () => void;
   pointerId: number;
+  button?: number;
+  isPrimary?: boolean;
   clientX: number;
   clientY: number;
 };
@@ -67,6 +69,13 @@ export function createDomDraggable(
           draggableElement: element,
           eventTarget: event.target,
         })
+      ) {
+        return;
+      }
+
+      if (
+        event.isPrimary === false ||
+        (event.button !== undefined && event.button !== 0)
       ) {
         return;
       }

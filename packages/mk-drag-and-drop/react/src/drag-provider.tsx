@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -104,6 +105,14 @@ export function DragProvider({
     modifiers,
     pointerConfiguration,
   });
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+
+    return () => {
+      runtime?.cleanup();
+    };
+  }, []);
 
   function finishOverlay(): void {
     setOverlayState(null);

@@ -4,7 +4,7 @@ export type DomDroppableRuntime = {
     element: HTMLElement,
     group: string,
   ) => void;
-  unregisterDropTarget: (targetId: string) => void;
+  unregisterDropTarget: (targetId: string, element?: HTMLElement) => void;
 };
 
 export type CreateDomDroppableInput = {
@@ -26,7 +26,10 @@ export function createDomDroppable(
 
   const cleanup = (): void => {
     if (registeredTargetId !== null) {
-      input.runtime.unregisterDropTarget(registeredTargetId);
+      input.runtime.unregisterDropTarget(
+        registeredTargetId,
+        registeredElement ?? undefined,
+      );
     }
 
     registeredElement = null;
