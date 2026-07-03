@@ -1,11 +1,13 @@
 import { DragContext } from "./drag-provider";
 import {
     createDragHandler,
+    createKeyboardDragHandler,
     type DragHandlerRuntime,
 } from "./createDragHandler.js";
 import {
     useCallback,
     useContext,
+    useMemo,
     useRef,
     type HTMLAttributes,
     type RefCallback,
@@ -37,14 +39,41 @@ export function useDraggable({
     const setNodeRef = useCallback((node: HTMLDivElement | null) => {
         nodeRef.current = node;
     }, []);
+    const getNode = useCallback(() => nodeRef.current, []);
+    const onPointerDown = useMemo(
+        () =>
+            createDragHandler({
+                itemId,
+                group,
+                runtime,
+                getNode,
+            }),
+        [getNode, group, itemId, runtime],
+    );
+    const onKeyDown = useMemo(
+        () =>
+            createKeyboardDragHandler({
+                itemId,
+                group,
+                runtime,
+                getNode,
+            }),
+        [getNode, group, itemId, runtime],
+    );
+    const keyboardDragEnabled = runtime.isKeyboardDragEnabled();
 
-    return {
-        ref: setNodeRef,
-        onPointerDown: createDragHandler({
-            itemId,
-            group,
-            runtime,
-            getNode: () => nodeRef.current,
-        }),
-    };
+    return useMemo(() => {
+        const dragProps: UseDraggableReturn = {
+            ref: setNodeRef,
+            onPointerDown,
+        };
+
+        return keyboardDragEnabled
+            ? {
+                ...dragProps,
+                tabIndex: 0,
+                onKeyDown,
+            }
+            : dragProps;
+    }, [keyboardDragEnabled, onKeyDown, onPointerDown, setNodeRef]);
 }

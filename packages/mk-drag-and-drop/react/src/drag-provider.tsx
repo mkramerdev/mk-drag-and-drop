@@ -1,9 +1,11 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import {
@@ -16,6 +18,75 @@ import {
 
 type Rect = DragRect;
 type DragGroup = string;
+
+export type PointerConfiguration = {
+    activationDelay?: number | null;
+    activationDistance?: number | null;
+};
+
+export type KeyboardCommand =
+    | string
+    | readonly string[];
+
+export type KeyboardConfiguration = {
+    enabled?: boolean;
+    start?: KeyboardCommand;
+    drop?: KeyboardCommand;
+    cancel?: KeyboardCommand;
+    moveUp?: KeyboardCommand;
+    moveDown?: KeyboardCommand;
+    moveLeft?: KeyboardCommand;
+    moveRight?: KeyboardCommand;
+    moveDistance?: number;
+};
+
+export type DragModifierSetupInput = {
+    itemId: string;
+    group: string;
+    sourceRect: DragRect;
+    initialPointerPosition: Point;
+};
+
+export type DragModifierTransformInput<State = unknown> = {
+    itemId: string;
+    group: string;
+    sourceRect: DragRect;
+    initialPointerPosition: Point;
+    rawPointerPosition: Point;
+    pointerPosition: Point;
+    overlayRect: DragRect;
+    state: State;
+};
+
+export type DragModifier<State = unknown> = {
+    setup?: (input: DragModifierSetupInput) => State;
+    transform: (input: DragModifierTransformInput<State>) => Point;
+};
+
+type NormalizedPointerConfiguration = {
+    activationDelay: number | null;
+    activationDistance: number | null;
+};
+
+type NormalizedKeyboardConfiguration = {
+    enabled: boolean;
+    start: readonly string[];
+    drop: readonly string[];
+    cancel: readonly string[];
+    moveUp: readonly string[];
+    moveDown: readonly string[];
+    moveLeft: readonly string[];
+    moveRight: readonly string[];
+    moveDistance: number;
+};
+
+type ActiveDragInput = "pointer" | "keyboard";
+type KeyboardMoveDirection = "up" | "down" | "left" | "right";
+
+type ActiveDragModifier = {
+    modifier: DragModifier<any>;
+    state: any;
+};
 
 type DropTargetRegistration = {
     element: HTMLElement;
@@ -55,16 +126,52 @@ type DragOverlayRenderState = {
 type DragProviderProps = {
     children: ReactNode;
     dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
+    keyboardConfiguration?: KeyboardConfiguration;
     keepOverlayOnDrop?: boolean;
+    modifiers?: readonly DragModifier<any>[];
+    pointerConfiguration?: PointerConfiguration;
     targetingAlgorithm?: TargetingAlgorithm;
     targetingConstraint?: TargetingConstraint;
 } & DragProviderLifecycleCallbacks;
 
+type RequestDragStartInput = {
+    itemId: string;
+    group: DragGroup;
+    element: HTMLElement;
+    pointerId: number;
+    pointerPosition: Point;
+};
+
 type StartDragInput = {
     itemId: string;
     group: DragGroup;
+    inputType: ActiveDragInput;
     pointerPosition: Point;
     sourceRect: Rect;
+};
+
+type RequestKeyboardDragStartInput = {
+    itemId: string;
+    group: DragGroup;
+    element: HTMLElement;
+};
+
+type SourceKeyboardDragKeyDownInput = {
+    itemId: string;
+    group: DragGroup;
+    element: HTMLElement;
+    key: string;
+};
+
+type PendingDragActivation = {
+    itemId: string;
+    group: DragGroup;
+    element: HTMLElement;
+    pointerId: number;
+    initialPointerPosition: Point;
+    latestPointerPosition: Point;
+    timeoutId: number | null;
+    cleanupWindowListeners: () => void;
 };
 
 export type DragStartEvent = {
@@ -124,6 +231,29 @@ export type DragRuntimeSubscription = {
     onDrop?: (event: DropEvent) => void;
 };
 
+const defaultKeyboardConfiguration: NormalizedKeyboardConfiguration = {
+    enabled: true,
+    start: ["Space", "Enter"],
+    drop: ["Space", "Enter"],
+    cancel: ["Escape"],
+    moveUp: ["ArrowUp"],
+    moveDown: ["ArrowDown"],
+    moveLeft: ["ArrowLeft"],
+    moveRight: ["ArrowRight"],
+    moveDistance: 24,
+};
+
+const emptyDragRect: DragRect = {
+    x: 0,
+    y: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+};
+
 class DragRuntime {
     isDragging = false;
     draggedId: string | null = null;
@@ -133,11 +263,22 @@ class DragRuntime {
     activeDropTarget: string | null = null;
 
     private dragState: DragState | null = null;
+    private activeDragInput: ActiveDragInput | null = null;
+    private rawPointerPosition: Point | null = null;
+    private modifiers: readonly DragModifier<any>[] = [];
+    private activeDragModifiers: ActiveDragModifier[] = [];
     private cleanupWindowListeners: (() => void) | null = null;
     private cleanupTextSelectionSuppression: (() => void) | null = null;
     private subscriptions = new Set<DragRuntimeSubscription>();
     private lifecycleCallbacks: DragProviderLifecycleCallbacks = {};
     private dropTargetElements = new WeakMap<HTMLElement, string>();
+    private pointerConfiguration: NormalizedPointerConfiguration = {
+      activationDelay: null,
+      activationDistance: null,
+    };
+    private keyboardConfiguration: NormalizedKeyboardConfiguration =
+      defaultKeyboardConfiguration;
+    private pendingDragActivation: PendingDragActivation | null = null;
 
     constructor(
       private setOverlayState: (
@@ -155,33 +296,238 @@ class DragRuntime {
       hasDragOverlay: boolean;
       keepOverlayOnDrop: boolean;
       lifecycleCallbacks: DragProviderLifecycleCallbacks;
+      keyboardConfiguration?: KeyboardConfiguration;
+      modifiers?: readonly DragModifier<any>[];
+      pointerConfiguration?: PointerConfiguration;
     }): void {
       this.hasDragOverlay = input.hasDragOverlay;
       this.keepOverlayOnDrop = input.keepOverlayOnDrop;
       this.targetingAlgorithm = input.targetingAlgorithm;
       this.targetingConstraint = input.targetingConstraint;
       this.lifecycleCallbacks = input.lifecycleCallbacks;
+      this.keyboardConfiguration = normalizeKeyboardConfiguration(
+        input.keyboardConfiguration,
+      );
+      this.modifiers = input.modifiers ? Array.from(input.modifiers) : [];
+      this.pointerConfiguration = normalizePointerConfiguration(
+        input.pointerConfiguration,
+      );
     }
 
-    startDrag(input: StartDragInput): void {
+    requestDragStart(input: RequestDragStartInput): void {
+        this.cancelPendingDragActivation();
+
+        if (this.isDragging) {
+            return;
+        }
+
+        const { activationDelay, activationDistance } =
+          this.pointerConfiguration;
+
+        if (activationDelay === null && activationDistance === null) {
+            this.startDragNow({
+                itemId: input.itemId,
+                group: input.group,
+                inputType: "pointer",
+                pointerPosition: input.pointerPosition,
+                sourceRect: input.element.getBoundingClientRect(),
+            });
+            return;
+        }
+
+        const initialPointerPosition = {
+            x: input.pointerPosition.x,
+            y: input.pointerPosition.y,
+        };
+        const pendingActivation: PendingDragActivation = {
+            itemId: input.itemId,
+            group: input.group,
+            element: input.element,
+            pointerId: input.pointerId,
+            initialPointerPosition,
+            latestPointerPosition: initialPointerPosition,
+            timeoutId: null,
+            cleanupWindowListeners: () => {},
+        };
+
+        const handlePointerMove = (event: PointerEvent): void => {
+            if (event.pointerId !== pendingActivation.pointerId) {
+                return;
+            }
+
+            const pointerPosition = {
+                x: event.clientX,
+                y: event.clientY,
+            };
+
+            pendingActivation.latestPointerPosition = pointerPosition;
+
+            if (activationDistance === null) {
+                return;
+            }
+
+            const distance = Math.hypot(
+                pointerPosition.x - initialPointerPosition.x,
+                pointerPosition.y - initialPointerPosition.y,
+            );
+
+            if (distance >= activationDistance) {
+                this.activatePendingDragActivation(pendingActivation);
+            }
+        };
+
+        const handlePointerEnd = (event: PointerEvent): void => {
+            if (event.pointerId !== pendingActivation.pointerId) {
+                return;
+            }
+
+            this.cancelPendingDragActivation();
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerEnd);
+        window.addEventListener("pointercancel", handlePointerEnd);
+
+        pendingActivation.cleanupWindowListeners = () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", handlePointerEnd);
+            window.removeEventListener("pointercancel", handlePointerEnd);
+        };
+
+        if (activationDelay !== null) {
+            pendingActivation.timeoutId = window.setTimeout(() => {
+                this.activatePendingDragActivation(pendingActivation);
+            }, activationDelay);
+        }
+
+        this.pendingDragActivation = pendingActivation;
+    }
+
+    isKeyboardDragEnabled(): boolean {
+        return this.keyboardConfiguration.enabled;
+    }
+
+    handleSourceKeyboardKeyDown(input: SourceKeyboardDragKeyDownInput): boolean {
+        if (!this.keyboardConfiguration.enabled) {
+            return false;
+        }
+
+        if (!this.isDragging) {
+            if (
+                !isKeyboardCommandMatch(
+                    input.key,
+                    this.keyboardConfiguration.start,
+                )
+            ) {
+                return false;
+            }
+
+            this.requestKeyboardDragStart({
+                itemId: input.itemId,
+                group: input.group,
+                element: input.element,
+            });
+            return true;
+        }
+
+        if (this.activeDragInput !== "keyboard") {
+            return false;
+        }
+
+        return this.handleActiveKeyboardKeyDown(input.key);
+    }
+
+    requestKeyboardDragStart(input: RequestKeyboardDragStartInput): void {
+        this.cancelPendingDragActivation();
+
+        if (
+            this.isDragging ||
+            !this.keyboardConfiguration.enabled ||
+            !input.element.isConnected
+        ) {
+            return;
+        }
+
+        const sourceRect = input.element.getBoundingClientRect();
+        const pointerPosition = {
+            x: sourceRect.left + sourceRect.width / 2,
+            y: sourceRect.top + sourceRect.height / 2,
+        };
+
+        this.startDragNow({
+            itemId: input.itemId,
+            group: input.group,
+            inputType: "keyboard",
+            pointerPosition,
+            sourceRect,
+        });
+    }
+
+    moveKeyboardDrag(direction: KeyboardMoveDirection): void {
+        if (
+            !this.isDragging ||
+            this.activeDragInput !== "keyboard" ||
+            !this.rawPointerPosition
+        ) {
+            return;
+        }
+
+        const distance = this.keyboardConfiguration.moveDistance;
+        const pointerPosition = {
+            x: this.rawPointerPosition.x,
+            y: this.rawPointerPosition.y,
+        };
+
+        if (direction === "up") {
+            pointerPosition.y -= distance;
+        } else if (direction === "down") {
+            pointerPosition.y += distance;
+        } else if (direction === "left") {
+            pointerPosition.x -= distance;
+        } else {
+            pointerPosition.x += distance;
+        }
+
+        this.updatePointer(pointerPosition);
+    }
+
+    private startDragNow(input: StartDragInput): void {
         if (this.targetingAlgorithm.mode === "rect" && !this.hasDragOverlay) {
             throw new Error(
                 "The selected targeting algorithm requires a drag overlay. Provide dragOverlay or use a pointer-based targeting algorithm.",
             );
         }
 
+        const rawPointerPosition = input.pointerPosition;
+        const activeDragModifiers = this.createActiveDragModifiers({
+            itemId: input.itemId,
+            group: input.group,
+            sourceRect: input.sourceRect,
+            initialPointerPosition: rawPointerPosition,
+        });
+        this.activeDragModifiers = activeDragModifiers;
+        const effectivePointerPosition = this.applyDragModifiers({
+            itemId: input.itemId,
+            group: input.group,
+            sourceRect: input.sourceRect,
+            initialPointerPosition: rawPointerPosition,
+            rawPointerPosition,
+        });
+
         this.isDragging = true;
+        this.activeDragInput = input.inputType;
         this.draggedId = input.itemId;
         this.draggedGroup = input.group;
-        this.pointerPosition = input.pointerPosition;
+        this.rawPointerPosition = rawPointerPosition;
+        this.pointerPosition = effectivePointerPosition;
         this.activeDropTarget = null;
         this.remeasureDropTargets();
 
         this.dragState = {
             itemId: input.itemId,
             sourceRect: input.sourceRect,
-            startPointerPosition: input.pointerPosition,
-            pointerPosition: input.pointerPosition,
+            startPointerPosition: rawPointerPosition,
+            pointerPosition: effectivePointerPosition,
         };
 
         this.setOverlayState({
@@ -189,20 +535,38 @@ class DragRuntime {
           phase: "dragging",
         });
         this.suppressTextSelection();
-        this.bindWindowListeners();
+        if (input.inputType === "pointer") {
+            this.bindPointerWindowListeners();
+        } else {
+            this.bindKeyboardWindowListeners();
+        }
         this.notifyDragStart({
             itemId: input.itemId,
-            pointerPosition: input.pointerPosition,
+            pointerPosition: effectivePointerPosition,
             sourceRect: input.sourceRect,
         });
     }
 
-    updatePointer(pointerPosition: Point): void {
+    updatePointer(rawPointerPosition: Point): void {
       if (!this.isDragging || !this.dragState) return;
 
       const itemId = this.dragState.itemId;
+      const group = this.draggedGroup;
       const previousDropTarget = this.activeDropTarget;
 
+      if (group === null) {
+        return;
+      }
+
+      const pointerPosition = this.applyDragModifiers({
+        itemId,
+        group,
+        sourceRect: this.dragState.sourceRect,
+        initialPointerPosition: this.dragState.startPointerPosition,
+        rawPointerPosition,
+      });
+
+      this.rawPointerPosition = rawPointerPosition;
       this.pointerPosition = pointerPosition;
       this.activeDropTarget = this.getActiveDropTarget(pointerPosition);
       this.dragState = {
@@ -223,16 +587,37 @@ class DragRuntime {
     }
 
     endDrag(): void {
+      this.finishDrag({
+        dropTarget: this.activeDropTarget,
+        keepReleasedOverlay: this.keepOverlayOnDrop,
+      });
+    }
+
+    cancelDrag(): void {
+      this.finishDrag({
+        dropTarget: null,
+        keepReleasedOverlay: false,
+      });
+    }
+
+    private finishDrag(input: {
+      dropTarget: string | null;
+      keepReleasedOverlay: boolean;
+    }): void {
+      this.cancelPendingDragActivation();
+
       const itemId = this.draggedId;
-      const dropTarget = this.activeDropTarget;
       const releasedDragState = this.dragState;
 
       this.isDragging = false;
+      this.activeDragInput = null;
       this.draggedId = null;
       this.draggedGroup = null;
+      this.rawPointerPosition = null;
       this.pointerPosition = null;
       this.activeDropTarget = null;
       this.dragState = null;
+      this.activeDragModifiers = [];
 
       this.cleanupWindowListeners?.();
       this.cleanupWindowListeners = null;
@@ -242,18 +627,18 @@ class DragRuntime {
       if (itemId) {
         this.notifyDragEnd({
           itemId,
-          dropTarget,
+          dropTarget: input.dropTarget,
         });
 
-        if (dropTarget) {
+        if (input.dropTarget) {
           this.notifyDrop({
             itemId,
-            dropTarget,
+            dropTarget: input.dropTarget,
           });
         }
       }
 
-      if (this.keepOverlayOnDrop && releasedDragState && this.hasDragOverlay) {
+      if (input.keepReleasedOverlay && releasedDragState && this.hasDragOverlay) {
         this.setOverlayState({
           dragState: releasedDragState,
           phase: "released",
@@ -277,9 +662,10 @@ class DragRuntime {
       this.dropTargets.set(id, {
         element,
         group,
-        documentRect: measureDocumentRect(element),
+        documentRect: emptyDragRect,
       });
       this.dropTargetElements.set(element, id);
+      this.remeasureDropTarget(id);
     }
 
     unregisterDropTarget(id: string): void {
@@ -333,7 +719,7 @@ class DragRuntime {
     remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
       if (input === undefined) {
         for (const dropTarget of this.dropTargets.values()) {
-          dropTarget.documentRect = measureDocumentRect(dropTarget.element);
+          this.remeasureDropTargetRegistration(dropTarget);
         }
 
         return;
@@ -354,7 +740,7 @@ class DragRuntime {
 
       for (const dropTarget of this.dropTargets.values()) {
         if (dropTarget.group === input.group) {
-          dropTarget.documentRect = measureDocumentRect(dropTarget.element);
+          this.remeasureDropTargetRegistration(dropTarget);
         }
       }
     }
@@ -367,7 +753,127 @@ class DragRuntime {
       };
     }
 
-    private bindWindowListeners(): void {
+    private createActiveDragModifiers(
+        input: DragModifierSetupInput,
+    ): ActiveDragModifier[] {
+        return this.modifiers.map((modifier) => ({
+            modifier,
+            state: modifier.setup?.(input),
+        }));
+    }
+
+    private applyDragModifiers(input: {
+        itemId: string;
+        group: DragGroup;
+        sourceRect: DragRect;
+        initialPointerPosition: Point;
+        rawPointerPosition: Point;
+    }): Point {
+        let pointerPosition = input.rawPointerPosition;
+
+        for (const activeModifier of this.activeDragModifiers) {
+            const overlayRect = getOverlayRect({
+                sourceRect: input.sourceRect,
+                initialPointerPosition: input.initialPointerPosition,
+                pointerPosition,
+            });
+
+            pointerPosition = activeModifier.modifier.transform({
+                itemId: input.itemId,
+                group: input.group,
+                sourceRect: input.sourceRect,
+                initialPointerPosition: input.initialPointerPosition,
+                rawPointerPosition: input.rawPointerPosition,
+                pointerPosition,
+                overlayRect,
+                state: activeModifier.state,
+            });
+        }
+
+        return pointerPosition;
+    }
+
+    private activatePendingDragActivation(
+        pendingActivation: PendingDragActivation,
+    ): void {
+        if (this.pendingDragActivation !== pendingActivation) {
+            return;
+        }
+
+        this.cancelPendingDragActivation();
+
+        if (this.isDragging || !pendingActivation.element.isConnected) {
+            return;
+        }
+
+        this.startDragNow({
+            itemId: pendingActivation.itemId,
+            group: pendingActivation.group,
+            inputType: "pointer",
+            pointerPosition: pendingActivation.initialPointerPosition,
+            sourceRect: pendingActivation.element.getBoundingClientRect(),
+        });
+
+        if (
+            pendingActivation.latestPointerPosition.x !==
+              pendingActivation.initialPointerPosition.x ||
+            pendingActivation.latestPointerPosition.y !==
+              pendingActivation.initialPointerPosition.y
+        ) {
+            this.updatePointer(pendingActivation.latestPointerPosition);
+        }
+    }
+
+    private cancelPendingDragActivation(): void {
+        const pendingActivation = this.pendingDragActivation;
+
+        if (!pendingActivation) {
+            return;
+        }
+
+        if (pendingActivation.timeoutId !== null) {
+            window.clearTimeout(pendingActivation.timeoutId);
+        }
+
+        pendingActivation.cleanupWindowListeners();
+        this.pendingDragActivation = null;
+    }
+
+    private handleActiveKeyboardKeyDown(key: string): boolean {
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.moveUp)) {
+            this.moveKeyboardDrag("up");
+            return true;
+        }
+
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.moveDown)) {
+            this.moveKeyboardDrag("down");
+            return true;
+        }
+
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.moveLeft)) {
+            this.moveKeyboardDrag("left");
+            return true;
+        }
+
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.moveRight)) {
+            this.moveKeyboardDrag("right");
+            return true;
+        }
+
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.drop)) {
+            this.endDrag();
+            return true;
+        }
+
+        if (isKeyboardCommandMatch(key, this.keyboardConfiguration.cancel)) {
+            this.cancelDrag();
+            return true;
+        }
+
+        return false;
+    }
+
+    private bindPointerWindowListeners(): void {
       this.cleanupWindowListeners?.();
 
       const handlePointerMove = (event: PointerEvent) => {
@@ -389,6 +895,25 @@ class DragRuntime {
         window.removeEventListener("pointermove", handlePointerMove);
         window.removeEventListener("pointerup", handlePointerEnd);
         window.removeEventListener("pointercancel", handlePointerEnd);
+      };
+    }
+
+    private bindKeyboardWindowListeners(): void {
+      this.cleanupWindowListeners?.();
+
+      const handleKeyDown = (event: KeyboardEvent): void => {
+        if (!this.handleActiveKeyboardKeyDown(event.key)) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+
+      this.cleanupWindowListeners = () => {
+        window.removeEventListener("keydown", handleKeyDown);
       };
     }
 
@@ -469,7 +994,20 @@ class DragRuntime {
         return;
       }
 
-      dropTarget.documentRect = measureDocumentRect(dropTarget.element);
+      this.remeasureDropTargetRegistration(dropTarget);
+    }
+
+    private remeasureDropTargetRegistration(
+      registration: DropTargetRegistration,
+    ): void {
+      registration.documentRect =
+        this.measureDropTargetRegistration(registration);
+    }
+
+    private measureDropTargetRegistration(
+      registration: DropTargetRegistration,
+    ): DragRect {
+      return measureDocumentRect(registration.element);
     }
 
     private getCurrentDragRectAt(pointerPosition: Point): DragRect | null {
@@ -477,10 +1015,11 @@ class DragRuntime {
         return null;
       }
 
-      const deltaX = pointerPosition.x - this.dragState.startPointerPosition.x;
-      const deltaY = pointerPosition.y - this.dragState.startPointerPosition.y;
-
-      return translateRect(this.dragState.sourceRect, deltaX, deltaY);
+      return getOverlayRect({
+        sourceRect: this.dragState.sourceRect,
+        initialPointerPosition: this.dragState.startPointerPosition,
+        pointerPosition,
+      });
     }
 
     private getNearestSortableSiblingItemId(
@@ -583,15 +1122,18 @@ export function useRemeasureDropTargets(): (
     throw new Error("useRemeasureDropTargets must be used inside DragProvider");
   }
 
-  return (input) => {
+  return useCallback((input?: RemeasureDropTargetsInput) => {
     runtime.remeasureDropTargets(input);
-  };
+  }, [runtime]);
 }
 
 export function DragProvider({
     children,
     dragOverlay,
+    keyboardConfiguration,
     keepOverlayOnDrop = false,
+    modifiers,
+    pointerConfiguration,
     targetingAlgorithm = pointerToCenter,
     targetingConstraint,
     onDragStart,
@@ -624,6 +1166,9 @@ export function DragProvider({
         onDragEnd,
         onDrop,
       },
+      keyboardConfiguration,
+      modifiers,
+      pointerConfiguration,
     });
 
     function finishOverlay(): void {
@@ -658,6 +1203,17 @@ function translateRect(rect: DragRect, deltaX: number, deltaY: number): DragRect
   };
 }
 
+function getOverlayRect(input: {
+  sourceRect: DragRect;
+  initialPointerPosition: Point;
+  pointerPosition: Point;
+}): DragRect {
+  const deltaX = input.pointerPosition.x - input.initialPointerPosition.x;
+  const deltaY = input.pointerPosition.y - input.initialPointerPosition.y;
+
+  return translateRect(input.sourceRect, deltaX, deltaY);
+}
+
 function measureDocumentRect(element: HTMLElement): DragRect {
   const viewportRect = element.getBoundingClientRect();
   const scrollX = window.scrollX;
@@ -675,6 +1231,60 @@ function measureDocumentRect(element: HTMLElement): DragRect {
   };
 }
 
+export function lockToXAxis(): DragModifier {
+  return {
+    transform: (input) => ({
+      x: input.pointerPosition.x,
+      y: input.initialPointerPosition.y,
+    }),
+  };
+}
+
+export function lockToYAxis(): DragModifier {
+  return {
+    transform: (input) => ({
+      x: input.initialPointerPosition.x,
+      y: input.pointerPosition.y,
+    }),
+  };
+}
+
+export function restrictToContainer(
+  containerRef: RefObject<HTMLElement | null>,
+): DragModifier<DragRect | null> {
+  return {
+    setup: () => {
+      const container = containerRef.current;
+
+      return container
+        ? rectToDragRect(container.getBoundingClientRect())
+        : null;
+    },
+    transform: (input) => {
+      if (input.state === null) {
+        return input.pointerPosition;
+      }
+
+      return {
+        x: clampPointerAxis({
+          pointerPosition: input.pointerPosition.x,
+          overlayStart: input.overlayRect.left,
+          overlayEnd: input.overlayRect.right,
+          containerStart: input.state.left,
+          containerEnd: input.state.right,
+        }),
+        y: clampPointerAxis({
+          pointerPosition: input.pointerPosition.y,
+          overlayStart: input.overlayRect.top,
+          overlayEnd: input.overlayRect.bottom,
+          containerStart: input.state.top,
+          containerEnd: input.state.bottom,
+        }),
+      };
+    },
+  };
+}
+
 function documentRectToViewportRect(rect: DragRect): DragRect {
   const scrollX = window.scrollX;
   const scrollY = window.scrollY;
@@ -689,6 +1299,141 @@ function documentRectToViewportRect(rect: DragRect): DragRect {
     width: rect.width,
     height: rect.height,
   };
+}
+
+function rectToDragRect(rect: DOMRect): DragRect {
+  return {
+    x: rect.x,
+    y: rect.y,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function clampPointerAxis(input: {
+  pointerPosition: number;
+  overlayStart: number;
+  overlayEnd: number;
+  containerStart: number;
+  containerEnd: number;
+}): number {
+  const overlaySize = input.overlayEnd - input.overlayStart;
+  const containerSize = input.containerEnd - input.containerStart;
+
+  if (overlaySize > containerSize) {
+    // Oversized overlays pin their leading edge to the container to avoid
+    // alternating between opposite edges on repeated modifier runs.
+    return input.pointerPosition + input.containerStart - input.overlayStart;
+  }
+
+  if (input.overlayStart < input.containerStart) {
+    return input.pointerPosition + input.containerStart - input.overlayStart;
+  }
+
+  if (input.overlayEnd > input.containerEnd) {
+    return input.pointerPosition - (input.overlayEnd - input.containerEnd);
+  }
+
+  return input.pointerPosition;
+}
+
+function normalizeKeyboardConfiguration(
+  keyboardConfiguration: KeyboardConfiguration | undefined,
+): NormalizedKeyboardConfiguration {
+  return {
+    enabled: keyboardConfiguration?.enabled ?? defaultKeyboardConfiguration.enabled,
+    start: normalizeKeyboardCommand(
+      keyboardConfiguration?.start,
+      defaultKeyboardConfiguration.start,
+    ),
+    drop: normalizeKeyboardCommand(
+      keyboardConfiguration?.drop,
+      defaultKeyboardConfiguration.drop,
+    ),
+    cancel: normalizeKeyboardCommand(
+      keyboardConfiguration?.cancel,
+      defaultKeyboardConfiguration.cancel,
+    ),
+    moveUp: normalizeKeyboardCommand(
+      keyboardConfiguration?.moveUp,
+      defaultKeyboardConfiguration.moveUp,
+    ),
+    moveDown: normalizeKeyboardCommand(
+      keyboardConfiguration?.moveDown,
+      defaultKeyboardConfiguration.moveDown,
+    ),
+    moveLeft: normalizeKeyboardCommand(
+      keyboardConfiguration?.moveLeft,
+      defaultKeyboardConfiguration.moveLeft,
+    ),
+    moveRight: normalizeKeyboardCommand(
+      keyboardConfiguration?.moveRight,
+      defaultKeyboardConfiguration.moveRight,
+    ),
+    moveDistance: normalizeKeyboardMoveDistance(
+      keyboardConfiguration?.moveDistance,
+    ),
+  };
+}
+
+function normalizeKeyboardCommand(
+  command: KeyboardCommand | undefined,
+  defaultCommand: readonly string[],
+): readonly string[] {
+  const commandKeys =
+    command === undefined
+      ? defaultCommand
+      : typeof command === "string"
+        ? [command]
+        : command;
+
+  return commandKeys.map(normalizeKeyboardKey);
+}
+
+function normalizeKeyboardKey(key: string): string {
+  return key === " " ? "Space" : key;
+}
+
+function normalizeKeyboardMoveDistance(
+  moveDistance: number | undefined,
+): number {
+  return typeof moveDistance === "number" &&
+    Number.isFinite(moveDistance) &&
+    moveDistance > 0
+    ? moveDistance
+    : defaultKeyboardConfiguration.moveDistance;
+}
+
+function isKeyboardCommandMatch(
+  key: string,
+  command: readonly string[],
+): boolean {
+  return command.includes(normalizeKeyboardKey(key));
+}
+
+function normalizePointerConfiguration(
+  pointerConfiguration: PointerConfiguration | undefined,
+): NormalizedPointerConfiguration {
+  return {
+    activationDelay: normalizePointerActivationValue(
+      pointerConfiguration?.activationDelay,
+    ),
+    activationDistance: normalizePointerActivationValue(
+      pointerConfiguration?.activationDistance,
+    ),
+  };
+}
+
+function normalizePointerActivationValue(
+  value: number | null | undefined,
+): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
 }
 
 function DragOverlay({

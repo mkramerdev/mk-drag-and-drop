@@ -2,6 +2,7 @@ import { DragContext } from "./drag-provider";
 import {
     useCallback,
     useContext,
+    useMemo,
     useRef,
     type HTMLAttributes,
     type RefCallback,
@@ -63,7 +64,10 @@ export function useDroppable({
         [group, runtime, targetId],
     );
 
-    return {
-        ref: setNodeRef,
-    };
+    return useMemo(
+        () => ({
+            ref: setNodeRef,
+        }),
+        [setNodeRef],
+    );
 }

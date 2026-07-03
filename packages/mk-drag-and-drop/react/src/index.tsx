@@ -557,7 +557,16 @@ export function useRequiredDragDropConfiguration(): DragDropConfiguration {
 }
 
 export {
+  lockToXAxis,
+  lockToYAxis,
+  restrictToContainer,
   useRemeasureDropTargets,
+  type DragModifier,
+  type DragModifierSetupInput,
+  type DragModifierTransformInput,
+  type KeyboardCommand,
+  type KeyboardConfiguration,
+  type PointerConfiguration,
   type RemeasureDropTargetsInput,
 } from "./drag-provider.js";
 export {

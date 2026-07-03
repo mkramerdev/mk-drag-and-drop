@@ -225,6 +225,7 @@ export function GroupedExample(): ReactElement {
   return (
     <DragProvider
       targetingConstraint={groupedTargetingConstraint}
+      pointerConfiguration={{ activationDelay: 10000 }}
       dragOverlay={() => (
         <GroupedDragOverlay
           overlayDrag={overlayDrag}
@@ -257,9 +258,6 @@ export function GroupedExample(): ReactElement {
       }}
       onDrop={handleDrop}
     >
-      <RemeasureGroupedTargetsAfterDragCollapse
-        activeDraggedParentId={activeDraggedParentId}
-      />
       <section className="examplePanel groupedExamplePanel">
         <h2 className="exampleTitle">Grouped drag and drop</h2>
         <div className="groupedExample">
@@ -291,25 +289,6 @@ export function GroupedExample(): ReactElement {
       </section>
     </DragProvider>
   );
-}
-
-function RemeasureGroupedTargetsAfterDragCollapse({
-  activeDraggedParentId,
-}: {
-  activeDraggedParentId: string | null;
-}): null {
-  const remeasureDropTargets = useRemeasureDropTargets();
-
-  useLayoutEffect(() => {
-    if (!activeDraggedParentId) {
-      return;
-    }
-
-    remeasureDropTargets({ group: groupedParentGroup });
-    remeasureDropTargets({ group: groupedChildGroup });
-  }, [activeDraggedParentId, remeasureDropTargets]);
-
-  return null;
 }
 
 function GroupedDragOverlay({
@@ -393,6 +372,15 @@ function GroupedParentBlock({
     hasChildren &&
     expandedParentIds.has(parent.parentId) &&
     !isActivelyDragged;
+
+  useLayoutEffect(() => {
+    if (!isActivelyDragged) {
+      return;
+    }
+
+    remeasureDropTargets({ group: groupedParentGroup });
+    remeasureDropTargets({ group: groupedChildGroup });
+  }, [isActivelyDragged, remeasureDropTargets]);
 
   function toggleExpanded(): void {
     setExpandedParentIds((currentExpandedParentIds) => {

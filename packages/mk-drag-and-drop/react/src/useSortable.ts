@@ -4,11 +4,13 @@ import {
 } from "./drag-provider";
 import {
     createDragHandler,
+    createKeyboardDragHandler,
     type DragHandlerRuntime,
 } from "./createDragHandler.js";
 import {
     useContext,
     useCallback,
+    useMemo,
     useRef,
     type HTMLAttributes,
     type RefCallback,
@@ -114,16 +116,43 @@ export function useSortable({
         },
         [group, itemId, registry, runtime],
     );
+    const getNode = useCallback(() => nodeRef.current, []);
+    const onPointerDown = useMemo(
+        () =>
+            createDragHandler({
+                itemId,
+                group,
+                runtime,
+                getNode,
+            }),
+        [getNode, group, itemId, runtime],
+    );
+    const onKeyDown = useMemo(
+        () =>
+            createKeyboardDragHandler({
+                itemId,
+                group,
+                runtime,
+                getNode,
+            }),
+        [getNode, group, itemId, runtime],
+    );
+    const keyboardDragEnabled = runtime.isKeyboardDragEnabled();
 
-    return {
-        ref: setNodeRef,
-        onPointerDown: createDragHandler({
-            itemId,
-            group,
-            runtime,
-            getNode: () => nodeRef.current,
-        }),
-    };
+    return useMemo(() => {
+        const dragProps: UseSortableResult = {
+            ref: setNodeRef,
+            onPointerDown,
+        };
+
+        return keyboardDragEnabled
+            ? {
+                ...dragProps,
+                tabIndex: 0,
+                onKeyDown,
+            }
+            : dragProps;
+    }, [keyboardDragEnabled, onKeyDown, onPointerDown, setNodeRef]);
 }
 
 function getSortableRegistry(runtime: SortableDragRuntime): SortableRegistry {
