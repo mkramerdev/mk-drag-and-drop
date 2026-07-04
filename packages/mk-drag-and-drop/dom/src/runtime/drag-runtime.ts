@@ -350,7 +350,14 @@ export class DragRuntime {
     group: DragGroup,
     options?: RegisterDropTargetOptions,
   ): void {
-    this.dropTargetRegistry.register(id, element, group, options);
+    const removedTargets = this.dropTargetRegistry.register(
+      id,
+      element,
+      group,
+      options,
+    );
+
+    this.clearActiveDropTargetIfRemoved(removedTargets);
   }
 
   unregisterDropTarget(id: string, element?: HTMLElement): void {
@@ -364,10 +371,17 @@ export class DragRuntime {
     element: HTMLElement,
     group: DragGroup,
   ): void {
-    this.dropTargetRegistry.register(containerId, element, group, {
+    const removedTargets = this.dropTargetRegistry.register(
       containerId,
-      container: true,
-    });
+      element,
+      group,
+      {
+        containerId,
+        container: true,
+      },
+    );
+
+    this.clearActiveDropTargetIfRemoved(removedTargets);
   }
 
   unregisterDropContainer(containerId: string, element?: HTMLElement): void {

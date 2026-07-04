@@ -217,6 +217,53 @@ describe("DOM behaviors", () => {
 
     runtime.dispose();
   });
+
+  it("reusing a replaced droppable element does not remove the current target", () => {
+    const runtime = createDragRuntime();
+    runtime.configure({
+      targetingAlgorithm: pointerToCenter,
+      targetingConstraint: undefined,
+      hasDragOverlay: false,
+      keepOverlayOnDrop: false,
+      lifecycleCallbacks: {},
+      keyboardConfiguration: undefined,
+      modifiers: [],
+      pointerConfiguration: undefined,
+    });
+    const oldElement = document.createElement("div");
+    const newElement = document.createElement("div");
+    document.body.append(oldElement, newElement);
+    stubBoundingClientRect(oldElement, createRect({ left: 0, width: 10 }));
+    stubBoundingClientRect(newElement, createRect({ left: 40, width: 10 }));
+    const oldTarget = createDomDroppable({
+      runtime,
+      targetId: "target-1",
+      group: "items",
+    });
+    const newTarget = createDomDroppable({
+      runtime,
+      targetId: "target-1",
+      group: "items",
+    });
+    const reusedTarget = createDomDroppable({
+      runtime,
+      targetId: "target-2",
+      group: "items",
+    });
+
+    oldTarget.setElement(oldElement);
+    newTarget.setElement(newElement);
+    reusedTarget.setElement(oldElement);
+
+    expect(runtime.getDropTargetRect("target-1")).toEqual(
+      createRect({ left: 40, width: 10 }),
+    );
+    expect(runtime.getDropTargetRect("target-2")).toEqual(
+      createRect({ left: 0, width: 10 }),
+    );
+
+    runtime.dispose();
+  });
 });
 
 function createDraggableRuntime() {

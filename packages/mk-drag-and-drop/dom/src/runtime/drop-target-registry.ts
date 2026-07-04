@@ -90,15 +90,43 @@ export class DropTargetRegistry {
     element: HTMLElement,
     group: DragGroup,
     options: RegisterDropTargetOptions = {},
-  ): void {
+  ): RemovedDropTarget[] {
     const groupTargets = this.getOrCreateGroupTargets(group);
     const previousElementTarget = this.targetElements.get(element);
+    const removedTargets: RemovedDropTarget[] = [];
 
-    if (
-      previousElementTarget &&
-      (previousElementTarget.group !== group || previousElementTarget.id !== id)
-    ) {
-      this.removeTarget(previousElementTarget.group, previousElementTarget.id);
+    if (previousElementTarget) {
+      const previousEntry = this.targetsByGroup
+        .get(previousElementTarget.group)
+        ?.get(previousElementTarget.id);
+      const previousElement = previousEntry
+        ? this.resolveEntry(previousEntry)
+        : null;
+
+      if (previousElement === element) {
+        if (
+          previousElementTarget.group !== group ||
+          previousElementTarget.id !== id
+        ) {
+          removedTargets.push(
+            ...this.removeTarget(
+              previousElementTarget.group,
+              previousElementTarget.id,
+            ),
+          );
+        }
+      } else {
+        this.targetElements.delete(element);
+      }
+    }
+
+    const displacedEntry = groupTargets.get(id);
+    const displacedElement = displacedEntry
+      ? this.resolveEntry(displacedEntry)
+      : null;
+
+    if (displacedElement && displacedElement !== element) {
+      this.targetElements.delete(displacedElement);
     }
 
     const entry: DropTargetEntry = {
@@ -116,6 +144,8 @@ export class DropTargetRegistry {
     groupTargets.set(id, entry);
     this.targetElements.set(element, { group, id });
     this.remeasureEntry(entry);
+
+    return removedTargets;
   }
 
   unregister(id: string, element?: HTMLElement): RemovedDropTarget[] {

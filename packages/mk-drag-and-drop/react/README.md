@@ -1,0 +1,464 @@
+# @mk-drag-and-drop/react
+
+## What It Is
+
+`@mk-drag-and-drop/react` is the React adapter for the DOM-first
+`@mk-drag-and-drop/dom` drag-and-drop runtime. It provides React hooks and a
+provider for wiring rendered DOM nodes into the shared runtime.
+
+The package is headless. It is not a component library, and it does not own your
+markup, styling, data model, rendering strategy, or persistence. It provides
+behavior, registration, targeting, lifecycle information, overlays, modifiers,
+and placement data. Your app decides what the UI looks like and how a completed
+drop changes application data.
+
+The React package supports draggable items, droppable targets, sortable
+lists and boards, drag handles, drop containers, drag overlays, modifiers,
+targeting configuration, keyboard and pointer configuration, lifecycle
+callbacks, and optional announcements.
+
+## Relationship To The DOM Package
+
+The React package wraps `@mk-drag-and-drop/dom`.
+
+`DragProvider` creates and configures a `DragRuntime` from the DOM package.
+Hooks such as `useDraggable`, `useDroppable`, `useSortable`, and
+`useDropContainer` register DOM nodes with that runtime through React refs.
+React hooks are adapters over DOM behavior, not a separate implementation.
+
+The vanilla and React examples use the same underlying behavior. React users can
+use the React package for provider and ref integration. Users who are not
+rendering with React, or who are building another framework adapter, can use
+`@mk-drag-and-drop/dom` directly.
+
+## Core Mental Model
+
+1. Wrap the interactive area in `DragProvider`.
+2. Register drag sources with `useDraggable` or `useSortable`.
+3. Register drop targets with `useDroppable` or `useDropContainer`.
+4. Optionally attach `useDragHandle` to a handle element.
+5. Use lifecycle callbacks, especially `onDrop`, to update app data.
+6. Render the result however your app wants.
+
+The package reports drag/drop operations. Your app owns the data and the final
+UI commit. React state is one common way to commit the result, but it is not
+required by the package.
+
+## Installation
+
+This workspace currently marks `@mk-drag-and-drop/react` as private. Install the
+React and DOM packages from your workspace or package registry when they are
+available:
+
+- `@mk-drag-and-drop/react`
+- `@mk-drag-and-drop/dom`
+
+`react` is a peer dependency of the React package.
+
+## Quick Start
+
+```tsx
+import { useState, type ReactNode } from "react";
+import {
+  DragProvider,
+  useDragHandle,
+  useDraggable,
+  useDroppable,
+} from "@mk-drag-and-drop/react";
+
+type Location = "left" | "right";
+
+export function Example() {
+  const [location, setLocation] = useState<Location>("left");
+
+  return (
+    <DragProvider
+      onDrop={({ itemId, dropTarget }) => {
+        if (
+          itemId === "card" &&
+          (dropTarget === "left" || dropTarget === "right")
+        ) {
+          setLocation(dropTarget);
+        }
+      }}
+    >
+      <div>
+        <DropZone targetId="left">
+          {location === "left" ? <Card /> : null}
+        </DropZone>
+        <DropZone targetId="right">
+          {location === "right" ? <Card /> : null}
+        </DropZone>
+      </div>
+    </DragProvider>
+  );
+}
+
+function Card() {
+  const draggable = useDraggable({ itemId: "card", group: "demo" });
+  const dragHandle = useDragHandle<HTMLButtonElement>();
+
+  return (
+    <div {...draggable}>
+      <button {...dragHandle} type="button" aria-label="Drag card">
+        Drag
+      </button>
+      <span>Card</span>
+    </div>
+  );
+}
+
+function DropZone({
+  targetId,
+  children,
+}: {
+  targetId: Location;
+  children: ReactNode;
+}) {
+  const droppable = useDroppable({ targetId, group: "demo" });
+
+  return <div {...droppable}>{children}</div>;
+}
+```
+
+Real apps own the markup, layout, styling, state updates, and persistence.
+
+## DragProvider
+
+`DragProvider` owns the runtime lifetime for the React subtree. It creates the
+DOM runtime, configures it from props, exposes it through React context, renders
+an optional drag overlay, and disposes the runtime when the provider unmounts.
+
+Key props:
+
+- `onDragStart(event, helpers)`: called when a drag starts.
+- `onDragUpdate(event, helpers)`: called as the active target changes.
+- `onDragEnd(event, helpers)`: called when dragging ends, with or without a
+  valid drop.
+- `onDrop(event, helpers)`: called when an item is dropped on a valid target.
+- `dragOverlay(input)`: renders the visual overlay for the active drag.
+- `targetingAlgorithm`: chooses one target from the measured targets.
+- `targetingConstraint`: filters measured targets before targeting runs.
+- `modifiers`: transforms pointer movement, such as axis locking or bounds.
+- `pointerConfiguration`: configures pointer activation delay and distance.
+- `keyboardConfiguration`: enables and configures keyboard drag commands.
+- `announcements`: optional callbacks that return live-region messages.
+- `keepOverlayOnDrop`: keeps the overlay in the released phase until the overlay
+  calls `finish`.
+
+Callbacks receive operation information and helper methods from the runtime.
+Use those callbacks to commit app data. Do not mutate package internals.
+
+## Hooks
+
+### useDraggable
+
+`useDraggable` registers an item as a drag source.
+
+```tsx
+const draggable = useDraggable({
+  itemId: "card-1",
+  group: "cards",
+});
+
+return <div {...draggable}>Card</div>;
+```
+
+Options:
+
+- `itemId`: stable string identifier for the dragged item.
+- `group`: optional drag group. Defaults to `"default"`.
+
+Return shape:
+
+- `ref`: attaches the rendered element to the runtime.
+- `onPointerDown`: starts pointer activation when allowed.
+- `tabIndex` and `onKeyDown`: included when keyboard dragging is enabled.
+
+Use `useDragHandle` when dragging should start only from a specific handle.
+
+### useDroppable
+
+`useDroppable` registers a DOM node as a valid drop target.
+
+```tsx
+const droppable = useDroppable({
+  targetId: "archive",
+  group: "cards",
+});
+
+return <div {...droppable} />;
+```
+
+Options:
+
+- `targetId`: stable string identifier for the target.
+- `group`: optional drag group. Only items in the same group target it.
+- `containerId`: optional container identity for placement-aware behavior.
+
+Use droppable targets for custom drop zones, tree rows, grouped rows, insertion
+lines, and other app-defined target geometry.
+
+### useSortable
+
+`useSortable` combines draggable behavior and drop-target behavior for sortable
+items.
+
+```tsx
+const sortable = useSortable({
+  itemId: item.id,
+  group: "cards",
+  containerId: column.id,
+});
+
+return <article {...sortable}>{item.title}</article>;
+```
+
+Options:
+
+- `itemId`: stable string identifier for the sortable item.
+- `group`: optional drag group. Defaults to `"default"`.
+- `containerId`: optional container identity for lists, boards, and columns.
+
+Return shape:
+
+- `ref`: attaches and registers the sortable element.
+- `onPointerDown`: starts pointer activation when allowed.
+- `tabIndex` and `onKeyDown`: included when keyboard dragging is enabled.
+
+During drag, the runtime may temporarily move sortable DOM nodes to preview
+placement. That preview is transient. It does not commit application order.
+On drop, read placement data from lifecycle helpers and update your own data:
+
+- `helpers.getSortablePlacement(itemId)`
+- `helpers.getDropPlacement(itemId)`
+
+`getSortablePlacement` is useful for simple reorder operations. `getDropPlacement`
+also includes container information for boards and multiple lists.
+
+### useDropContainer
+
+`useDropContainer` registers a container for placement-aware sortable/drop
+behavior.
+
+```tsx
+const container = useDropContainer({
+  containerId: "backlog",
+  group: "cards",
+});
+
+return <div {...container}>{cards}</div>;
+```
+
+Use drop containers for boards, multiple lists, columns, and empty containers
+that should accept items. A container does not imply orientation by itself.
+Sortable placement is determined from the registered items' layout and the
+targeting behavior.
+
+### useDragHandle
+
+`useDragHandle` marks an element as the drag handle for the nearest draggable or
+sortable element.
+
+```tsx
+const handle = useDragHandle<HTMLButtonElement>();
+
+return (
+  <button {...handle} type="button" aria-label="Drag item">
+    Drag
+  </button>
+);
+```
+
+When a draggable contains a handle, pointer dragging starts from the handle.
+This helps keep other interactive children usable.
+
+### useRemeasureDropTargets
+
+`useRemeasureDropTargets` returns a function for explicitly remeasuring targets
+after layout changes during a drag.
+
+```tsx
+const remeasureDropTargets = useRemeasureDropTargets();
+
+requestAnimationFrame(() => {
+  remeasureDropTargets({ group: "tree" });
+});
+```
+
+It accepts no argument, a target id, an array of target ids, or `{ group }`.
+Use it intentionally for expand/collapse, grouped trees, or drag-state layout
+changes. It is not needed for normal cleanup and should not run on every render.
+
+## Sortable Behavior
+
+Sortable preview is transient. The runtime may move DOM temporarily to show
+where an item would land, then restore or clear that preview as the drag ends.
+The app still commits data on drop. React rendering should then reflect the
+final data.
+
+Examples may rerender a full list for simplicity, but granular state management,
+external stores, server commits, and imperative rendering strategies are
+compatible. The package does not require React state.
+
+```tsx
+<DragProvider
+  onDrop={({ itemId }, helpers) => {
+    const placement = helpers.getDropPlacement(itemId);
+
+    if (!placement) {
+      return;
+    }
+
+    setItems((items) => reorderData(items, placement));
+  }}
+>
+  {/* sortable items */}
+</DragProvider>
+```
+
+`reorderData` is app code. It should translate `placement.itemId`,
+`placement.containerId`, `placement.previousItemId`, and
+`placement.nextItemId` into your data shape.
+
+## Drag Overlays
+
+`dragOverlay` renders a visual representation during drag.
+
+```tsx
+<DragProvider
+  dragOverlay={({ dragState }) => (
+    <div className="dragOverlay">{dragState.itemId}</div>
+  )}
+>
+  {children}
+</DragProvider>
+```
+
+The overlay input includes:
+
+- `dragState`: item id, group, source rect, start pointer, and current pointer.
+- `phase`: `"dragging"` or `"released"`.
+- `finish`: call this when a kept release overlay should be removed.
+
+Overlay rendering is app-owned. It should not be used as the source of truth for
+application data.
+
+## Targeting And Modifiers
+
+Targeting algorithms choose among measured drop targets. Targeting constraints
+filter targets before an algorithm runs. Modifiers transform movement during a
+drag.
+
+The DOM package exports targeting helpers such as `pointerToCenter`,
+`centerToCenter`, `pointerToRectDistance`, and `maxDistanceToRect`. The React
+package exports modifier helpers:
+
+- `lockToXAxis()`
+- `lockToYAxis()`
+- `restrictToContainer(refOrResolver)`
+
+`restrictToContainer` accepts either a React ref object or a resolver function.
+Use DOM exports directly when you need lower-level targeting, constraints,
+geometry helpers, or custom behavior.
+
+## Accessibility
+
+The runtime has keyboard dragging support through `keyboardConfiguration`.
+When keyboard dragging is enabled, draggable and sortable hooks add keyboard
+props to registered elements.
+
+Accessibility still depends on the app's markup and product behavior:
+
+- Prefer button or focusable drag handles with clear labels.
+- Do not hijack editable controls or unrelated interactive children.
+- Provide domain-specific instructions for what dragging does.
+- Use `announcements` when you want the provider to render polite live-region
+  updates from lifecycle callbacks.
+- Do not assume this package alone provides complete screen-reader drag-and-drop
+  support for your domain.
+
+## Cleanup And Effects
+
+Hooks register and unregister DOM nodes through refs and lifecycle effects.
+Users should not manually clean runtime entries for normal React mount/unmount.
+
+`DragProvider` owns runtime lifetime and disposes the runtime when it unmounts.
+`useDropContainer` also cleans its DOM binding on effect cleanup. Normal
+`useDraggable`, `useDroppable`, and `useSortable` usage is cleaned up through
+React ref updates.
+
+`useRemeasureDropTargets` is for layout changes, not cleanup. The runtime also
+prunes disconnected targets on drag-critical paths such as remeasurement.
+
+## Examples
+
+React examples live in `apps/react-web/src/react`:
+
+- Basic drag: moves one item between two droppable containers with an overlay.
+- Dropzone list: uses generated droppable insertion lines for list reordering.
+- Sortable list: uses `useSortable` and commits order from sortable placement.
+- Kanban: combines sortable columns, sortable cards, drop containers, overlays,
+  and a container modifier.
+- Grouped drag and drop: mixes parent sorting, child dragging, custom targets,
+  expansion state, and explicit remeasurement.
+- Tree: uses app-defined tree projection, generated targets, custom targeting,
+  and app-owned hierarchy updates.
+
+## API Reference
+
+- `DragProvider`: creates/configures the DOM runtime for a React subtree.
+  Important props include lifecycle callbacks, overlay rendering, targeting,
+  constraints, modifiers, pointer/keyboard configuration, announcements, and
+  `keepOverlayOnDrop`.
+- `DragContext`: React context for the runtime. Most users should use the hooks
+  instead of reading it directly.
+- `useDraggable(options)`: registers a drag source. Important options:
+  `itemId`, `group`. Returns ref and input props.
+- `useDroppable(options)`: registers a drop target. Important options:
+  `targetId`, `group`, `containerId`. Returns a ref prop.
+- `useSortable(options)`: registers a sortable item as both source and target.
+  Important options: `itemId`, `group`, `containerId`. Returns ref and input
+  props.
+- `useDropContainer(options)`: registers a placement-aware container. Important
+  options: `containerId`, `group`. Returns a ref prop.
+- `useDragHandle()`: returns the handle attribute props for a handle element.
+- `useRemeasureDropTargets()`: returns a function for remeasuring all targets,
+  one target, multiple targets, or a group.
+- `composeRefs`: helper for combining the refs returned by hooks with app refs.
+- `lockToXAxis`, `lockToYAxis`: DOM movement modifiers re-exported by React.
+- `restrictToContainer`: React-friendly container-bound modifier.
+
+Important event/helper types are re-exported from the React package, including
+`DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`, `DropEvent`,
+`DragLifecycleHelpers`, `DragState`, `DropPlacement`, `SortablePlacement`,
+`PointerConfiguration`, `KeyboardConfiguration`, and modifier types.
+
+## When To Use DOM Directly
+
+Use `@mk-drag-and-drop/dom` directly when:
+
+- You are not using React.
+- You are integrating with another rendering framework.
+- You are managing DOM imperatively.
+- You are building a lower-level adapter.
+
+Use `@mk-drag-and-drop/react` when:
+
+- Your UI is rendered with React.
+- You want ref-based hooks for registration.
+- You want provider-based runtime lifetime and lifecycle integration.
+
+## Development
+
+Package scripts in this workspace:
+
+```bash
+pnpm --filter @mk-drag-and-drop/react... build
+pnpm --filter @mk-drag-and-drop/react lint
+pnpm --filter @mk-drag-and-drop/react test
+pnpm --filter react-web build
+```
+
+The React example app also has `dev` and `preview` scripts, but they start local
+Vite processes and are not required for package verification.

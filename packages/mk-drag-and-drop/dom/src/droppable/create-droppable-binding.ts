@@ -20,4 +20,7 @@ export function createDroppable(input: CreateDroppableInput): void {
   });
 
   behavior.setElement(input.element);
+  input.controller.runtime.onDispose(() => {
+    behavior.cleanup();
+  });
 }
