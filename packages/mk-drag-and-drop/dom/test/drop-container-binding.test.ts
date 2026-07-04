@@ -97,16 +97,29 @@ describe("createDropContainer", () => {
     );
   });
 
-  it("unregisters the container on cleanup", () => {
-    const { source, container, cleanup, onDrop } = setupDragAndContainer({
+  it("returns void", () => {
+    controller = createDragController();
+    const container = createMeasuredElement(createRect({ width: 20, height: 20 }));
+
+    const result = createDropContainer({
+      controller,
+      element: container,
       containerId: "column-a",
     });
 
-    cleanup();
-    cleanup();
+    expect(result).toBeUndefined();
+  });
+
+  it("makes a removed container unavailable without cleanup", () => {
+    const { source, container, onDrop } = setupDragAndContainer({
+      containerId: "column-a",
+    });
+
+    container.remove();
     dragToTarget(source, container);
 
     expect(onDrop).not.toHaveBeenCalled();
+    expect(controller?.runtime.getDropTargetRect("column-a")).toBeNull();
   });
 
   it("unregisters the container when the controller is disposed", () => {
@@ -123,7 +136,6 @@ describe("createDropContainer", () => {
   function setupDragAndContainer(input: { containerId: string }): {
     source: HTMLElement;
     container: HTMLElement;
-    cleanup: () => void;
     onDrop: ReturnType<typeof vi.fn>;
     getPlacement: () => DropPlacement | null;
   } {
@@ -139,7 +151,7 @@ describe("createDropContainer", () => {
     );
 
     createDraggable({ controller, element: source, itemId: "item" });
-    const cleanup = createDropContainer({
+    createDropContainer({
       controller,
       element: container,
       containerId: input.containerId,
@@ -148,7 +160,6 @@ describe("createDropContainer", () => {
     return {
       source,
       container,
-      cleanup,
       onDrop,
       getPlacement: () => placement,
     };

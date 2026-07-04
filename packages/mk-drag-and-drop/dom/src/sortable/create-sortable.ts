@@ -39,22 +39,26 @@ export function createDomSortable(
     group,
     getElement: input.getElement,
   });
-  let registeredElement: HTMLElement | null = null;
+  let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredItemId: string | null = null;
 
   const cleanup = (): void => {
+    const registeredElement = registeredElementRef?.deref() ?? null;
+
     unregisterSortableElement({
       registry,
       runtime: input.runtime,
       itemId: registeredItemId,
       element: registeredElement,
     });
-    registeredElement = null;
+    registeredElementRef = null;
     registeredItemId = null;
   };
 
   return {
     setElement: (element) => {
+      const registeredElement = registeredElementRef?.deref() ?? null;
+
       if (
         element === registeredElement &&
         registeredItemId === input.itemId
@@ -76,7 +80,7 @@ export function createDomSortable(
         containerId: input.containerId ?? null,
         element,
       });
-      registeredElement = element;
+      registeredElementRef = new WeakRef(element);
       registeredItemId = input.itemId;
     },
     cleanup,

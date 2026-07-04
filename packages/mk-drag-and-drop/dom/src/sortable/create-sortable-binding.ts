@@ -9,23 +9,19 @@ export type CreateSortableInput = {
   containerId?: string | null;
 };
 
-export type CreateSortableCleanup = () => void;
-
 const defaultSortableGroup = "default";
 
-export function createSortable(
-  input: CreateSortableInput,
-): CreateSortableCleanup {
+export function createSortable(input: CreateSortableInput): void {
+  const elementRef = new WeakRef(input.element);
   const behavior = createDomSortable({
     runtime: input.controller.runtime,
     itemId: input.itemId,
     group: input.group ?? defaultSortableGroup,
     containerId: input.containerId ?? null,
-    getElement: () => input.element,
+    getElement: () => elementRef.deref() ?? null,
   });
   const hadPreviousTabIndex = input.element.hasAttribute("tabindex");
   const previousTabIndex = input.element.getAttribute("tabindex");
-  let disposeCleanup: (() => void) | null = null;
   let keyDownAttached = false;
   let cleanedUp = false;
 
@@ -51,26 +47,27 @@ export function createSortable(
     }
 
     cleanedUp = true;
-    input.element.removeEventListener("pointerdown", onPointerDown);
+    const element = elementRef.deref();
+
+    if (!element) {
+      behavior.cleanup();
+      return;
+    }
+
+    element.removeEventListener("pointerdown", onPointerDown);
 
     if (keyDownAttached) {
-      input.element.removeEventListener("keydown", onKeyDown);
+      element.removeEventListener("keydown", onKeyDown);
 
       if (hadPreviousTabIndex) {
-        input.element.setAttribute("tabindex", previousTabIndex ?? "");
+        element.setAttribute("tabindex", previousTabIndex ?? "");
       } else {
-        input.element.removeAttribute("tabindex");
+        element.removeAttribute("tabindex");
       }
     }
 
     behavior.cleanup();
-
-    const unsubscribe = disposeCleanup;
-    disposeCleanup = null;
-    unsubscribe?.();
   };
 
-  disposeCleanup = input.controller.runtime.onDispose(cleanup);
-
-  return cleanup;
+  input.controller.runtime.onDispose(cleanup);
 }

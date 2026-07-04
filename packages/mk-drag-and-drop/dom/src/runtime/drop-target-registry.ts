@@ -14,19 +14,28 @@ export type RemeasureDropTargetsInput =
   | string[]
   | { group: string };
 
-export type DropTargetRegistrationKind = "item" | "container";
+export type DropTargetCapabilities = {
+  container: boolean;
+  sortable: boolean;
+};
 
 export type DropTargetRegistration = {
   id: string;
   element: HTMLElement;
   group: DragGroup;
   containerId: string | null;
-  kind: DropTargetRegistrationKind;
+  capabilities: DropTargetCapabilities;
+};
+
+export type RemovedDropTarget = {
+  id: string;
+  group: DragGroup;
 };
 
 export type RegisterDropTargetOptions = {
+  container?: boolean;
   containerId?: string | null;
-  kind?: DropTargetRegistrationKind;
+  sortable?: boolean;
 };
 
 export type GetAvailableDropTargetsInput = {
@@ -51,18 +60,30 @@ export type DropPlacement = {
   nextItemId: string | null;
 };
 
-type MeasuredDropTargetRegistration = DropTargetRegistration & {
+type DropTargetEntry = {
+  id: string;
+  elementRef: WeakRef<HTMLElement>;
+  group: DragGroup;
+  containerId: string | null;
+  capabilities: DropTargetCapabilities;
   documentRect: DragRect;
 };
 
+type ResolvedDropTargetEntry = DropTargetEntry & {
+  element: HTMLElement;
+};
+
 type AvailableDropTargetCandidate = {
-  registration: MeasuredDropTargetRegistration;
+  registration: ResolvedDropTargetEntry;
   viewportRect: DragRect;
 };
 
 export class DropTargetRegistry {
-  private dropTargets = new Map<string, MeasuredDropTargetRegistration>();
-  private dropTargetElements = new WeakMap<HTMLElement, string>();
+  private targetsByGroup = new Map<DragGroup, Map<string, DropTargetEntry>>();
+  private targetElements = new WeakMap<
+    HTMLElement,
+    { group: DragGroup; id: string }
+  >();
 
   register(
     id: string,
@@ -70,86 +91,93 @@ export class DropTargetRegistry {
     group: DragGroup,
     options: RegisterDropTargetOptions = {},
   ): void {
-    const kind = options.kind ?? "item";
-    const key = createRegistrationKey({ id, group, kind });
-    const previousTarget = this.dropTargets.get(key);
-    const previousElementTargetId = this.dropTargetElements.get(element);
+    const groupTargets = this.getOrCreateGroupTargets(group);
+    const previousElementTarget = this.targetElements.get(element);
 
-    if (previousTarget && previousTarget.element !== element) {
-      this.dropTargetElements.delete(previousTarget.element);
+    if (
+      previousElementTarget &&
+      (previousElementTarget.group !== group || previousElementTarget.id !== id)
+    ) {
+      this.removeTarget(previousElementTarget.group, previousElementTarget.id);
     }
 
-    if (previousElementTargetId && previousElementTargetId !== key) {
-      this.dropTargets.delete(previousElementTargetId);
-    }
-
-    const registration = {
+    const entry: DropTargetEntry = {
       id,
-      element,
+      elementRef: new WeakRef(element),
       group,
       containerId: options.containerId ?? null,
-      kind,
+      capabilities: {
+        container: options.container ?? false,
+        sortable: options.sortable ?? false,
+      },
       documentRect: emptyDragRect,
     };
 
-    this.dropTargets.set(key, registration);
-    this.dropTargetElements.set(element, key);
-    this.remeasureRegistration(registration);
+    groupTargets.set(id, entry);
+    this.targetElements.set(element, { group, id });
+    this.remeasureEntry(entry);
   }
 
-  unregister(
-    id: string,
-    element?: HTMLElement,
-    kind?: DropTargetRegistrationKind,
-  ): DropTargetRegistration[] {
-    const removedRegistrations: DropTargetRegistration[] = [];
-
+  unregister(id: string, element?: HTMLElement): RemovedDropTarget[] {
     if (element) {
-      const registrationKey = this.dropTargetElements.get(element);
-      const target = registrationKey
-        ? this.dropTargets.get(registrationKey)
-        : null;
+      const target = this.targetElements.get(element);
 
-      if (
-        !registrationKey ||
-        !target ||
-        target.id !== id ||
-        (kind && target.kind !== kind)
-      ) {
-        return removedRegistrations;
+      if (!target || target.id !== id) {
+        return [];
       }
 
-      this.dropTargetElements.delete(target.element);
-      this.dropTargets.delete(registrationKey);
-      removedRegistrations.push(toPublicRegistration(target));
-      return removedRegistrations;
+      const entry = this.targetsByGroup.get(target.group)?.get(target.id);
+
+      if (!entry || this.resolveEntry(entry) !== element) {
+        this.targetElements.delete(element);
+        return [];
+      }
+
+      this.targetElements.delete(element);
+      return this.removeTarget(target.group, target.id);
     }
 
-    for (const [registrationKey, target] of Array.from(this.dropTargets)) {
-      if (target.id !== id || (kind && target.kind !== kind)) {
-        continue;
-      }
+    const removedTargets: RemovedDropTarget[] = [];
 
-      if (this.dropTargetElements.get(target.element) === registrationKey) {
-        this.dropTargetElements.delete(target.element);
-      }
-
-      this.dropTargets.delete(registrationKey);
-      removedRegistrations.push(toPublicRegistration(target));
+    for (const group of Array.from(this.targetsByGroup.keys())) {
+      removedTargets.push(...this.removeTarget(group, id));
     }
 
-    return removedRegistrations;
+    return removedTargets;
+  }
+
+  pruneDisconnected(): RemovedDropTarget[] {
+    const removedTargets: RemovedDropTarget[] = [];
+
+    for (const [group, groupTargets] of Array.from(this.targetsByGroup)) {
+      for (const [id, entry] of Array.from(groupTargets)) {
+        if (this.resolveEntry(entry)) {
+          continue;
+        }
+
+        groupTargets.delete(id);
+        removedTargets.push({ id, group });
+      }
+
+      if (groupTargets.size === 0) {
+        this.targetsByGroup.delete(group);
+      }
+    }
+
+    return removedTargets;
   }
 
   clear(): void {
-    this.dropTargets.clear();
-    this.dropTargetElements = new WeakMap<HTMLElement, string>();
+    this.targetsByGroup.clear();
+    this.targetElements = new WeakMap();
   }
 
   remeasure(input?: RemeasureDropTargetsInput): void {
     if (input === undefined) {
-      for (const dropTarget of this.dropTargets.values()) {
-        this.remeasureRegistration(dropTarget);
+      for (const groupTargets of this.targetsByGroup.values()) {
+        for (const target of groupTargets.values()) {
+          this.remeasureEntry(target);
+        }
       }
 
       return;
@@ -168,19 +196,19 @@ export class DropTargetRegistry {
       return;
     }
 
-    for (const dropTarget of this.dropTargets.values()) {
-      if (dropTarget.group === input.group) {
-        this.remeasureRegistration(dropTarget);
-      }
+    const groupTargets = this.targetsByGroup.get(input.group);
+
+    if (!groupTargets) {
+      return;
+    }
+
+    for (const dropTarget of groupTargets.values()) {
+      this.remeasureEntry(dropTarget);
     }
   }
 
-  getViewportRect(
-    id: string,
-    group?: DragGroup,
-    kind?: DropTargetRegistrationKind,
-  ): DragRect | null {
-    const registration = this.findRegistration(id, { group, kind });
+  getViewportRect(id: string, group?: DragGroup): DragRect | null {
+    const registration = this.findRegistration(id, { group });
 
     return registration
       ? documentRectToViewportRect(registration.documentRect)
@@ -190,9 +218,8 @@ export class DropTargetRegistry {
   getDropTargetRegistration(
     id: string,
     group?: DragGroup,
-    kind?: DropTargetRegistrationKind,
   ): DropTargetRegistration | null {
-    const registration = this.findRegistration(id, { group, kind });
+    const registration = this.findRegistration(id, { group });
 
     return registration ? toPublicRegistration(registration) : null;
   }
@@ -204,29 +231,36 @@ export class DropTargetRegistry {
       return dropTargets;
     }
 
+    const groupTargets = this.targetsByGroup.get(input.group);
+
+    if (!groupTargets) {
+      return dropTargets;
+    }
+
     const candidates: AvailableDropTargetCandidate[] = [];
 
-    for (const dropTarget of this.dropTargets.values()) {
-      if (dropTarget.group !== input.group) {
+    for (const target of groupTargets.values()) {
+      const element = this.resolveEntry(target);
+
+      if (!element) {
         continue;
       }
 
       candidates.push({
-        registration: dropTarget,
-        viewportRect: documentRectToViewportRect(dropTarget.documentRect),
+        registration: {
+          ...target,
+          element,
+        },
+        viewportRect: documentRectToViewportRect(target.documentRect),
       });
     }
 
-    const itemCandidates = candidates.filter(
-      (candidate) => candidate.registration.kind === "item",
-    );
-
     for (const candidate of candidates) {
       if (
-        candidate.registration.kind === "container" &&
+        candidate.registration.capabilities.container &&
         !shouldIncludeContainerCandidate({
+          candidates,
           containerCandidate: candidate,
-          itemCandidates,
           pointerPosition: input.pointerPosition,
         })
       ) {
@@ -275,7 +309,6 @@ export class DropTargetRegistry {
 
     const itemRegistration = this.findRegistration(input.itemId, {
       group: input.group,
-      kind: "item",
     });
     const previewContainer =
       dropTarget.id === input.itemId
@@ -309,12 +342,12 @@ export class DropTargetRegistry {
     itemId: string,
     group?: DragGroup,
   ): SortablePlacement | null {
-    const registration = this.findRegistration(itemId, {
-      group,
-      kind: "item",
-    });
+    const registration = this.findRegistration(itemId, { group });
 
-    if (!registration?.element.parentElement) {
+    if (
+      !registration?.capabilities.sortable ||
+      !registration.element.parentElement
+    ) {
       return null;
     }
 
@@ -343,69 +376,130 @@ export class DropTargetRegistry {
     };
   }
 
-  private remeasureTarget(dropTargetId: string): void {
-    const dropTarget = this.findRegistration(dropTargetId);
+  private getOrCreateGroupTargets(
+    group: DragGroup,
+  ): Map<string, DropTargetEntry> {
+    let groupTargets = this.targetsByGroup.get(group);
 
-    if (!dropTarget) {
+    if (!groupTargets) {
+      groupTargets = new Map();
+      this.targetsByGroup.set(group, groupTargets);
+    }
+
+    return groupTargets;
+  }
+
+  private removeTarget(group: DragGroup, id: string): RemovedDropTarget[] {
+    const groupTargets = this.targetsByGroup.get(group);
+
+    if (!groupTargets?.delete(id)) {
+      return [];
+    }
+
+    if (groupTargets.size === 0) {
+      this.targetsByGroup.delete(group);
+    }
+
+    return [{ id, group }];
+  }
+
+  private remeasureTarget(dropTargetId: string): void {
+    for (const groupTargets of this.targetsByGroup.values()) {
+      const dropTarget = groupTargets.get(dropTargetId);
+
+      if (dropTarget) {
+        this.remeasureEntry(dropTarget);
+      }
+    }
+  }
+
+  private remeasureEntry(registration: DropTargetEntry): void {
+    const element = this.resolveEntry(registration);
+
+    if (!element) {
       return;
     }
 
-    this.remeasureRegistration(dropTarget);
-  }
-
-  private remeasureRegistration(
-    registration: MeasuredDropTargetRegistration,
-  ): void {
-    registration.documentRect = this.measureRegistration(registration);
-  }
-
-  private measureRegistration(
-    registration: MeasuredDropTargetRegistration,
-  ): DragRect {
-    return measureDocumentRect(registration.element);
+    registration.documentRect = measureDocumentRect(element);
   }
 
   private findRegistration(
     id: string,
     input: {
       group?: DragGroup | null;
-      kind?: DropTargetRegistrationKind;
     } = {},
-  ): MeasuredDropTargetRegistration | null {
-    for (const registration of this.dropTargets.values()) {
-      if (registration.id !== id) {
+  ): ResolvedDropTargetEntry | null {
+    if (input.group !== undefined) {
+      const entry =
+        input.group === null
+          ? null
+          : this.targetsByGroup.get(input.group)?.get(id) ?? null;
+
+      return entry ? this.resolveRegistration(entry) : null;
+    }
+
+    for (const groupTargets of this.targetsByGroup.values()) {
+      const entry = groupTargets.get(id);
+
+      if (!entry) {
         continue;
       }
 
-      if (input.group !== undefined && registration.group !== input.group) {
-        continue;
-      }
+      const registration = this.resolveRegistration(entry);
 
-      if (input.kind && registration.kind !== input.kind) {
-        continue;
+      if (registration) {
+        return registration;
       }
-
-      return registration;
     }
 
     return null;
   }
 
+  private resolveRegistration(
+    entry: DropTargetEntry,
+  ): ResolvedDropTargetEntry | null {
+    const element = this.resolveEntry(entry);
+
+    return element
+      ? {
+          ...entry,
+          element,
+        }
+      : null;
+  }
+
+  private resolveEntry(entry: DropTargetEntry): HTMLElement | null {
+    const element = entry.elementRef.deref();
+
+    return element?.isConnected ? element : null;
+  }
+
   private findContainerRegistrationForElement(input: {
     element: HTMLElement | null;
     group: DragGroup;
-  }): MeasuredDropTargetRegistration | null {
+  }): ResolvedDropTargetEntry | null {
     if (!input.element) {
       return null;
     }
 
-    for (const registration of this.dropTargets.values()) {
+    const groupTargets = this.targetsByGroup.get(input.group);
+
+    if (!groupTargets) {
+      return null;
+    }
+
+    for (const entry of groupTargets.values()) {
+      const element = this.resolveEntry(entry);
+
       if (
-        registration.kind === "container" &&
-        registration.group === input.group &&
-        registration.element === input.element
+        entry.capabilities.container &&
+        element &&
+        element === input.element
       ) {
-        return registration;
+        return {
+          ...entry,
+          element,
+        };
       }
     }
 
@@ -416,7 +510,7 @@ export class DropTargetRegistry {
     itemId: string;
     group: DragGroup;
     itemElement: HTMLElement | null;
-    dropTarget: MeasuredDropTargetRegistration;
+    dropTarget: ResolvedDropTargetEntry;
     containerElement: HTMLElement | null;
   }): Pick<DropPlacement, "previousItemId" | "nextItemId"> {
     if (
@@ -439,7 +533,7 @@ export class DropTargetRegistry {
       };
     }
 
-    if (input.dropTarget.kind === "container") {
+    if (input.dropTarget.capabilities.container) {
       return {
         previousItemId: this.getNearestSortableSiblingItemId(
           input.dropTarget.element.lastElementChild,
@@ -491,54 +585,42 @@ export class DropTargetRegistry {
       return null;
     }
 
-    const registrationKey = this.dropTargetElements.get(element);
-    const registration = registrationKey
-      ? this.dropTargets.get(registrationKey)
+    const target = this.targetElements.get(element);
+    const entry = target
+      ? this.targetsByGroup.get(group)?.get(target.id) ?? null
       : null;
 
-    if (
-      !registration ||
-      registration.group !== group ||
-      registration.kind !== "item"
-    ) {
+    if (!entry?.capabilities.sortable || entry.group !== group) {
       return null;
     }
 
-    return registration.id;
+    return this.resolveEntry(entry) === element ? entry.id : null;
   }
 }
 
-function createRegistrationKey(input: {
-  id: string;
-  group: DragGroup;
-  kind: DropTargetRegistrationKind;
-}): string {
-  return `${input.kind}\u0000${input.group}\u0000${input.id}`;
-}
-
 function toPublicRegistration(
-  registration: MeasuredDropTargetRegistration,
+  registration: ResolvedDropTargetEntry,
 ): DropTargetRegistration {
   return {
     id: registration.id,
     element: registration.element,
     group: registration.group,
     containerId: registration.containerId,
-    kind: registration.kind,
+    capabilities: registration.capabilities,
   };
 }
 
 function getDropTargetContainerElement(
-  dropTarget: MeasuredDropTargetRegistration,
+  dropTarget: ResolvedDropTargetEntry,
 ): HTMLElement | null {
-  return dropTarget.kind === "container"
+  return dropTarget.capabilities.container
     ? dropTarget.element
     : dropTarget.element.parentElement;
 }
 
 function shouldIncludeContainerCandidate(input: {
+  candidates: AvailableDropTargetCandidate[];
   containerCandidate: AvailableDropTargetCandidate;
-  itemCandidates: AvailableDropTargetCandidate[];
   pointerPosition: DragPoint;
 }): boolean {
   if (
@@ -547,14 +629,14 @@ function shouldIncludeContainerCandidate(input: {
     return false;
   }
 
-  const hasCurrentChildItem = input.itemCandidates.some(
-    (itemCandidate) =>
-      itemCandidate.registration.element.isConnected &&
-      itemCandidate.registration.element.parentElement ===
+  const hasCurrentChildTarget = input.candidates.some(
+    (candidate) =>
+      candidate !== input.containerCandidate &&
+      candidate.registration.element.parentElement ===
         input.containerCandidate.registration.element,
   );
 
-  return !hasCurrentChildItem;
+  return !hasCurrentChildTarget;
 }
 
 function isPointInsideRect(point: DragPoint, rect: DragRect): boolean {

@@ -5,7 +5,6 @@ import {
   createSortable,
   lockToYAxis,
   maxDistanceToRect,
-  type DragController,
   type DragControllerOverlayInput,
   type DragRect,
   type SortablePlacement,
@@ -15,14 +14,10 @@ const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
 const dragHandleText = "\u2630";
-const releaseFallbackMs = 260;
+const sortableItemIdAttribute = "data-vanilla-sortable-item-id";
 
 export function mountSortableList(root: HTMLElement): () => void {
-  const itemCleanups: Array<() => void> = [];
-  const itemElements = new Map<string, HTMLElement>();
   const pendingAnimationFrames = new Set<number>();
-  const pendingTimeouts = new Set<number>();
-  const eventListenerCleanups = new Set<() => void>();
   let items = [...defaultItems];
   let overlayItemId: string | null = null;
   let overlayTargetRect: DragRect | null = null;
@@ -57,7 +52,7 @@ export function mountSortableList(root: HTMLElement): () => void {
         return;
       }
 
-      items = moveItemToSortablePlacement(items, placement);
+      items = reorderData(items, placement);
       renderItems();
     },
   });
@@ -78,44 +73,30 @@ export function mountSortableList(root: HTMLElement): () => void {
 
   return () => {
     controller.dispose();
-    runItemCleanups();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
-    cancelPendingTimeouts();
-    removeEventListeners();
     root.replaceChildren();
   };
 
-  function registerItemCleanup(cleanup: () => void): void {
-    itemCleanups.push(cleanup);
-  }
-
-  function runItemCleanups(): void {
-    for (const cleanup of itemCleanups.splice(0).reverse()) {
-      cleanup();
-    }
-
-    itemElements.clear();
-  }
-
   function renderItems(): void {
-    runItemCleanups();
     listElement.replaceChildren(
-      ...items.map((itemId) => createSortableItem(controller, itemId)),
+      ...items.map((itemId) => createSortableItem(itemId)),
     );
     updateItemDraggingClasses();
   }
 
   function updateItemDraggingClasses(): void {
-    for (const [itemId, element] of itemElements) {
-      element.classList.toggle("sortableItemDragging", overlayItemId === itemId);
-    }
+    listElement
+      .querySelectorAll<HTMLElement>(`[${sortableItemIdAttribute}]`)
+      .forEach((element) => {
+        element.classList.toggle(
+          "sortableItemDragging",
+          element.getAttribute(sortableItemIdAttribute) === overlayItemId,
+        );
+      });
   }
 
-  function createSortableItem(
-    dragController: DragController,
-    itemId: string,
-  ): HTMLElement {
+  function createSortableItem(itemId: string): HTMLElement {
     const element = document.createElement("div");
     element.className =
       overlayItemId === itemId
@@ -132,17 +113,15 @@ export function mountSortableList(root: HTMLElement): () => void {
     label.textContent = `Item ${itemId}`;
 
     element.append(handle, label);
-    itemElements.set(itemId, element);
+    element.setAttribute(sortableItemIdAttribute, itemId);
 
-    registerItemCleanup(
-      createSortable({
-        controller: dragController,
-        element,
-        itemId,
-        group: getSortableGroup(itemId),
-      }),
-    );
-    registerItemCleanup(createDragHandle({ element: handle }));
+    createSortable({
+      controller,
+      element,
+      itemId,
+      group: getSortableGroup(itemId),
+    });
+    createDragHandle({ element: handle });
 
     return element;
   }
@@ -202,23 +181,23 @@ export function mountSortableList(root: HTMLElement): () => void {
     }
 
     let completed = false;
+    let active = true;
     let animationFrameId: number | null = null;
-    let fallbackTimeoutId: number | null = null;
-    let transitionCleanup: (() => void) | null = null;
+    let animations: Animation[] = [];
 
     const clearReleaseOverlay = (): void => {
+      active = false;
+
       if (animationFrameId !== null) {
         cancelAnimationFrameId(animationFrameId);
         animationFrameId = null;
       }
 
-      if (fallbackTimeoutId !== null) {
-        cancelTimeoutId(fallbackTimeoutId);
-        fallbackTimeoutId = null;
+      for (const animation of animations) {
+        animation.cancel();
       }
 
-      transitionCleanup?.();
-      transitionCleanup = null;
+      animations = [];
 
       if (releaseOverlayCleanup === clearReleaseOverlay) {
         releaseOverlayCleanup = null;
@@ -226,7 +205,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     };
 
     const completeReleaseOverlay = (): void => {
-      if (completed) {
+      if (completed || !active) {
         return;
       }
 
@@ -257,27 +236,23 @@ export function mountSortableList(root: HTMLElement): () => void {
         return;
       }
 
-      transitionCleanup = addManagedEventListener(
-        overlay,
-        "transitionend",
-        (event) => {
-          const transitionEvent = event as TransitionEvent;
-
-          if (
-            event.target !== overlay ||
-            transitionEvent.propertyName !== "transform"
-          ) {
-            return;
-          }
-
-          completeReleaseOverlay();
-        },
-      );
-      fallbackTimeoutId = scheduleTimeout(
-        completeReleaseOverlay,
-        releaseFallbackMs,
-      );
       overlay.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
+      animations = overlay.getAnimations();
+
+      if (animations.length === 0) {
+        completeReleaseOverlay();
+        return;
+      }
+
+      void Promise.all(
+        animations.map((animation) =>
+          animation.finished.catch(() => undefined),
+        ),
+      ).then(() => {
+        if (active) {
+          completeReleaseOverlay();
+        }
+      });
     });
     releaseOverlayCleanup = clearReleaseOverlay;
   }
@@ -306,47 +281,6 @@ export function mountSortableList(root: HTMLElement): () => void {
     }
   }
 
-  function scheduleTimeout(callback: () => void, timeout: number): number {
-    const timeoutId = window.setTimeout(() => {
-      pendingTimeouts.delete(timeoutId);
-      callback();
-    }, timeout);
-    pendingTimeouts.add(timeoutId);
-    return timeoutId;
-  }
-
-  function cancelTimeoutId(timeoutId: number): void {
-    window.clearTimeout(timeoutId);
-    pendingTimeouts.delete(timeoutId);
-  }
-
-  function cancelPendingTimeouts(): void {
-    for (const timeoutId of Array.from(pendingTimeouts)) {
-      cancelTimeoutId(timeoutId);
-    }
-  }
-
-  function addManagedEventListener(
-    element: EventTarget,
-    type: string,
-    listener: EventListener,
-  ): () => void {
-    element.addEventListener(type, listener);
-
-    const cleanup = (): void => {
-      element.removeEventListener(type, listener);
-      eventListenerCleanups.delete(cleanup);
-    };
-
-    eventListenerCleanups.add(cleanup);
-    return cleanup;
-  }
-
-  function removeEventListeners(): void {
-    for (const cleanup of Array.from(eventListenerCleanups)) {
-      cleanup();
-    }
-  }
 }
 
 function appendOverlayContents(element: HTMLElement, itemId: string): void {
@@ -364,7 +298,7 @@ function getSortableGroup(itemId: string): string {
   return itemId === "3" ? isolatedSortableGroup : sortableGroup;
 }
 
-function moveItemToSortablePlacement(
+function reorderData(
   items: readonly string[],
   placement: SortablePlacement,
 ): string[] {

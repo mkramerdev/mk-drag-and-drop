@@ -90,15 +90,97 @@ describe("createDroppable", () => {
     );
   });
 
-  it("unregisters the target on cleanup", () => {
+  it("returns void", () => {
     const onDrop = vi.fn();
-    const { source, target, cleanup } = setupDragAndDrop({ onDrop });
+    controller = createDragController({ onDrop });
+    const target = createMeasuredElement(createRect({ width: 20, height: 20 }));
 
-    cleanup();
-    cleanup();
+    const result = createDroppable({
+      controller,
+      element: target,
+      targetId: "target",
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("makes a removed target unavailable without cleanup", () => {
+    const onDrop = vi.fn();
+    const { source, target } = setupDragAndDrop({ onDrop });
+
+    target.remove();
     dragToTarget(source, target);
 
     expect(onDrop).not.toHaveBeenCalled();
+    expect(controller?.runtime.getDropTargetRect("target")).toBeNull();
+  });
+
+  it("clears the active drop target when its element is removed", () => {
+    const onDragUpdate = vi.fn();
+    controller = createDragController({ onDragUpdate });
+    raf = installMockRaf();
+    const source = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+
+    createDraggable({ controller, element: source, itemId: "item" });
+    createDroppable({ controller, element: target, targetId: "target" });
+
+    dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(controller.runtime.activeDropTarget).toBe("target");
+
+    target.remove();
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(controller.runtime.activeDropTarget).toBeNull();
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+  });
+
+  it("prevents dropping an active target removed before release", () => {
+    const onDrop = vi.fn();
+    const onDragEnd = vi.fn();
+    controller = createDragController({ onDrop, onDragEnd });
+    raf = installMockRaf();
+    const source = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+
+    createDraggable({ controller, element: source, itemId: "item" });
+    createDroppable({ controller, element: target, targetId: "target" });
+
+    dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(controller.runtime.activeDropTarget).toBe("target");
+
+    target.remove();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(onDragEnd).toHaveBeenCalledWith(
+      { itemId: "item", dropTarget: null },
+      expect.any(Object),
+    );
   });
 
   it("unregisters the target when the controller is disposed", () => {
@@ -114,7 +196,6 @@ describe("createDroppable", () => {
   function setupDragAndDrop(input: { onDrop: ReturnType<typeof vi.fn> }): {
     source: HTMLElement;
     target: HTMLElement;
-    cleanup: () => void;
   } {
     controller = createDragController({ onDrop: input.onDrop });
     raf = installMockRaf();
@@ -124,7 +205,7 @@ describe("createDroppable", () => {
     );
 
     createDraggable({ controller, element: source, itemId: "item" });
-    const cleanup = createDroppable({
+    createDroppable({
       controller,
       element: target,
       targetId: "target",
@@ -133,7 +214,6 @@ describe("createDroppable", () => {
     return {
       source,
       target,
-      cleanup,
     };
   }
 

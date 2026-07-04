@@ -8,21 +8,17 @@ export type CreateDraggableInput = {
   group?: string;
 };
 
-export type CreateDraggableCleanup = () => void;
-
 const defaultDraggableGroup = "default";
 
-export function createDraggable(
-  input: CreateDraggableInput,
-): CreateDraggableCleanup {
+export function createDraggable(input: CreateDraggableInput): void {
+  const elementRef = new WeakRef(input.element);
   const behavior = createDomDraggable({
     runtime: input.controller.runtime,
     itemId: input.itemId,
     group: input.group ?? defaultDraggableGroup,
-    getElement: () => input.element,
+    getElement: () => elementRef.deref() ?? null,
   });
   const previousTabIndex = input.element.getAttribute("tabindex");
-  let disposeCleanup: (() => void) | null = null;
   let keyDownAttached = false;
   let cleanedUp = false;
 
@@ -47,24 +43,24 @@ export function createDraggable(
     }
 
     cleanedUp = true;
-    input.element.removeEventListener("pointerdown", onPointerDown);
+    const element = elementRef.deref();
 
-    if (keyDownAttached) {
-      input.element.removeEventListener("keydown", onKeyDown);
-
-      if (previousTabIndex === null) {
-        input.element.removeAttribute("tabindex");
-      } else {
-        input.element.setAttribute("tabindex", previousTabIndex);
-      }
+    if (!element) {
+      return;
     }
 
-    const unsubscribe = disposeCleanup;
-    disposeCleanup = null;
-    unsubscribe?.();
+    element.removeEventListener("pointerdown", onPointerDown);
+
+    if (keyDownAttached) {
+      element.removeEventListener("keydown", onKeyDown);
+
+      if (previousTabIndex === null) {
+        element.removeAttribute("tabindex");
+      } else {
+        element.setAttribute("tabindex", previousTabIndex);
+      }
+    }
   };
 
-  disposeCleanup = input.controller.runtime.onDispose(cleanup);
-
-  return cleanup;
+  input.controller.runtime.onDispose(cleanup);
 }

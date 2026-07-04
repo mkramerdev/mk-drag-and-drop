@@ -13,6 +13,7 @@ import { DragContext } from "../drag-context.js";
 type UseDroppableItem = {
   targetId: string;
   group?: string;
+  containerId?: string | null;
 };
 
 type UseDroppableReturn = HTMLAttributes<HTMLDivElement> & {
@@ -24,6 +25,7 @@ const defaultDroppableGroup = "default";
 export function useDroppable({
   targetId,
   group = defaultDroppableGroup,
+  containerId = null,
 }: UseDroppableItem): UseDroppableReturn {
   const runtime = useContext(DragContext);
 
@@ -37,8 +39,9 @@ export function useDroppable({
         runtime,
         targetId,
         group,
+        containerId,
       }),
-    [group, runtime, targetId],
+    [containerId, group, runtime, targetId],
   );
 
   const setNodeRef = useCallback(

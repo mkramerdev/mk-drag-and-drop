@@ -17,20 +17,22 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     group: string,
     options?: {
       containerId?: string | null;
-      kind?: "item" | "container";
+      sortable?: boolean;
     },
   ) => void;
   unregisterDropTarget: (itemId: string, element?: HTMLElement) => void;
   getDropTargetRegistration: (
     dropTargetId: string,
     group?: string,
-    kind?: "item" | "container",
   ) => {
     id: string;
     element: HTMLElement;
     group: string;
     containerId: string | null;
-    kind: "item" | "container";
+    capabilities: {
+      container: boolean;
+      sortable: boolean;
+    };
   } | null;
   subscribe: (subscription: {
     onDragStart?: (event: { itemId: string }) => void;
@@ -55,13 +57,13 @@ export type DomSortableRuntime = DomDraggableRuntime & {
 
 export type SortableRegistry = {
   attributeSnapshots: Map<string, SortableAttributeSnapshot>;
-  elements: Map<string, HTMLElement>;
+  elements: Map<string, WeakRef<HTMLElement>>;
   groups: Map<string, string>;
   snapshots: Map<string, SortableSnapshot>;
 };
 
 export type SortableAttributeSnapshot = {
-  element: HTMLElement;
+  elementRef: WeakRef<HTMLElement>;
   sortableItem: string | null;
   dragged: string | null;
 };
@@ -164,21 +166,22 @@ export function registerSortableElement(input: {
   element: HTMLElement;
 }): void {
   const existingSnapshot = input.registry.attributeSnapshots.get(input.itemId);
+  const existingSnapshotElement = existingSnapshot?.elementRef.deref() ?? null;
 
-  if (!existingSnapshot || existingSnapshot.element !== input.element) {
+  if (!existingSnapshot || existingSnapshotElement !== input.element) {
     input.registry.attributeSnapshots.set(input.itemId, {
-      element: input.element,
+      elementRef: new WeakRef(input.element),
       sortableItem: input.element.getAttribute("data-dnd-sortable-item"),
       dragged: input.element.getAttribute("data-dnd-dragged"),
     });
   }
 
   input.element.setAttribute("data-dnd-sortable-item", "true");
-  input.registry.elements.set(input.itemId, input.element);
+  input.registry.elements.set(input.itemId, new WeakRef(input.element));
   input.registry.groups.set(input.itemId, input.group);
   input.runtime.registerDropTarget(input.itemId, input.element, input.group, {
     containerId: input.containerId ?? null,
-    kind: "item",
+    sortable: true,
   });
 }
 
@@ -190,8 +193,10 @@ export function unregisterSortableElement(input: {
 }): void {
   if (input.itemId !== null) {
     input.runtime.unregisterDropTarget(input.itemId, input.element ?? undefined);
+    const registeredElement =
+      input.registry.elements.get(input.itemId)?.deref() ?? null;
 
-    if (input.registry.elements.get(input.itemId) === input.element) {
+    if (registeredElement === input.element || input.element === null) {
       input.registry.elements.delete(input.itemId);
       input.registry.groups.delete(input.itemId);
     }
@@ -214,16 +219,17 @@ export function restoreSortableInternalAttributes(input: {
   const snapshot = input.itemId
     ? input.registry.attributeSnapshots.get(input.itemId)
     : null;
+  const snapshotElement = snapshot?.elementRef.deref() ?? null;
 
   restoreAttribute(
     input.element,
     "data-dnd-sortable-item",
-    snapshot?.element === input.element ? snapshot.sortableItem : null,
+    snapshot && snapshotElement === input.element ? snapshot.sortableItem : null,
   );
   restoreAttribute(
     input.element,
     "data-dnd-dragged",
-    snapshot?.element === input.element ? snapshot.dragged : null,
+    snapshot && snapshotElement === input.element ? snapshot.dragged : null,
   );
 
   if (input.itemId) {
@@ -237,12 +243,22 @@ export function restoreSortableDraggedAttribute(input: {
   element: HTMLElement;
 }): void {
   const snapshot = input.registry.attributeSnapshots.get(input.itemId);
+  const snapshotElement = snapshot?.elementRef.deref() ?? null;
 
   restoreAttribute(
     input.element,
     "data-dnd-dragged",
-    snapshot?.element === input.element ? snapshot.dragged : null,
+    snapshot && snapshotElement === input.element ? snapshot.dragged : null,
   );
+}
+
+export function getRegisteredSortableElement(
+  registry: SortableRegistry,
+  itemId: string,
+): HTMLElement | null {
+  const element = registry.elements.get(itemId)?.deref() ?? null;
+
+  return element?.isConnected ? element : null;
 }
 
 function restoreAttribute(

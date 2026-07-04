@@ -36,10 +36,9 @@ import {
   DropTargetRegistry,
   type DragGroup,
   type DropPlacement,
-  type DropTargetRegistration,
-  type DropTargetRegistrationKind,
   type RegisterDropTargetOptions,
   type RemeasureDropTargetsInput,
+  type RemovedDropTarget,
   type SortablePlacement,
 } from "./drop-target-registry.js";
 import type {
@@ -355,11 +354,7 @@ export class DragRuntime {
   }
 
   unregisterDropTarget(id: string, element?: HTMLElement): void {
-    const removedTargets = this.dropTargetRegistry.unregister(
-      id,
-      element,
-      "item",
-    );
+    const removedTargets = this.dropTargetRegistry.unregister(id, element);
 
     this.clearActiveDropTargetIfRemoved(removedTargets);
   }
@@ -371,16 +366,12 @@ export class DragRuntime {
   ): void {
     this.dropTargetRegistry.register(containerId, element, group, {
       containerId,
-      kind: "container",
+      container: true,
     });
   }
 
   unregisterDropContainer(containerId: string, element?: HTMLElement): void {
-    const removedTargets = this.dropTargetRegistry.unregister(
-      containerId,
-      element,
-      "container",
-    );
+    const removedTargets = this.dropTargetRegistry.unregister(containerId, element);
 
     this.clearActiveDropTargetIfRemoved(removedTargets);
   }
@@ -457,16 +448,8 @@ export class DragRuntime {
     return this.dropTargetRegistry.getViewportRect(dropTargetId);
   }
 
-  getDropTargetRegistration(
-    dropTargetId: string,
-    group?: DragGroup,
-    kind?: DropTargetRegistrationKind,
-  ): DropTargetRegistration | null {
-    return this.dropTargetRegistry.getDropTargetRegistration(
-      dropTargetId,
-      group,
-      kind,
-    );
+  getDropTargetRegistration(dropTargetId: string, group?: DragGroup) {
+    return this.dropTargetRegistry.getDropTargetRegistration(dropTargetId, group);
   }
 
   getCurrentDragRect(): DragRect | null {
@@ -510,6 +493,7 @@ export class DragRuntime {
   }
 
   remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
+    this.removeDisconnectedDropTargets();
     this.dropTargetRegistry.remeasure(input);
   }
 
@@ -574,7 +558,6 @@ export class DragRuntime {
       this.dropTargetRegistry.getDropTargetRegistration(
         input.itemId,
         input.group,
-        "item",
       )?.containerId ?? null;
     const sourceSortablePlacement = this.dropTargetRegistry.getSortablePlacement(
       input.itemId,
@@ -626,11 +609,20 @@ export class DragRuntime {
 
     const session = this.getDraggingSession();
     const itemId = session?.itemId ?? null;
+    const dropTarget =
+      session && input.dropTarget
+        ? this.dropTargetRegistry.getDropTargetRegistration(
+            input.dropTarget,
+            session.group,
+          )
+          ? input.dropTarget
+          : null
+        : null;
     this.lastDropPlacementInput = session
       ? {
           itemId: session.itemId,
           group: session.group,
-          dropTarget: input.dropTarget,
+          dropTarget,
           sourceContainerId: session.sourceContainerId,
           sourceSortablePlacement: session.sourceSortablePlacement,
         }
@@ -653,13 +645,13 @@ export class DragRuntime {
     if (itemId) {
       this.notifyDragEnd({
         itemId,
-        dropTarget: input.dropTarget,
+        dropTarget,
       });
 
-      if (input.dropTarget) {
+      if (dropTarget) {
         this.notifyDrop({
           itemId,
-          dropTarget: input.dropTarget,
+          dropTarget,
         });
       }
     }
@@ -827,6 +819,8 @@ export class DragRuntime {
       return null;
     }
 
+    this.removeDisconnectedDropTargets();
+
     const overlayRect = this.hasDragOverlay
       ? this.getCurrentDragRectAt(pointerPosition)
       : null;
@@ -880,8 +874,13 @@ export class DragRuntime {
     };
   }
 
+  private removeDisconnectedDropTargets(): void {
+    const removedTargets = this.dropTargetRegistry.pruneDisconnected();
+    this.clearActiveDropTargetIfRemoved(removedTargets);
+  }
+
   private clearActiveDropTargetIfRemoved(
-    removedTargets: DropTargetRegistration[],
+    removedTargets: RemovedDropTarget[],
   ): void {
     if (this.session.status !== "dragging") {
       return;

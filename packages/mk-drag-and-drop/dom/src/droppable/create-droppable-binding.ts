@@ -5,40 +5,19 @@ export type CreateDroppableInput = {
   controller: DragController;
   element: HTMLElement;
   targetId: string;
+  containerId?: string | null;
   group?: string;
 };
 
-export type CreateDroppableCleanup = () => void;
-
 const defaultDroppableGroup = "default";
 
-export function createDroppable(
-  input: CreateDroppableInput,
-): CreateDroppableCleanup {
+export function createDroppable(input: CreateDroppableInput): void {
   const behavior = createDomDroppable({
     runtime: input.controller.runtime,
     targetId: input.targetId,
+    containerId: input.containerId ?? null,
     group: input.group ?? defaultDroppableGroup,
   });
-  let disposeCleanup: (() => void) | null = null;
-  let cleanedUp = false;
 
   behavior.setElement(input.element);
-
-  const cleanup = (): void => {
-    if (cleanedUp) {
-      return;
-    }
-
-    cleanedUp = true;
-    behavior.cleanup();
-
-    const unsubscribe = disposeCleanup;
-    disposeCleanup = null;
-    unsubscribe?.();
-  };
-
-  disposeCleanup = input.controller.runtime.onDispose(cleanup);
-
-  return cleanup;
 }

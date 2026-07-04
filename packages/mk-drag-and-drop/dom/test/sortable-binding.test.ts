@@ -84,7 +84,7 @@ describe("createSortable", () => {
     );
     element.setAttribute("tabindex", "7");
 
-    const cleanup = createSortable({ controller, element, itemId: "item" });
+    createSortable({ controller, element, itemId: "item" });
 
     expect(element.getAttribute("tabindex")).toBe("0");
 
@@ -95,10 +95,6 @@ describe("createSortable", () => {
       expect.objectContaining({ itemId: "item" }),
       expect.any(Object),
     );
-
-    cleanup();
-
-    expect(element.getAttribute("tabindex")).toBe("7");
   });
 
   it("does not bind keyboard drag when keyboard dragging is disabled", () => {
@@ -173,18 +169,65 @@ describe("createSortable", () => {
     });
   });
 
-  it("cleans up listeners and sortable registration idempotently", () => {
-    const onDrop = vi.fn();
-    const { a, b, cleanupA } = setupSortablePair({ onDrop });
+  it("returns void", () => {
+    controller = createDragController();
+    const element = createMeasuredElement(createRect({ width: 20, height: 20 }));
 
-    cleanupA();
-    cleanupA();
+    const result = createSortable({ controller, element, itemId: "item" });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("makes a removed sortable item unavailable without cleanup", () => {
+    const onDrop = vi.fn();
+    const { a, b } = setupSortablePair({ onDrop });
+
+    a.remove();
 
     expect(controller?.runtime.getDropTargetRect("a")).toBeNull();
 
     dragToTarget(a, b);
 
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("supports vanilla-style rerender without storing item cleanup callbacks", () => {
+    let placement: DropPlacement | null = null;
+    controller = createDragController({
+      onDrop: ({ itemId }, helpers) => {
+        placement = helpers.getDropPlacement(itemId);
+      },
+    });
+    raf = installMockRaf();
+    const list = document.createElement("div");
+    document.body.append(list);
+
+    render(["a", "b"]);
+    render(["a", "b"]);
+
+    const [a, b] = Array.from(list.children) as HTMLElement[];
+    dragToTarget(a, b);
+
+    expect(placement).toEqual({
+      itemId: "a",
+      dropTarget: "b",
+      sourceContainerId: null,
+      containerId: null,
+      previousItemId: "b",
+      nextItemId: null,
+    });
+
+    function render(itemIds: string[]): void {
+      list.replaceChildren(
+        ...itemIds.map((itemId, index) => {
+          const element = createMeasuredElement(
+            createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
+          );
+          createSortable({ controller: controller!, element, itemId });
+          return element;
+        }),
+      );
+    }
   });
 
   it("cleans up sortable listeners and registration when the controller is disposed", () => {
@@ -214,8 +257,6 @@ describe("createSortable", () => {
     list: HTMLElement;
     a: HTMLElement;
     b: HTMLElement;
-    cleanupA: () => void;
-    cleanupB: () => void;
   } {
     controller = createDragController({
       onDrop: input.onDrop,
@@ -231,15 +272,13 @@ describe("createSortable", () => {
     );
     list.append(a, b);
 
-    const cleanupA = createSortable({ controller, element: a, itemId: "a" });
-    const cleanupB = createSortable({ controller, element: b, itemId: "b" });
+    createSortable({ controller, element: a, itemId: "a" });
+    createSortable({ controller, element: b, itemId: "b" });
 
     return {
       list,
       a,
       b,
-      cleanupA,
-      cleanupB,
     };
   }
 

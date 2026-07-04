@@ -3,7 +3,10 @@ import type {
   SortableRegistry,
   SortableSnapshot,
 } from "./sortable-registry.js";
-import { restoreSortableDraggedAttribute } from "./sortable-registry.js";
+import {
+  getRegisteredSortableElement,
+  restoreSortableDraggedAttribute,
+} from "./sortable-registry.js";
 
 type SortablePlacementSide = "before" | "after";
 
@@ -16,7 +19,7 @@ export function snapshotSortableElement(
   registry: SortableRegistry,
   itemId: string,
 ): void {
-  const element = registry.elements.get(itemId);
+  const element = getRegisteredSortableElement(registry, itemId);
 
   if (!element?.parentElement) {
     return;
@@ -59,7 +62,10 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const draggedElement = input.registry.elements.get(input.draggedItemId);
+  const draggedElement = getRegisteredSortableElement(
+    input.registry,
+    input.draggedItemId,
+  );
   const draggedGroup = input.registry.groups.get(input.draggedItemId);
 
   if (!draggedElement || !draggedGroup) {
@@ -75,7 +81,7 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  if (target.kind === "container") {
+  if (target.capabilities.container) {
     moveSortablePreviewIntoContainer({
       draggedElement,
       targetElement: target.element,
@@ -206,7 +212,8 @@ export function clearSortableDraggedState(
   itemId: string,
 ): void {
   const element =
-    registry.elements.get(itemId) ?? registry.snapshots.get(itemId)?.element;
+    getRegisteredSortableElement(registry, itemId) ??
+    registry.snapshots.get(itemId)?.element;
 
   if (element) {
     restoreSortableDraggedAttribute({
@@ -291,7 +298,7 @@ function getSortableItemId(
   element: HTMLElement,
 ): string | null {
   for (const [itemId, sortableElement] of registry.elements) {
-    if (sortableElement === element) {
+    if (sortableElement.deref() === element) {
       return itemId;
     }
   }

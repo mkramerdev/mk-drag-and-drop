@@ -8,36 +8,17 @@ export type CreateDropContainerInput = {
   group?: string;
 };
 
-export type CreateDropContainerCleanup = () => void;
-
 const defaultDropContainerGroup = "default";
 
-export function createDropContainer(
-  input: CreateDropContainerInput,
-): CreateDropContainerCleanup {
+export function createDropContainer(input: CreateDropContainerInput): void {
+  const elementRef = new WeakRef(input.element);
   const behavior = createDomDropContainer({
     runtime: input.controller.runtime,
     containerId: input.containerId,
     group: input.group ?? defaultDropContainerGroup,
-    getElement: () => input.element,
+    getElement: () => elementRef.deref() ?? null,
   });
-  let disposeCleanup: (() => void) | null = null;
-  let cleanedUp = false;
-
-  const cleanup = (): void => {
-    if (cleanedUp) {
-      return;
-    }
-
-    cleanedUp = true;
+  input.controller.runtime.onDispose(() => {
     behavior.cleanup();
-
-    const unsubscribe = disposeCleanup;
-    disposeCleanup = null;
-    unsubscribe?.();
-  };
-
-  disposeCleanup = input.controller.runtime.onDispose(cleanup);
-
-  return cleanup;
+  });
 }

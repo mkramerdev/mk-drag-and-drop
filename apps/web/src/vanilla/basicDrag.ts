@@ -31,7 +31,6 @@ const dragHandleText = "\u2630";
 const releaseFallbackMs = 260;
 
 export function mountBasicDrag(root: HTMLElement): () => void {
-  const bindingCleanups: Array<() => void> = [];
   const pendingAnimationFrames = new Set<number>();
   const pendingTimeouts = new Set<number>();
   const eventListenerCleanups = new Set<() => void>();
@@ -80,15 +79,13 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     controller,
     rootContainer.targetId,
     rootContainer.label,
-    registerBindingCleanup,
   );
   const targetDropzone = createDropzone(
     controller,
     droppableContainer.targetId,
     droppableContainer.label,
-    registerBindingCleanup,
   );
-  item = createDraggableItem(controller, registerBindingCleanup);
+  item = createDraggableItem(controller);
 
   root.append(rootDropzone, targetDropzone);
   rootDropzone.append(item);
@@ -97,23 +94,12 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     controller.dispose();
     cleanupMovePreview();
     cleanupReleaseOverlay();
-    runBindingCleanups();
     cancelPendingAnimationFrames();
     cancelPendingTimeouts();
     removeEventListeners();
     clearActiveDropzones();
     root.replaceChildren();
   };
-
-  function registerBindingCleanup(cleanup: () => void): void {
-    bindingCleanups.push(cleanup);
-  }
-
-  function runBindingCleanups(): void {
-    for (const cleanup of bindingCleanups.splice(0).reverse()) {
-      cleanup();
-    }
-  }
 
   function startMovePreview(dropTarget: string): void {
     const targetDropzone = dropzones.get(dropTarget);
@@ -417,7 +403,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     dragController: DragController,
     targetId: string,
     label: string,
-    registerCleanup: (cleanup: () => void) => void,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "droppableContainer";
@@ -427,14 +412,12 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     labelElement.textContent = label;
     element.append(labelElement);
 
-    registerCleanup(
-      createDroppable({
-        controller: dragController,
-        element,
-        targetId,
-        group: basicGroup,
-      }),
-    );
+    createDroppable({
+      controller: dragController,
+      element,
+      targetId,
+      group: basicGroup,
+    });
     dropzones.set(targetId, element);
 
     return element;
@@ -443,7 +426,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 
 function createDraggableItem(
   controller: DragController,
-  registerCleanup: (cleanup: () => void) => void,
 ): HTMLElement {
   const element = document.createElement("div");
   element.className = "sortableItem";
@@ -455,15 +437,13 @@ function createDraggableItem(
   handle.textContent = dragHandleText;
   appendItemLabel(element, handle);
 
-  registerCleanup(
-    createDraggable({
-      controller,
-      element,
-      itemId: draggableItem.itemId,
-      group: basicGroup,
-    }),
-  );
-  registerCleanup(createDragHandle({ element: handle }));
+  createDraggable({
+    controller,
+    element,
+    itemId: draggableItem.itemId,
+    group: basicGroup,
+  });
+  createDragHandle({ element: handle });
 
   return element;
 }

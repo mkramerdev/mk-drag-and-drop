@@ -72,11 +72,13 @@ describe("React hooks", () => {
       "target-1",
       expect.any(HTMLElement),
       "items",
+      { containerId: null },
     );
     expect(registerSpy).toHaveBeenCalledWith(
       "target-2",
       expect.any(HTMLElement),
       "items",
+      { containerId: null },
     );
     expect(unregisterSpy).toHaveBeenCalledWith(
       "target-1",
@@ -85,6 +87,23 @@ describe("React hooks", () => {
     expect(unregisterSpy).toHaveBeenCalledWith(
       "target-2",
       expect.any(HTMLElement),
+    );
+  });
+
+  it("useDroppable passes container metadata through", () => {
+    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropTarget");
+
+    render(
+      <DragProvider>
+        <DynamicDroppable targetId="target-1" containerId="bucket-1" />
+      </DragProvider>,
+    );
+
+    expect(registerSpy).toHaveBeenCalledWith(
+      "target-1",
+      expect.any(HTMLElement),
+      "items",
+      { containerId: "bucket-1" },
     );
   });
 
@@ -200,7 +219,7 @@ describe("React hooks", () => {
       "items",
       {
         containerId: "container-1",
-        kind: "item",
+        sortable: true,
       },
     );
     expect(unregisterSpy).toHaveBeenCalledWith(
@@ -276,6 +295,43 @@ describe("React integration flows", () => {
     });
 
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("unmounting a droppable leaves no valid stale target", () => {
+    const raf = installMockRaf();
+    const onDrop = vi.fn();
+    const { rerender } = render(
+      <DragProvider onDrop={onDrop}>
+        <DraggableWithChild />
+        <DynamicDroppable targetId="target-1" />
+      </DragProvider>,
+    );
+    const removedTarget = screen.getByTestId("droppable");
+
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      removedTarget,
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+
+    rerender(
+      <DragProvider onDrop={onDrop}>
+        <DraggableWithChild />
+      </DragProvider>,
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), { pointerId: 1 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    });
+
+    expect(onDrop).not.toHaveBeenCalled();
+    raf.restore();
   });
 
   it("keyboard drag starts, moves, drops, and cancels", () => {
@@ -553,8 +609,14 @@ function UseRemeasureOutside() {
   return null;
 }
 
-function DynamicDroppable({ targetId }: { targetId: string }) {
-  const droppable = useDroppable({ targetId, group: "items" });
+function DynamicDroppable({
+  targetId,
+  containerId,
+}: {
+  targetId: string;
+  containerId?: string | null;
+}) {
+  const droppable = useDroppable({ targetId, group: "items", containerId });
 
   return (
     <div {...droppable} data-testid="droppable">

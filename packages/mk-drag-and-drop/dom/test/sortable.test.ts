@@ -62,7 +62,10 @@ describe("createDomSortable", () => {
       id: "a",
       group: "rows",
       containerId: null,
-      kind: "item",
+      capabilities: {
+        container: false,
+        sortable: true,
+      },
     });
   });
 
@@ -80,7 +83,10 @@ describe("createDomSortable", () => {
 
     expect(runtime.getDropTargetRegistration("a", "rows")).toMatchObject({
       containerId: "column-1",
-      kind: "item",
+      capabilities: {
+        container: false,
+        sortable: true,
+      },
     });
   });
 
@@ -799,6 +805,7 @@ describe("createDomSortable", () => {
 function createSortableElement(itemId: string, rect: ReturnType<typeof createRect>) {
   const element = document.createElement("div");
   element.dataset.itemId = itemId;
+  document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;
 }

@@ -3,6 +3,10 @@ export type DomDropContainerRuntime = {
     containerId: string,
     element: HTMLElement,
     group: string,
+    options?: {
+      containerId?: string | null;
+      container?: boolean;
+    },
   ) => void;
   unregisterDropContainer: (
     containerId: string,
@@ -25,10 +29,12 @@ export type DomDropContainerBehavior = {
 export function createDomDropContainer(
   input: CreateDomDropContainerInput,
 ): DomDropContainerBehavior {
-  let registeredElement: HTMLElement | null = null;
+  let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredContainerId: string | null = null;
 
   const cleanup = (): void => {
+    const registeredElement = registeredElementRef?.deref() ?? null;
+
     if (registeredContainerId !== null) {
       input.runtime.unregisterDropContainer(
         registeredContainerId,
@@ -36,13 +42,13 @@ export function createDomDropContainer(
       );
     }
 
-    registeredElement = null;
+    registeredElementRef = null;
     registeredContainerId = null;
   };
 
   const registerElement = (element: HTMLElement): void => {
     input.runtime.registerDropContainer(input.containerId, element, input.group);
-    registeredElement = element;
+    registeredElementRef = new WeakRef(element);
     registeredContainerId = input.containerId;
   };
 
@@ -54,6 +60,8 @@ export function createDomDropContainer(
 
   return {
     setElement: (element) => {
+      const registeredElement = registeredElementRef?.deref() ?? null;
+
       if (
         element === registeredElement &&
         registeredContainerId === input.containerId

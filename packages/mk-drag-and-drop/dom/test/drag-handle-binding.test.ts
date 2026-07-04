@@ -14,35 +14,19 @@ describe("createDragHandle", () => {
     expect(element.getAttribute(domDragHandleAttribute)).toBe("true");
   });
 
-  it("removes a marker added by the helper on cleanup", () => {
+  it("returns void", () => {
     const element = document.createElement("button");
-    const cleanup = createDragHandle({ element });
+    const result = createDragHandle({ element });
 
-    cleanup();
-
-    expect(element.hasAttribute(domDragHandleAttribute)).toBe(false);
+    expect(result).toBeUndefined();
   });
 
-  it("restores the previous marker value on cleanup", () => {
+  it("overwrites a previous marker value", () => {
     const element = document.createElement("button");
     element.setAttribute(domDragHandleAttribute, "custom");
 
-    const cleanup = createDragHandle({ element });
+    createDragHandle({ element });
 
     expect(element.getAttribute(domDragHandleAttribute)).toBe("true");
-
-    cleanup();
-
-    expect(element.getAttribute(domDragHandleAttribute)).toBe("custom");
-  });
-
-  it("is idempotent", () => {
-    const element = document.createElement("button");
-    const cleanup = createDragHandle({ element });
-
-    cleanup();
-    cleanup();
-
-    expect(element.hasAttribute(domDragHandleAttribute)).toBe(false);
   });
 });

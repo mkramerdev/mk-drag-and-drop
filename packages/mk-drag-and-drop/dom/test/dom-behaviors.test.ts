@@ -109,12 +109,14 @@ describe("DOM behaviors", () => {
       "target-1",
       first,
       "items",
+      { containerId: null },
     );
     expect(runtime.registerDropTarget).toHaveBeenNthCalledWith(
       2,
       "target-1",
       second,
       "items",
+      { containerId: null },
     );
     expect(runtime.unregisterDropTarget).toHaveBeenCalledTimes(2);
     expect(runtime.unregisterDropTarget).toHaveBeenNthCalledWith(
@@ -191,6 +193,7 @@ describe("DOM behaviors", () => {
     });
     const oldElement = document.createElement("div");
     const newElement = document.createElement("div");
+    document.body.append(oldElement, newElement);
     stubBoundingClientRect(oldElement, createRect({ left: 0, width: 10 }));
     stubBoundingClientRect(newElement, createRect({ left: 40, width: 10 }));
     const oldDroppable = createDomDroppable({

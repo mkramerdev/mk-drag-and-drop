@@ -395,6 +395,7 @@ function GroupedParentBlock({
   const insideDroppable = useDroppable({
     targetId: insideTargetId,
     group: groupedChildGroup,
+    containerId: parent.parentId,
   });
   const remeasureDropTargets = useRemeasureDropTargets();
   const hasChildren = children.length > 0;
@@ -504,6 +505,7 @@ function GroupedChildDropzoneLine({
   const droppable = useDroppable({
     targetId,
     group: groupedChildGroup,
+    containerId: parentId,
   });
 
   return (

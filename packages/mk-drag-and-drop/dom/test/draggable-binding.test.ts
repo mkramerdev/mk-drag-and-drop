@@ -47,7 +47,7 @@ describe("createDraggable", () => {
     const element = createMeasuredElement();
     element.setAttribute("tabindex", "7");
 
-    const cleanup = createDraggable({ controller, element, itemId: "item" });
+    createDraggable({ controller, element, itemId: "item" });
 
     expect(element.getAttribute("tabindex")).toBe("0");
 
@@ -59,9 +59,6 @@ describe("createDraggable", () => {
       expect.any(Object),
     );
 
-    cleanup();
-
-    expect(element.getAttribute("tabindex")).toBe("7");
   });
 
   it("does not bind keyboard drag when keyboard dragging is disabled", () => {
@@ -82,24 +79,13 @@ describe("createDraggable", () => {
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
-  it("cleans up listeners idempotently and restores previous tabindex", () => {
-    const onDragStart = vi.fn();
-    controller = createDragController({ onDragStart });
+  it("returns void", () => {
+    controller = createDragController();
     const element = createMeasuredElement();
-    element.setAttribute("tabindex", "3");
 
-    const cleanup = createDraggable({ controller, element, itemId: "item" });
+    const result = createDraggable({ controller, element, itemId: "item" });
 
-    cleanup();
-    cleanup();
-
-    expect(element.getAttribute("tabindex")).toBe("3");
-
-    dispatchPointerDown(element, { pointerId: 1 });
-    dispatchKeyDown(element, "Space");
-
-    expect(controller.runtime.isDragging).toBe(false);
-    expect(onDragStart).not.toHaveBeenCalled();
+    expect(result).toBeUndefined();
   });
 
   it("removes listeners and restores DOM state when the controller is disposed", () => {
