@@ -2,6 +2,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   type RefCallback,
 } from "react";
@@ -97,7 +98,10 @@ export function useDropContainer({
     };
   }, [getBehavior]);
 
-  return {
-    ref: setNodeRef,
-  };
+  return useMemo(
+    () => ({
+      ref: setNodeRef,
+    }),
+    [setNodeRef],
+  );
 }

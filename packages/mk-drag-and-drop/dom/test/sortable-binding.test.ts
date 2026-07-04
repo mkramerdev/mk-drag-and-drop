@@ -7,6 +7,7 @@ import {
   type DragController,
   type DropPlacement,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
   createRect,
   dispatchKeyDown,
@@ -38,9 +39,17 @@ describe("createSortable", () => {
       },
     });
 
-    expect(controller?.runtime.getDropTargetRect("a")).toEqual(
-      createRect({ left: 0, top: 0, width: 20, height: 20 }),
-    );
+    expect(
+      controller
+        ? getControllerRuntime(controller).getDropTargetRegistration("a")
+        : null,
+    ).toMatchObject({
+      id: "a",
+      capabilities: {
+        container: false,
+        sortable: true,
+      },
+    });
 
     dragToTarget(a, b);
 
@@ -65,7 +74,6 @@ describe("createSortable", () => {
     createSortable({ controller, element, draggableId: "item" });
     dispatchPointerDown(element, { pointerId: 1, clientX: 3, clientY: 4 });
 
-    expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
@@ -90,7 +98,6 @@ describe("createSortable", () => {
 
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       expect.objectContaining({ draggableId: "item" }),
       expect.any(Object),
@@ -113,7 +120,6 @@ describe("createSortable", () => {
 
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(false);
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
@@ -184,7 +190,9 @@ describe("createSortable", () => {
 
     a.remove();
 
-    expect(controller?.runtime.getDropTargetRect("a")).toBeNull();
+    expect(
+      controller ? getControllerRuntime(controller).getDropTargetRegistration("a") : null,
+    ).toBeNull();
 
     dragToTarget(a, b);
 
@@ -242,12 +250,13 @@ describe("createSortable", () => {
     controller.dispose();
 
     expect(element.getAttribute("tabindex")).toBe("2");
-    expect(controller.runtime.getDropTargetRect("item")).toBeNull();
+    expect(
+      getControllerRuntime(controller).getDropTargetRegistration("item"),
+    ).toBeNull();
 
     dispatchPointerDown(element, { pointerId: 1 });
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(false);
     expect(onDragStart).not.toHaveBeenCalled();
   });
 

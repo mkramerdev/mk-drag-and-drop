@@ -39,7 +39,7 @@ export {
 export {
   restrictToContainer,
   type ReactRestrictToContainerInput,
-} from "./modifiers/index.js";
+} from "./modifiers/restrict-to-container.js";
 export type {
   DragOverlayPhase,
   DragState,

@@ -7,6 +7,7 @@ import {
   type DragController,
   type DropPlacement,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
   createRect,
   dispatchPointerDown,
@@ -119,7 +120,11 @@ describe("createDropContainer", () => {
     dragToTarget(source, container);
 
     expect(onDrop).not.toHaveBeenCalled();
-    expect(controller?.runtime.getDropTargetRect("column-a")).toBeNull();
+    expect(
+      controller
+        ? getControllerRuntime(controller).getDropTargetRegistration("column-a")
+        : null,
+    ).toBeNull();
   });
 
   it("unregisters the container when the controller is disposed", () => {

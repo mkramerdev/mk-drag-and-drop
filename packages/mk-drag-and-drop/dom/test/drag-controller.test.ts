@@ -5,8 +5,10 @@ import {
   type DragController,
   type DragControllerOverlayInput,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
   createRect,
+  dispatchPointerCancel,
   dispatchPointerMove,
   dispatchPointerUp,
   installMockRaf,
@@ -21,15 +23,16 @@ describe("createDragController", () => {
     controller = null;
     document.body.innerHTML = "";
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("exposes a stable runtime", () => {
     controller = createDragController();
-    const runtime = controller.runtime;
+    const runtime = getControllerRuntime(controller);
 
     controller.update({});
 
-    expect(controller.runtime).toBe(runtime);
+    expect(getControllerRuntime(controller)).toBe(runtime);
   });
 
   it("updates callbacks and config without replacing runtime", () => {
@@ -39,7 +42,7 @@ describe("createDragController", () => {
       keyboardConfiguration: { enabled: false },
       onDragStart: firstOnDragStart,
     });
-    const runtime = controller.runtime;
+    const runtime = getControllerRuntime(controller);
 
     expect(runtime.isKeyboardDragEnabled()).toBe(false);
 
@@ -48,7 +51,7 @@ describe("createDragController", () => {
       onDragStart: secondOnDragStart,
     });
 
-    expect(controller.runtime).toBe(runtime);
+    expect(getControllerRuntime(controller)).toBe(runtime);
     expect(runtime.isKeyboardDragEnabled()).toBe(true);
 
     startDrag(controller, createElementWithRect());
@@ -59,7 +62,8 @@ describe("createDragController", () => {
 
   it("delegates drop target remeasurement to the runtime", () => {
     controller = createDragController();
-    const remeasureSpy = vi.spyOn(controller.runtime, "remeasureDropTargets");
+    const runtime = getControllerRuntime(controller);
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
     const input = { group: "items" };
 
     controller.remeasureDropTargets(input);
@@ -81,7 +85,7 @@ describe("createDragController", () => {
       onDragEnd,
       onDrop,
     });
-    controller.runtime.registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
 
     startDrag(controller, source);
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
@@ -140,6 +144,138 @@ describe("createDragController", () => {
     expect(getLiveRegion()?.textContent).toBe("");
   });
 
+  it("fires onDragUpdate lifecycle callbacks for every pointer update", () => {
+    const raf = installMockRaf();
+    const onDragUpdate = vi.fn();
+    const source = createElementWithRect();
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({ onDragUpdate });
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+
+    startDrag(controller, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 112, clientY: 10 });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenCalledTimes(2);
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        activeDropTarget: "target",
+        previousDropTarget: "target",
+      }),
+      expect.any(Object),
+    );
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 112, clientY: 10 });
+    raf.restore();
+  });
+
+  it("announces drag updates only when the active drop target changes", () => {
+    const raf = installMockRaf();
+    const onDragUpdateAnnouncement = vi.fn(({ activeDropTarget }) =>
+      activeDropTarget ? `Over ${activeDropTarget}` : "No target",
+    );
+    const source = createElementWithRect();
+    const firstTarget = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    const secondTarget = createElementWithRect(
+      createRect({ left: 200, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      announcements: {
+        onDragUpdate: onDragUpdateAnnouncement,
+      },
+    });
+    getControllerRuntime(controller).registerDropTarget(
+      "target-1",
+      firstTarget,
+      "items",
+    );
+    getControllerRuntime(controller).registerDropTarget(
+      "target-2",
+      secondTarget,
+      "items",
+    );
+
+    startDrag(controller, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(onDragUpdateAnnouncement).toHaveBeenCalledTimes(1);
+    expect(getLiveRegion()?.textContent).toBe("Over target-1");
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 112, clientY: 10 });
+    raf.flush();
+
+    expect(onDragUpdateAnnouncement).toHaveBeenCalledTimes(1);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 210, clientY: 10 });
+    raf.flush();
+
+    expect(onDragUpdateAnnouncement).toHaveBeenCalledTimes(2);
+    expect(getLiveRegion()?.textContent).toBe("Over target-2");
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 210, clientY: 10 });
+    raf.restore();
+  });
+
+  it("dedupes repeated identical live-region messages", () => {
+    const onDragEndAnnouncement = vi.fn(() => "Same");
+    controller = createDragController({
+      announcements: {
+        onDragStart: () => "Same",
+        onDragEnd: onDragEndAnnouncement,
+      },
+    });
+
+    startDrag(controller, createElementWithRect());
+
+    const firstAnnouncementNode = getLiveRegion()?.firstChild;
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 0, clientY: 0 });
+
+    expect(onDragEndAnnouncement).toHaveBeenCalledTimes(1);
+    expect(getLiveRegion()?.firstChild).toBe(firstAnnouncementNode);
+    expect(getLiveRegion()?.textContent).toBe("Same");
+  });
+
+  it("keeps start, end, and drop announcements", () => {
+    const raf = installMockRaf();
+    const onDragStartAnnouncement = vi.fn(() => "Started");
+    const onDragEndAnnouncement = vi.fn(() => "Ended");
+    const onDropAnnouncement = vi.fn(() => "Dropped");
+    const source = createElementWithRect();
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      announcements: {
+        onDragStart: onDragStartAnnouncement,
+        onDragEnd: onDragEndAnnouncement,
+        onDrop: onDropAnnouncement,
+      },
+    });
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+
+    startDrag(controller, source);
+
+    expect(getLiveRegion()?.textContent).toBe("Started");
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+
+    expect(onDragStartAnnouncement).toHaveBeenCalledTimes(1);
+    expect(onDragEndAnnouncement).toHaveBeenCalledTimes(1);
+    expect(onDropAnnouncement).toHaveBeenCalledTimes(1);
+    expect(getLiveRegion()?.textContent).toBe("Dropped");
+    raf.restore();
+  });
+
   it("renders, positions, moves, and removes overlay elements", () => {
     const raf = installMockRaf();
     controller = createDragController({
@@ -180,6 +316,122 @@ describe("createDragController", () => {
     expect(getOverlayChild()).toBeNull();
 
     raf.restore();
+  });
+
+  it("creates overlay content once and moves the wrapper on pointer updates", () => {
+    const raf = installMockRaf();
+    const dragOverlay = vi.fn(() => {
+      const element = document.createElement("div");
+      element.className = "drag-overlay-child";
+      return element;
+    });
+    controller = createDragController({ dragOverlay });
+
+    startDrag(controller, createElementWithRect(), { x: 4, y: 6 });
+    const overlay = getOverlayChild();
+    const wrapper = overlay?.parentElement;
+    const replaceChildren = wrapper
+      ? vi.spyOn(wrapper, "replaceChildren")
+      : null;
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 14, clientY: 21 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 24, clientY: 31 });
+    raf.flush();
+
+    expect(dragOverlay).toHaveBeenCalledTimes(1);
+    expect(replaceChildren).toHaveBeenCalledTimes(0);
+    expect(getOverlayChild()).toBe(overlay);
+    expect(wrapper?.style.transform).toBe("translate3d(20px, 25px, 0)");
+
+    raf.restore();
+  });
+
+  it("measures overlay content on mount without measuring on pointer updates", () => {
+    const raf = installMockRaf();
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    const getBoundingClientRect = vi
+      .spyOn(overlayElement, "getBoundingClientRect")
+      .mockReturnValue(createRect({ width: 30, height: 40 }) as DOMRect);
+    controller = createDragController({
+      dragOverlay: () => overlayElement,
+    });
+
+    startDrag(controller, createElementWithRect());
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+    raf.flush();
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    raf.restore();
+  });
+
+  it("remeasures overlay content when ResizeObserver reports a resize", () => {
+    const resizeObserver = installMockResizeObserver();
+    const targetingAlgorithm = Object.assign(
+      vi.fn(() => null),
+      { mode: "rect" as const },
+    );
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    const getBoundingClientRect = vi
+      .spyOn(overlayElement, "getBoundingClientRect")
+      .mockReturnValueOnce(createRect({ width: 20, height: 20 }) as DOMRect)
+      .mockReturnValue(createRect({ width: 40, height: 30 }) as DOMRect);
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      dragOverlay: () => overlayElement,
+      targetingAlgorithm,
+    });
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+
+    startDrag(controller, createElementWithRect());
+    expect(targetingAlgorithm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        overlayRect: createRect({ width: 20, height: 20 }),
+      }),
+    );
+
+    resizeObserver.instances[0]?.trigger();
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(2);
+    expect(targetingAlgorithm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        overlayRect: createRect({ width: 40, height: 30 }),
+      }),
+    );
+  });
+
+  it("provides cached overlay rects to rect-based targeting", () => {
+    const targetingAlgorithm = Object.assign(
+      vi.fn(() => null),
+      { mode: "rect" as const },
+    );
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    vi.spyOn(overlayElement, "getBoundingClientRect").mockReturnValue(
+      createRect({ left: 5, top: 6, width: 30, height: 40 }) as DOMRect,
+    );
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      dragOverlay: () => overlayElement,
+      targetingAlgorithm,
+    });
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+
+    startDrag(controller, createElementWithRect());
+
+    expect(targetingAlgorithm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        overlayRect: createRect({ left: 5, top: 6, width: 30, height: 40 }),
+      }),
+    );
   });
 
   it("passes active drag state to dragOverlay", () => {
@@ -227,20 +479,95 @@ describe("createDragController", () => {
         return element;
       },
     });
-    controller.runtime.registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
 
     startDrag(controller, createElementWithRect());
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
     raf.flush();
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
-    expect(
-      overlayCalls.filter((call) => call.phase === "released").at(-1),
-    ).toEqual({
-      phase: "released",
-      draggableId: "item",
-      group: "items",
+    expect(overlayCalls).toEqual([
+      {
+        phase: "dragging",
+        draggableId: "item",
+        group: "items",
+      },
+      {
+        phase: "released",
+        draggableId: "item",
+        group: "items",
+      },
+    ]);
+    expect(getOverlayChild()).not.toBeNull();
+
+    controller.finishOverlay();
+
+    expect(getOverlayChild()).toBeNull();
+
+    raf.restore();
+  });
+
+  it("disconnects overlay resize observation during cleanup", () => {
+    const resizeObserver = installMockResizeObserver();
+    controller = createDragController({
+      dragOverlay: () => {
+        const element = document.createElement("div");
+        element.className = "drag-overlay-child";
+        return element;
+      },
     });
+
+    startDrag(controller, createElementWithRect());
+    controller.cleanup();
+
+    expect(resizeObserver.instances[0]?.disconnect).toHaveBeenCalledTimes(1);
+    expect(getOverlayChild()).toBeNull();
+  });
+
+  it("removes overlay and clears the active drag rect on cancel", () => {
+    controller = createDragController({
+      dragOverlay: () => {
+        const element = document.createElement("div");
+        element.className = "drag-overlay-child";
+        return element;
+      },
+    });
+
+    startDrag(controller, createElementWithRect());
+    expect(getOverlayChild()).not.toBeNull();
+
+    dispatchPointerCancel(window, { pointerId: 1 });
+
+    expect(getOverlayChild()).toBeNull();
+  });
+
+  it("allows user code to update dynamic overlay content without replacement", () => {
+    const raf = installMockRaf();
+    let overlayElement: HTMLElement | null = null;
+    controller = createDragController({
+      dragOverlay: ({ dragState }) => {
+        overlayElement = document.createElement("div");
+        overlayElement.className = "drag-overlay-child";
+        overlayElement.textContent = dragState.draggableId;
+        return overlayElement;
+      },
+      onDragUpdate: ({ pointerPosition }) => {
+        if (overlayElement) {
+          overlayElement.textContent = `${pointerPosition.x}, ${pointerPosition.y}`;
+        }
+      },
+      onDragEnd: () => {
+        overlayElement = null;
+      },
+    });
+
+    startDrag(controller, createElementWithRect());
+    const mountedOverlay = getOverlayChild();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 12, clientY: 18 });
+    raf.flush();
+
+    expect(getOverlayChild()).toBe(mountedOverlay);
+    expect(getOverlayChild()?.textContent).toBe("12, 18");
 
     raf.restore();
   });
@@ -273,12 +600,10 @@ describe("createDragController", () => {
     });
 
     startDrag(controller, createElementWithRect());
-    expect(controller.runtime.isDragging).toBe(true);
     expect(getOverlayChild()).not.toBeNull();
 
     controller.cleanup();
 
-    expect(controller.runtime.isDragging).toBe(false);
     expect(getOverlayChild()).toBeNull();
   });
 
@@ -293,7 +618,7 @@ describe("createDragController", () => {
         return element;
       },
     });
-    const disposeSpy = vi.spyOn(controller.runtime, "dispose");
+    const disposeSpy = vi.spyOn(getControllerRuntime(controller), "dispose");
 
     startDrag(controller, createElementWithRect());
     expect(getOverlayChild()).not.toBeNull();
@@ -312,7 +637,7 @@ function startDrag(
   element: HTMLElement,
   pointerPosition = { x: 0, y: 0 },
 ): void {
-  controller.runtime.requestDragStart({
+  getControllerRuntime(controller).requestDragStart({
     draggableId: "item",
     group: "items",
     element,
@@ -336,4 +661,38 @@ function getOverlayChild(): HTMLElement | null {
 
 function getLiveRegion(): HTMLElement | null {
   return document.querySelector("[aria-live='polite']");
+}
+
+function installMockResizeObserver(): {
+  instances: Array<{
+    observe: ReturnType<typeof vi.fn>;
+    unobserve: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+    trigger: () => void;
+  }>;
+} {
+  const instances: Array<{
+    observe: ReturnType<typeof vi.fn>;
+    unobserve: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+    trigger: () => void;
+  }> = [];
+
+  class MockResizeObserver {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+      instances.push(this);
+    }
+
+    trigger(): void {
+      this.callback([], this as unknown as ResizeObserver);
+    }
+  }
+
+  vi.stubGlobal("ResizeObserver", MockResizeObserver);
+
+  return { instances };
 }

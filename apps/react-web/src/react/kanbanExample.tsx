@@ -5,7 +5,6 @@ import {
   type ReactElement,
   type RefObject,
 } from "react";
-import { GripVertical } from "lucide-react";
 
 import {
   centerToCenter,
@@ -55,6 +54,7 @@ type KanbanActiveDrag =
 const kanbanColumnGroup = "kanban-columns";
 const kanbanCardGroup = "kanban-cards";
 const boardContainerId = "board";
+const dragHandleText = "\u22ee\u22ee";
 
 // Example state: initial board data is user-owned and committed on drop.
 const initialKanbanState: KanbanState = {
@@ -194,7 +194,7 @@ function KanbanDragOverlay({
     return (
       <div className="kanbanDragOverlay kanbanColumnDragOverlay">
         <div className="kanbanDragOverlayHandle">
-          <GripVertical aria-hidden="true" />
+          {dragHandleText}
         </div>
         <span className="kanbanDragOverlayTitle">{column.title}</span>
         <span className="kanbanColumnCount">{column.cardIds.length}</span>
@@ -300,7 +300,7 @@ function KanbanColumnView({
           className="kanbanColumnHandle"
           aria-label={`Drag ${column.title}`}
         >
-          <GripVertical aria-hidden="true" />
+          {dragHandleText}
         </button>
         <h3 className="kanbanColumnTitle">{column.title}</h3>
         <span className="kanbanColumnCount">{column.cardIds.length}</span>

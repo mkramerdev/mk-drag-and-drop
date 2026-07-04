@@ -17,28 +17,28 @@ export function maxDistanceToRect(
   options: MaxDistanceToRectOptions,
 ): TargetingConstraint {
   return ({ pointerPosition, dropTarget }) => {
-    const distance = getDistanceToRect(
-      pointerPosition,
-      dropTarget.dropTargetRect,
+    const x = getAxisDistance(
+      pointerPosition.x,
+      dropTarget.dropTargetRect.left,
+      dropTarget.dropTargetRect.right,
+    );
+    const y = getAxisDistance(
+      pointerPosition.y,
+      dropTarget.dropTargetRect.top,
+      dropTarget.dropTargetRect.bottom,
     );
 
-    if (
-      options.maxXDistance !== undefined &&
-      distance.x > options.maxXDistance
-    ) {
+    if (options.maxXDistance !== undefined && x > options.maxXDistance) {
       return false;
     }
 
-    if (
-      options.maxYDistance !== undefined &&
-      distance.y > options.maxYDistance
-    ) {
+    if (options.maxYDistance !== undefined && y > options.maxYDistance) {
       return false;
     }
 
     if (
       options.maxDistance !== undefined &&
-      distance.distance > options.maxDistance
+      x * x + y * y > options.maxDistance * options.maxDistance
     ) {
       return false;
     }

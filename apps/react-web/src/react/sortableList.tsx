@@ -19,11 +19,11 @@ import {
     type DragRect,
     type SortablePlacement,
 } from "@mk-drag-and-drop/react";
-import { Menu } from "lucide-react";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
+const dragHandleText = "\u22ee\u22ee";
 // Example targeting: package helpers are configured with this demo's distance limit.
 const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 const sortableModifiers = [lockToYAxis()] as const;
@@ -191,7 +191,7 @@ function SortableDragOverlay({
             onTransitionEnd={handleTransitionEnd}
         >
             <div className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div>
             <span>Item {draggableId}</span>
         </div>
@@ -221,7 +221,7 @@ function SortableItem({
             }
         >
             <div {...dragHandle} className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div> 
             <span>Item {draggableId}</span>   
         </div>

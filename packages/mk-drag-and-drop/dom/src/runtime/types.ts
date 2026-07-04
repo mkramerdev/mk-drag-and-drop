@@ -38,6 +38,12 @@ export type DragOverlayRenderState = {
   phase: DragOverlayPhase;
 };
 
+export type DragOverlayHostUpdate =
+  | { type: "mount"; state: DragOverlayRenderState }
+  | { type: "move"; dragState: DragState }
+  | { type: "release"; state: DragOverlayRenderState }
+  | { type: "unmount" };
+
 export type RequestDragStartInput = PointerDragActivationRequest;
 
 type BaseStartDragInput = {
@@ -59,7 +65,7 @@ export type StartDragInput =
 export type RequestKeyboardDragStartInput = KeyboardDragStartInput;
 
 export type DragRuntimeOptions = {
-  setOverlayState?: (overlayState: DragOverlayRenderState | null) => void;
+  updateOverlayHost?: (update: DragOverlayHostUpdate) => void;
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
   hasDragOverlay?: boolean;

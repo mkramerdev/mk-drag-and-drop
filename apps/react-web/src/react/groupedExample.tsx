@@ -1,11 +1,11 @@
 import {
   Fragment,
+  useCallback,
   useLayoutEffect,
   useRef,
   useState,
   type ReactElement,
 } from "react";
-import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 
 import {
   DragProvider,
@@ -42,14 +42,19 @@ type ParsedChildDropTarget =
       index: number;
     };
 
+type DropTargetElementRegistrar = (
+  dropTargetId: string,
+  element: HTMLElement | null,
+) => void;
+
 const groupedParentGroup = "grouped-parents";
 const groupedChildGroup = "grouped-children";
 const groupedDropTargetAttribute = "data-grouped-drop-target-id";
-const groupedActiveDropTargetAttribute = "data-grouped-active-drop-target";
 const groupedInsideTargetPrefix = "grouped:children:inside:";
 const groupedChildTargetPrefix = "grouped:children:";
 const groupedInsideTargetMaxYDistance = 0;
 const groupedChildLineTargetMaxYDistance = 24;
+const dragHandleText = "\u22ee\u22ee";
 
 // Example targeting: custom rules decide which grouped drop targets are eligible.
 const groupedTargetingConstraint: TargetingConstraint = ({
@@ -162,6 +167,8 @@ const initialChildOrder = [
 
 export function GroupedExample(): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
+  const activeDropTargetRef = useRef<string | null>(null);
   // Example state: parent/child data, expansion, and active styling are app-owned.
   const [parentsById] = useState<Record<string, ParentItem>>(
     () => initialParentsById,
@@ -180,6 +187,77 @@ export function GroupedExample(): ReactElement {
   const [activeDraggedParentId, setActiveDraggedParentId] = useState<
     string | null
   >(null);
+
+  const registerDropTargetElement = useCallback<DropTargetElementRegistrar>(
+    (dropTargetId, element) => {
+      const elements = dropTargetElementsRef.current;
+
+      if (!element) {
+        const previousElement = elements.get(dropTargetId);
+
+        if (previousElement) {
+          delete previousElement.dataset.groupedActiveDropTarget;
+        }
+
+        elements.delete(dropTargetId);
+        return;
+      }
+
+      elements.set(dropTargetId, element);
+
+      if (activeDropTargetRef.current === dropTargetId) {
+        element.dataset.groupedActiveDropTarget = "true";
+      } else {
+        delete element.dataset.groupedActiveDropTarget;
+      }
+    },
+    [],
+  );
+
+  const setActiveDropTarget = useCallback(
+    (dropTargetId: string | null, isActive: boolean): void => {
+      if (!dropTargetId) {
+        return;
+      }
+
+      const element = dropTargetElementsRef.current.get(dropTargetId);
+
+      if (!element) {
+        return;
+      }
+
+      if (isActive) {
+        element.dataset.groupedActiveDropTarget = "true";
+      } else {
+        delete element.dataset.groupedActiveDropTarget;
+      }
+    },
+    [],
+  );
+
+  const updateActiveDropTarget = useCallback(
+    ({
+      activeDropTarget,
+      previousDropTarget,
+    }: {
+      activeDropTarget: string | null;
+      previousDropTarget: string | null;
+    }): void => {
+      if (activeDropTarget === previousDropTarget) {
+        return;
+      }
+
+      setActiveDropTarget(previousDropTarget, false);
+      setActiveDropTarget(activeDropTarget, true);
+      activeDropTargetRef.current = activeDropTarget;
+    },
+    [setActiveDropTarget],
+  );
+
+  const clearActiveDropTarget = useCallback((): void => {
+    setActiveDropTarget(activeDropTargetRef.current, false);
+    activeDropTargetRef.current = null;
+  }, [setActiveDropTarget]);
 
   function handleDrop(
     event: { draggableId: string; dropTarget: string },
@@ -255,18 +333,17 @@ export function GroupedExample(): ReactElement {
         />
       )}
       onDragStart={({ draggableId }) => {
-        clearActiveGroupedDropTargets(rootRef.current);
+        clearActiveDropTarget();
         setActiveDraggedParentId(parentsById[draggableId] ? draggableId : null);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-        updateActiveGroupedDropTarget({
-          root: rootRef.current,
+        updateActiveDropTarget({
           activeDropTarget,
           previousDropTarget,
         });
       }}
       onDragEnd={() => {
-        clearActiveGroupedDropTargets(rootRef.current);
+        clearActiveDropTarget();
         setActiveDraggedParentId(null);
       }}
       onDrop={handleDrop}
@@ -295,6 +372,7 @@ export function GroupedExample(): ReactElement {
                 expandedParentIds={expandedParentIds}
                 setExpandedParentIds={setExpandedParentIds}
                 isActivelyDragged={activeDraggedParentId === parentId}
+                registerDropTargetElement={registerDropTargetElement}
               />
             );
           })}
@@ -336,7 +414,7 @@ function GroupedDragOverlay({
     return (
       <div className="groupedDragOverlay groupedParentDragOverlay">
         <div className="groupedDragOverlayHandle">
-          <GripVertical aria-hidden />
+          {dragHandleText}
         </div>
         <span className="groupedParentLabel">{parent?.label ?? ""}</span>
         <span className="groupedChildCount">
@@ -351,7 +429,7 @@ function GroupedDragOverlay({
   return (
     <div className="groupedDragOverlay groupedChildDragOverlay">
       <div className="groupedDragOverlayHandle">
-        <GripVertical aria-hidden />
+        {dragHandleText}
       </div>
       <span className="groupedChildLabel">{child?.label ?? ""}</span>
     </div>
@@ -365,6 +443,7 @@ function GroupedParentBlock({
   expandedParentIds,
   setExpandedParentIds,
   isActivelyDragged,
+  registerDropTargetElement,
 }: {
   parent: ParentItem;
   children: ChildItem[];
@@ -373,6 +452,7 @@ function GroupedParentBlock({
     update: (currentExpandedParentIds: Set<string>) => Set<string>,
   ) => void;
   isActivelyDragged: boolean;
+  registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
   // Package API: parent rows are sortable and also accept child drops.
   const sortable = useSortable({
@@ -392,6 +472,23 @@ function GroupedParentBlock({
     hasChildren &&
     expandedParentIds.has(parent.parentId) &&
     !isActivelyDragged;
+  const { ref: sortableRef, ...sortableProps } = sortable;
+  const { ref: insideDroppableRef, ...insideDroppableProps } =
+    insideDroppable;
+  const parentBlockRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      sortableRef(element);
+      registerDropTargetElement(parent.parentId, element);
+    },
+    [parent.parentId, registerDropTargetElement, sortableRef],
+  );
+  const insideTargetRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      insideDroppableRef(element);
+      registerDropTargetElement(insideTargetId, element);
+    },
+    [insideDroppableRef, insideTargetId, registerDropTargetElement],
+  );
 
   useLayoutEffect(() => {
     if (!isActivelyDragged) {
@@ -424,13 +521,15 @@ function GroupedParentBlock({
 
   return (
     <div
-      {...sortable}
+      {...sortableProps}
+      ref={parentBlockRef}
       className="groupedParentBlock"
       data-grouped-drop-target-id={parent.parentId}
       data-grouped-dragged={isActivelyDragged ? "true" : undefined}
     >
       <div
-        {...insideDroppable}
+        {...insideDroppableProps}
+        ref={insideTargetRef}
         className="groupedParentRow"
         data-grouped-drop-target-id={insideTargetId}
       >
@@ -441,13 +540,7 @@ function GroupedParentBlock({
           disabled={!hasChildren}
           aria-label={isExpanded ? "Collapse parent" : "Expand parent"}
         >
-          {hasChildren ? (
-            isExpanded ? (
-              <ChevronDown aria-hidden />
-            ) : (
-              <ChevronRight aria-hidden />
-            )
-          ) : null}
+          {hasChildren ? (isExpanded ? "v" : ">") : null}
         </button>
         <button
           {...dragHandle}
@@ -455,7 +548,7 @@ function GroupedParentBlock({
           className="groupedDragHandle"
           aria-label="Drag parent"
         >
-          <GripVertical aria-hidden />
+          {dragHandleText}
         </button>
         <span className="groupedParentLabel">{parent.label}</span>
         <span className="groupedChildCount">
@@ -470,6 +563,7 @@ function GroupedParentBlock({
               <GroupedChildDropzoneLine
                 parentId={parent.parentId}
                 index={index}
+                registerDropTargetElement={registerDropTargetElement}
               />
               <GroupedChildRow child={child} />
             </Fragment>
@@ -477,6 +571,7 @@ function GroupedParentBlock({
           <GroupedChildDropzoneLine
             parentId={parent.parentId}
             index={children.length}
+            registerDropTargetElement={registerDropTargetElement}
           />
         </div>
       ) : null}
@@ -488,9 +583,11 @@ function GroupedParentBlock({
 function GroupedChildDropzoneLine({
   parentId,
   index,
+  registerDropTargetElement,
 }: {
   parentId: string;
   index: number;
+  registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
   // Package API: registers this generated child insertion line as a drop target.
   const targetId = getChildIndexTargetId(parentId, index);
@@ -499,10 +596,19 @@ function GroupedChildDropzoneLine({
     group: groupedChildGroup,
     containerId: parentId,
   });
+  const { ref, ...droppableProps } = droppable;
+  const lineRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      ref(element);
+      registerDropTargetElement(targetId, element);
+    },
+    [ref, registerDropTargetElement, targetId],
+  );
 
   return (
     <div
-      {...droppable}
+      {...droppableProps}
+      ref={lineRef}
       className="groupedChildDropzoneLine"
       data-grouped-drop-target-id={targetId}
     >
@@ -528,7 +634,7 @@ function GroupedChildRow({ child }: { child: ChildItem }): ReactElement {
         className="groupedDragHandle groupedChildDragHandle"
         aria-label="Drag child"
       >
-        <GripVertical aria-hidden />
+        {dragHandleText}
       </button>
       <span className="groupedChildLabel">{child.label}</span>
     </div>
@@ -698,58 +804,4 @@ function getInsideTargetId(parentId: string): string {
 
 function getChildIndexTargetId(parentId: string, index: number): string {
   return `grouped:children:${parentId}:index:${index}`;
-}
-
-// Example styling: active target attributes drive demo CSS highlights.
-function clearActiveGroupedDropTargets(root: ParentNode | null): void {
-  for (const element of Array.from(
-    (root ?? document).querySelectorAll<HTMLElement>(
-      `[${groupedDropTargetAttribute}][${groupedActiveDropTargetAttribute}="true"]`,
-    ),
-  )) {
-    delete element.dataset.groupedActiveDropTarget;
-  }
-}
-
-function updateActiveGroupedDropTarget(input: {
-  root: ParentNode | null;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-}): void {
-  if (input.previousDropTarget === input.activeDropTarget) {
-    return;
-  }
-
-  if (input.previousDropTarget) {
-    const previousElement = getGroupedDropTargetElement(
-      input.root,
-      input.previousDropTarget,
-    );
-
-    if (previousElement) {
-      delete previousElement.dataset.groupedActiveDropTarget;
-    }
-  }
-
-  if (!input.activeDropTarget) {
-    return;
-  }
-
-  const activeElement = getGroupedDropTargetElement(
-    input.root,
-    input.activeDropTarget,
-  );
-
-  if (activeElement) {
-    activeElement.dataset.groupedActiveDropTarget = "true";
-  }
-}
-
-function getGroupedDropTargetElement(
-  root: ParentNode | null,
-  dropTargetId: string,
-): HTMLElement | null {
-  return (root ?? document).querySelector<HTMLElement>(
-    `[${groupedDropTargetAttribute}="${CSS.escape(dropTargetId)}"]`,
-  );
 }

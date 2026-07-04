@@ -27,7 +27,7 @@ const droppableContainer = {
 };
 
 const basicGroup = "basic";
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 
 // Example state: preview and release animation state are owned by this demo.
 type MovePreviewState = {

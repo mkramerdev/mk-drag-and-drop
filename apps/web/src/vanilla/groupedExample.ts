@@ -43,7 +43,7 @@ const groupedInsideTargetPrefix = "grouped:children:inside:";
 const groupedChildTargetPrefix = "grouped:children:";
 const groupedInsideTargetMaxYDistance = 0;
 const groupedChildLineTargetMaxYDistance = 24;
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 
 // Example targeting: custom constraint passed into the package controller.
 const groupedTargetingConstraint: TargetingConstraint = ({

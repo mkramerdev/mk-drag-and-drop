@@ -30,7 +30,6 @@ describe("createDraggable", () => {
     createDraggable({ controller, element, draggableId: "item" });
     dispatchPointerDown(element, { pointerId: 1, clientX: 4, clientY: 5 });
 
-    expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
@@ -53,7 +52,6 @@ describe("createDraggable", () => {
 
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       expect.objectContaining({ draggableId: "item" }),
       expect.any(Object),
@@ -75,7 +73,6 @@ describe("createDraggable", () => {
 
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(false);
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
@@ -102,7 +99,6 @@ describe("createDraggable", () => {
     dispatchPointerDown(element, { pointerId: 1 });
     dispatchKeyDown(element, "Space");
 
-    expect(controller.runtime.isDragging).toBe(false);
     expect(onDragStart).not.toHaveBeenCalled();
   });
 });

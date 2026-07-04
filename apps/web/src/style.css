@@ -222,6 +222,10 @@ button {
   flex: 0 0 1.25rem;
   display: grid;
   place-items: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
   cursor: grab;
 }
 
@@ -370,10 +374,11 @@ button.dragListHandle {
   cursor: grabbing;
 }
 
-.treeToggle svg,
-.treeDragHandle svg {
-  width: 1rem;
-  height: 1rem;
+.treeToggle,
+.treeDragHandle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .treeRowLabel {
@@ -503,10 +508,11 @@ button.dragListHandle {
   cursor: grabbing;
 }
 
-.groupedParentToggle svg,
-.groupedDragHandle svg {
-  width: 1rem;
-  height: 1rem;
+.groupedParentToggle,
+.groupedDragHandle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .groupedParentLabel,
@@ -607,11 +613,9 @@ button.dragListHandle {
   align-items: center;
   justify-content: center;
   flex: 0 0 1.5rem;
-}
-
-.groupedDragOverlayHandle svg {
-  width: 1rem;
-  height: 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .kanbanExamplePanel {
@@ -672,9 +676,10 @@ button.dragListHandle {
   cursor: grabbing;
 }
 
-.kanbanColumnHandle svg {
-  width: 1rem;
-  height: 1rem;
+.kanbanColumnHandle {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .kanbanColumnTitle {
@@ -789,11 +794,9 @@ button.dragListHandle {
   align-items: center;
   justify-content: center;
   flex: 0 0 1.5rem;
-}
-
-.kanbanDragOverlayHandle svg {
-  width: 1rem;
-  height: 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .kanbanDragOverlayTitle {

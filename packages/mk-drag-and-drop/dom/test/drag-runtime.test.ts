@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  createDragRuntime,
   pointerToCenter,
   type DragLifecycleCallbacks,
-  type DragRuntime,
 } from "../src/index.js";
+import {
+  createDragRuntime,
+  type DragRuntime,
+} from "../src/runtime/drag-runtime.js";
 import {
   createRect,
   dispatchPointerCancel,
@@ -82,6 +84,70 @@ describe("DragRuntime", () => {
       },
       expect.any(Object),
     );
+  });
+
+  it("remeasures only the active group when a pointer drag starts", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const firstGroupTarget = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const secondGroupTarget = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+    );
+
+    runtime.registerDropTarget("target-a", firstGroupTarget.element, "a");
+    runtime.registerDropTarget("target-b", secondGroupTarget.element, "b");
+    firstGroupTarget.getBoundingClientRect.mockClear();
+    secondGroupTarget.getBoundingClientRect.mockClear();
+
+    runtime.requestDragStart({
+      draggableId: "item-1",
+      group: "a",
+      element: source,
+      pointerId: 1,
+      pointerPosition: { x: 0, y: 0 },
+    });
+
+    expect(firstGroupTarget.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    expect(secondGroupTarget.getBoundingClientRect).not.toHaveBeenCalled();
+  });
+
+  it("remeasures all groups when explicitly requested without input", () => {
+    const firstGroupTarget = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const secondGroupTarget = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+    );
+
+    runtime.registerDropTarget("target-a", firstGroupTarget.element, "a");
+    runtime.registerDropTarget("target-b", secondGroupTarget.element, "b");
+    firstGroupTarget.getBoundingClientRect.mockClear();
+    secondGroupTarget.getBoundingClientRect.mockClear();
+
+    runtime.remeasureDropTargets();
+
+    expect(firstGroupTarget.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    expect(secondGroupTarget.getBoundingClientRect).toHaveBeenCalledTimes(1);
+  });
+
+  it("remeasures only the requested group when explicit group input is provided", () => {
+    const firstGroupTarget = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const secondGroupTarget = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+    );
+
+    runtime.registerDropTarget("target-a", firstGroupTarget.element, "a");
+    runtime.registerDropTarget("target-b", secondGroupTarget.element, "b");
+    firstGroupTarget.getBoundingClientRect.mockClear();
+    secondGroupTarget.getBoundingClientRect.mockClear();
+
+    runtime.remeasureDropTargets({ group: "a" });
+
+    expect(firstGroupTarget.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    expect(secondGroupTarget.getBoundingClientRect).not.toHaveBeenCalled();
   });
 
   it("calls onDrop only for valid drop targets", () => {
@@ -273,4 +339,14 @@ function createElementWithRect(rect: ReturnType<typeof createRect>): HTMLElement
   document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;
+}
+
+function createMeasuredElement(rect: ReturnType<typeof createRect>) {
+  const element = document.createElement("div");
+  document.body.append(element);
+  const getBoundingClientRect = vi
+    .spyOn(element, "getBoundingClientRect")
+    .mockReturnValue(rect as DOMRect);
+
+  return { element, getBoundingClientRect };
 }

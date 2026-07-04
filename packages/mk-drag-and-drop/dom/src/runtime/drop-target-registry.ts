@@ -1,5 +1,5 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
-import type { DropTarget, TargetingConstraint } from "../targeting/index.js";
+import type { DropTarget, TargetingConstraint } from "../targeting/types.js";
 
 import {
   documentRectToViewportRect,
@@ -74,7 +74,8 @@ type ResolvedDropTargetEntry = DropTargetEntry & {
 };
 
 type AvailableDropTargetCandidate = {
-  registration: ResolvedDropTargetEntry;
+  entry: DropTargetEntry;
+  element: HTMLElement;
   viewportRect: DragRect;
 };
 
@@ -176,22 +177,21 @@ export class DropTargetRegistry {
     return removedTargets;
   }
 
-  pruneDisconnected(): RemovedDropTarget[] {
+  pruneDisconnected(group?: DragGroup): RemovedDropTarget[] {
     const removedTargets: RemovedDropTarget[] = [];
 
-    for (const [group, groupTargets] of Array.from(this.targetsByGroup)) {
-      for (const [id, entry] of Array.from(groupTargets)) {
-        if (this.resolveEntry(entry)) {
-          continue;
-        }
+    if (group !== undefined) {
+      const groupTargets = this.targetsByGroup.get(group);
 
-        groupTargets.delete(id);
-        removedTargets.push({ id, group });
-      }
+      return groupTargets
+        ? this.pruneDisconnectedGroup(group, groupTargets)
+        : removedTargets;
+    }
 
-      if (groupTargets.size === 0) {
-        this.targetsByGroup.delete(group);
-      }
+    for (const [targetGroup, groupTargets] of this.targetsByGroup) {
+      removedTargets.push(
+        ...this.pruneDisconnectedGroup(targetGroup, groupTargets),
+      );
     }
 
     return removedTargets;
@@ -255,19 +255,18 @@ export class DropTargetRegistry {
   }
 
   getAvailableDropTargets(input: GetAvailableDropTargetsInput): DropTarget[] {
-    const dropTargets: DropTarget[] = [];
-
     if (input.group === null) {
-      return dropTargets;
+      return [];
     }
 
     const groupTargets = this.targetsByGroup.get(input.group);
 
     if (!groupTargets) {
-      return dropTargets;
+      return [];
     }
 
     const candidates: AvailableDropTargetCandidate[] = [];
+    let hasContainerCandidate = false;
 
     for (const target of groupTargets.values()) {
       const element = this.resolveEntry(target);
@@ -276,20 +275,27 @@ export class DropTargetRegistry {
         continue;
       }
 
+      if (target.capabilities.container) {
+        hasContainerCandidate = true;
+      }
       candidates.push({
-        registration: {
-          ...target,
-          element,
-        },
+        entry: target,
+        element,
         viewportRect: documentRectToViewportRect(target.documentRect),
       });
     }
 
+    const candidateParentElements = hasContainerCandidate
+      ? getCandidateParentElements(candidates)
+      : null;
+    const dropTargets: DropTarget[] = [];
+
     for (const candidate of candidates) {
       if (
-        candidate.registration.capabilities.container &&
+        candidate.entry.capabilities.container &&
+        candidateParentElements &&
         !shouldIncludeContainerCandidate({
-          candidates,
+          candidateParentElements,
           containerCandidate: candidate,
           pointerPosition: input.pointerPosition,
         })
@@ -298,7 +304,7 @@ export class DropTargetRegistry {
       }
 
       const candidateDropTarget = {
-        dropTargetKey: candidate.registration.id,
+        dropTargetKey: candidate.entry.id,
         dropTargetRect: candidate.viewportRect,
       };
 
@@ -431,6 +437,28 @@ export class DropTargetRegistry {
     }
 
     return [{ id, group }];
+  }
+
+  private pruneDisconnectedGroup(
+    group: DragGroup,
+    groupTargets: Map<string, DropTargetEntry>,
+  ): RemovedDropTarget[] {
+    const removedTargets: RemovedDropTarget[] = [];
+
+    for (const [id, entry] of groupTargets) {
+      if (this.resolveEntry(entry)) {
+        continue;
+      }
+
+      groupTargets.delete(id);
+      removedTargets.push({ id, group });
+    }
+
+    if (groupTargets.size === 0) {
+      this.targetsByGroup.delete(group);
+    }
+
+    return removedTargets;
   }
 
   private remeasureTarget(dropTargetId: string): void {
@@ -649,7 +677,7 @@ function getDropTargetContainerElement(
 }
 
 function shouldIncludeContainerCandidate(input: {
-  candidates: AvailableDropTargetCandidate[];
+  candidateParentElements: ReadonlySet<HTMLElement>;
   containerCandidate: AvailableDropTargetCandidate;
   pointerPosition: DragPoint;
 }): boolean {
@@ -659,14 +687,23 @@ function shouldIncludeContainerCandidate(input: {
     return false;
   }
 
-  const hasCurrentChildTarget = input.candidates.some(
-    (candidate) =>
-      candidate !== input.containerCandidate &&
-      candidate.registration.element.parentElement ===
-        input.containerCandidate.registration.element,
-  );
+  return !input.candidateParentElements.has(input.containerCandidate.element);
+}
 
-  return !hasCurrentChildTarget;
+function getCandidateParentElements(
+  candidates: AvailableDropTargetCandidate[],
+): ReadonlySet<HTMLElement> {
+  const parentElements = new Set<HTMLElement>();
+
+  for (const candidate of candidates) {
+    const parentElement = candidate.element.parentElement;
+
+    if (parentElement) {
+      parentElements.add(parentElement);
+    }
+  }
+
+  return parentElements;
 }
 
 function isPointInsideRect(point: DragPoint, rect: DragRect): boolean {

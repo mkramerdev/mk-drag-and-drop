@@ -6,6 +6,7 @@ import {
   createDroppable,
   type DragController,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
   createRect,
   dispatchPointerDown,
@@ -47,6 +48,39 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it("remeasures default-group targets at drag start when public groups are omitted", () => {
+    const onDragUpdate = vi.fn();
+    controller = createDragController({ onDragUpdate });
+    raf = installMockRaf();
+    const source = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const targetMeasure = vi.mocked(target.getBoundingClientRect);
+
+    createDraggable({ controller, element: source, draggableId: "item" });
+    createDroppable({ controller, element: target, targetId: "target" });
+    targetMeasure.mockClear();
+
+    dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
+
+    expect(targetMeasure).toHaveBeenCalledTimes(1);
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ activeDropTarget: "target" }),
+      expect.any(Object),
+    );
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
   });
 
   it("isolates custom groups", () => {
@@ -112,7 +146,11 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).not.toHaveBeenCalled();
-    expect(controller?.runtime.getDropTargetRect("target")).toBeNull();
+    expect(
+      controller
+        ? getControllerRuntime(controller).getDropTargetRegistration("target")
+        : null,
+    ).toBeNull();
   });
 
   it("clears the active drop target when its element is removed", () => {
@@ -135,7 +173,10 @@ describe("createDroppable", () => {
     });
     raf.flush();
 
-    expect(controller.runtime.activeDropTarget).toBe("target");
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ activeDropTarget: "target" }),
+      expect.any(Object),
+    );
 
     target.remove();
     dispatchPointerMove(window, {
@@ -145,7 +186,13 @@ describe("createDroppable", () => {
     });
     raf.flush();
 
-    expect(controller.runtime.activeDropTarget).toBeNull();
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        activeDropTarget: null,
+        previousDropTarget: "target",
+      }),
+      expect.any(Object),
+    );
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
   });
@@ -171,7 +218,7 @@ describe("createDroppable", () => {
     });
     raf.flush();
 
-    expect(controller.runtime.activeDropTarget).toBe("target");
+    expect(onDragEnd).not.toHaveBeenCalled();
 
     target.remove();
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });

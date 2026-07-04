@@ -13,7 +13,7 @@ import {
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 const sortableDraggableIdAttribute = "data-vanilla-sortable-item-id";
 
 export function mountSortableList(root: HTMLElement): () => void {

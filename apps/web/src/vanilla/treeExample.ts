@@ -61,7 +61,7 @@ const treeInsideTargetMaxXDistance = 120;
 const treeInsideTargetMaxYDistance = 8;
 const treeLineTargetMaxXDistance = 180;
 const treeLineTargetMaxYDistance = 24;
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 
 // Example targeting: custom constraint passed into the package controller.
 const treeTargetingConstraint: TargetingConstraint = ({

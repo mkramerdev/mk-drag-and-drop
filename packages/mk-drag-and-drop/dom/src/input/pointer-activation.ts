@@ -83,12 +83,13 @@ export class PointerActivationController {
         return;
       }
 
-      const distance = Math.hypot(
-        pointerPosition.x - initialPointerPosition.x,
-        pointerPosition.y - initialPointerPosition.y,
-      );
+      const distanceX = pointerPosition.x - initialPointerPosition.x;
+      const distanceY = pointerPosition.y - initialPointerPosition.y;
+      const distanceSquared = distanceX * distanceX + distanceY * distanceY;
+      const activationDistanceSquared =
+        activationDistance * activationDistance;
 
-      if (distance >= activationDistance) {
+      if (distanceSquared >= activationDistanceSquared) {
         this.activatePending(pendingActivation);
       }
     };

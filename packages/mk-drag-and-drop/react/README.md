@@ -27,10 +27,37 @@ Hooks such as `useDraggable`, `useDroppable`, `useSortable`, and
 `useDropContainer` register DOM nodes with that runtime through React refs.
 React hooks are adapters over DOM behavior, not a separate implementation.
 
+Consumers should import React APIs from the package root,
+`@mk-drag-and-drop/react`. The React package does not expose public subpath
+exports. It uses `@mk-drag-and-drop/dom/integration` internally for lower-level
+DOM behavior wiring.
+
+Deep imports into package `src` or `dist` files are not part of the public
+package exports.
+
 The vanilla and React examples use the same underlying behavior. React users can
 use the React package for provider and ref integration. Users who are not
 rendering with React, or who are building another framework adapter, can use
 `@mk-drag-and-drop/dom` directly.
+
+## Public Root API
+
+The React root export includes:
+
+- `DragProvider`, `DragProviderProps`, `DragAnnouncements`
+- `DragOverlayInput`
+- `useDraggable`, `UseDraggableOptions`, `UseDraggableResult`
+- `useDroppable`, `UseDroppableOptions`, `UseDroppableResult`
+- `useDropContainer`, `UseDropContainerOptions`, `UseDropContainerResult`
+- `useSortable`, `UseSortableOptions`, `UseSortableResult`
+- `useDragHandle`, `UseDragHandleResult`
+- `useRemeasureDropTargets`
+- `composeRefs`
+- React-friendly `restrictToContainer`, `ReactRestrictToContainerInput`
+- DOM targeting helpers, modifier helpers, lifecycle types, placement types,
+  keyboard/pointer configuration types, and geometry types re-exported from the
+  DOM package
+- `DragState` and `DragOverlayPhase` from the DOM integration layer
 
 ## Core Mental Model
 
@@ -133,11 +160,11 @@ an optional drag overlay, and disposes the runtime when the provider unmounts.
 Key props:
 
 - `onDragStart(event, helpers)`: called when a drag starts.
-- `onDragUpdate(event, helpers)`: called as the active target changes.
+- `onDragUpdate(event, helpers)`: called for drag updates.
 - `onDragEnd(event, helpers)`: called when dragging ends, with or without a
   valid drop.
 - `onDrop(event, helpers)`: called when an item is dropped on a valid target.
-- `dragOverlay(input)`: renders the visual overlay for the active drag.
+- `dragOverlay(input)`: creates the visual overlay for the active drag.
 - `targetingAlgorithm`: chooses one target from the measured targets.
 - `targetingConstraint`: filters measured targets before targeting runs.
 - `modifiers`: transforms pointer movement, such as axis locking or bounds.
@@ -324,7 +351,7 @@ compatible. The package does not require React state.
 
 ## Drag Overlays
 
-`dragOverlay` renders a visual representation during drag.
+`dragOverlay` creates a visual representation during drag.
 
 ```tsx
 <DragProvider
@@ -342,8 +369,17 @@ The overlay input includes:
 - `phase`: `"dragging"` or `"released"`.
 - `finish`: call this when a kept release overlay should be removed.
 
-Overlay rendering is app-owned. It should not be used as the source of truth for
-application data.
+Overlay rendering is app-owned. `DragProvider` mounts overlay content for the
+dragging phase and, when `keepOverlayOnDrop` is enabled, replaces it once for
+the released phase. Pointer movement updates the package-owned overlay host
+imperatively and does not call `dragOverlay` by default.
+
+The package owns overlay hosting, movement, cleanup, and measurement for
+targeting and modifiers. It measures overlay content on mount/replacement and
+uses `ResizeObserver` when available to remeasure content size changes. Dynamic
+overlay content should use overlay-local state, component effects, lifecycle
+callbacks feeding a subscription/external store, or another app-owned update
+path rather than relying on `dragOverlay` being called for every pointer move.
 
 ## Targeting And Modifiers
 
@@ -352,8 +388,8 @@ filter targets before an algorithm runs. Modifiers transform movement during a
 drag.
 
 The React package re-exports targeting helpers such as `pointerToCenter`,
-`centerToCenter`, `pointerToRectDistance`, and `maxDistanceToRect`, plus
-modifier helpers:
+`centerToCenter`, `pointerToRectDistance`, `getDistanceToRect`, and
+`maxDistanceToRect`, plus modifier helpers:
 
 - `lockToXAxis()`
 - `lockToYAxis()`
@@ -362,6 +398,11 @@ modifier helpers:
 `restrictToContainer` accepts either a React ref object or a resolver function.
 Use the DOM package directly when you are building non-React integrations or
 imperative DOM behavior.
+
+Custom targeting algorithms receive `pointerPosition`, `overlayRect`, and a
+list of measured `dropTargets`. Each target has `dropTargetKey` and
+`dropTargetRect`. Custom constraints receive one candidate `dropTarget` and
+return whether it should be eligible.
 
 ## Accessibility
 
@@ -375,19 +416,23 @@ Accessibility still depends on the app's markup and product behavior:
 - Do not hijack editable controls or unrelated interactive children.
 - Provide domain-specific instructions for what dragging does.
 - Use `announcements` when you want the provider to render polite live-region
-  updates from lifecycle callbacks.
+  updates from lifecycle callbacks. `announcements.onDragUpdate` runs for
+  active-drop-target transitions and dedupes repeated messages to avoid
+  live-region spam and provider rerenders; use lifecycle `onDragUpdate` for
+  per-frame side effects.
 - Do not assume this package alone provides complete screen-reader drag-and-drop
   support for your domain.
 
 ## Cleanup And Effects
 
-Hooks register and unregister DOM nodes through refs and lifecycle effects.
-Users should not manually clean runtime entries for normal React mount/unmount.
+Hooks attach input props and register DOM nodes through refs and lifecycle
+effects. Users should not manually clean runtime entries for normal React
+mount/unmount.
 
 `DragProvider` owns runtime lifetime and disposes the runtime when it unmounts.
-`useDropContainer` also cleans its DOM binding on effect cleanup. Normal
-`useDraggable`, `useDroppable`, and `useSortable` usage is cleaned up through
-React ref updates.
+`useDropContainer` also cleans its DOM binding on effect cleanup.
+`useDraggable`, `useDroppable`, and `useSortable` rely on React prop/ref updates
+for normal mount, unmount, and element replacement behavior.
 
 `useRemeasureDropTargets` is for layout changes, not cleanup. The runtime also
 prunes disconnected targets on drag-critical paths such as remeasurement.
@@ -430,8 +475,10 @@ React examples live in `apps/react-web/src/react`:
 
 Important event/helper types are re-exported from the React package, including
 `DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`, `DropEvent`,
-`DragLifecycleHelpers`, `DragState`, `DropPlacement`, `SortablePlacement`,
-`PointerConfiguration`, `KeyboardConfiguration`, and modifier types.
+`DragLifecycleHelpers`, `DragState`, `DragOverlayPhase`, `DropPlacement`,
+`SortablePlacement`, `RemeasureDropTargetsInput`, `PointerConfiguration`,
+`KeyboardConfiguration`, `KeyboardCommand`, `DropTarget`, targeting types,
+geometry types, and modifier types.
 
 ## When To Use DOM Directly
 

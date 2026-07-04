@@ -14,6 +14,7 @@ import type {
   DropEvent,
 } from "../runtime/lifecycle.js";
 import type {
+  DragOverlayHostUpdate,
   DragOverlayPhase,
   DragOverlayRenderState,
   DragState,
@@ -63,11 +64,14 @@ export function createDragController(
 ): DragController {
   let currentOptions = options;
   let overlayWrapper: HTMLElement | null = null;
+  let overlayElement: HTMLElement | null = null;
+  let overlayResizeObserver: ResizeObserver | null = null;
   let liveRegion: HTMLElement | null = null;
+  let lastAnnouncement: string | null = null;
   let disposed = false;
 
   const runtime = createDragRuntimeHandle({
-    setOverlayState: renderOverlay,
+    updateOverlayHost,
     targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
     targetingConstraint: options.targetingConstraint,
     hasDragOverlay: hasDragOverlay(options),
@@ -142,7 +146,10 @@ export function createDragController(
       },
       onDragUpdate: (event, helpers) => {
         nextOptions.onDragUpdate?.(event, helpers);
-        announce(nextOptions.announcements?.onDragUpdate?.(event));
+
+        if (event.activeDropTarget !== event.previousDropTarget) {
+          announce(nextOptions.announcements?.onDragUpdate?.(event));
+        }
       },
       onDragEnd: (event, helpers) => {
         nextOptions.onDragEnd?.(event, helpers);
@@ -155,44 +162,107 @@ export function createDragController(
     };
   }
 
-  function renderOverlay(overlayState: DragOverlayRenderState | null): void {
-    if (disposed || overlayState === null || !currentOptions.dragOverlay) {
-      runtime.setOverlayRect(null);
+  function updateOverlayHost(update: DragOverlayHostUpdate): void {
+    if (disposed) {
       removeOverlay();
       return;
     }
 
-    const overlayElement = currentOptions.dragOverlay({
+    if (update.type === "mount" || update.type === "release") {
+      mountOverlay(update.state);
+      return;
+    }
+
+    if (update.type === "move") {
+      moveOverlay(update.dragState);
+      return;
+    }
+
+    removeOverlay();
+  }
+
+  function mountOverlay(overlayState: DragOverlayRenderState): void {
+    if (!currentOptions.dragOverlay) {
+      removeOverlay();
+      return;
+    }
+
+    const nextOverlayElement = currentOptions.dragOverlay({
       dragState: overlayState.dragState,
       phase: overlayState.phase,
       finish: finishOverlay,
     });
 
-    if (!overlayElement) {
-      runtime.setOverlayRect(null);
+    if (!nextOverlayElement) {
       removeOverlay();
       return;
     }
 
     const wrapper = getOverlayWrapper(currentOptions.overlayRoot ?? document.body);
-    const { dragState } = overlayState;
-    const deltaX =
-      dragState.pointerPosition.x - dragState.startPointerPosition.x;
-    const deltaY =
-      dragState.pointerPosition.y - dragState.startPointerPosition.y;
+    styleOverlayWrapper(wrapper, overlayState.dragState);
+    wrapper.replaceChildren(nextOverlayElement);
+    setOverlayElement(nextOverlayElement);
+  }
 
+  function moveOverlay(dragState: DragState): void {
+    if (!overlayWrapper) {
+      return;
+    }
+
+    overlayWrapper.style.transform = getOverlayTransform(dragState);
+  }
+
+  function styleOverlayWrapper(
+    wrapper: HTMLElement,
+    dragState: DragState,
+  ): void {
     wrapper.style.position = "fixed";
     wrapper.style.left = `${dragState.sourceRect.left}px`;
     wrapper.style.top = `${dragState.sourceRect.top}px`;
     wrapper.style.width = `${dragState.sourceRect.width}px`;
     wrapper.style.height = `${dragState.sourceRect.height}px`;
-    wrapper.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+    wrapper.style.transform = getOverlayTransform(dragState);
     wrapper.style.pointerEvents = "none";
     wrapper.style.zIndex = "9999";
-    wrapper.replaceChildren(overlayElement);
+  }
+
+  function getOverlayTransform(dragState: DragState): string {
+    const deltaX =
+      dragState.pointerPosition.x - dragState.startPointerPosition.x;
+    const deltaY =
+      dragState.pointerPosition.y - dragState.startPointerPosition.y;
+
+    return `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+  }
+
+  function setOverlayElement(nextOverlayElement: HTMLElement): void {
+    disconnectOverlayResizeObserver();
+    overlayElement = nextOverlayElement;
+    measureOverlayElement();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    overlayResizeObserver = new ResizeObserver(() => {
+      measureOverlayElement();
+    });
+    overlayResizeObserver.observe(nextOverlayElement);
+  }
+
+  function measureOverlayElement(): void {
+    if (!overlayElement?.isConnected) {
+      return;
+    }
+
     runtime.setOverlayRect(
       rectToDragRect(overlayElement.getBoundingClientRect()),
     );
+  }
+
+  function disconnectOverlayResizeObserver(): void {
+    overlayResizeObserver?.disconnect();
+    overlayResizeObserver = null;
   }
 
   function getOverlayWrapper(overlayRoot: HTMLElement): HTMLElement {
@@ -216,6 +286,9 @@ export function createDragController(
   }
 
   function removeOverlay(): void {
+    disconnectOverlayResizeObserver();
+    overlayElement = null;
+    runtime.setOverlayRect(null);
     overlayWrapper?.remove();
     overlayWrapper = null;
   }
@@ -250,14 +323,20 @@ export function createDragController(
   }
 
   function announce(message: string | null | undefined): void {
-    if (message === null || message === undefined || !currentOptions.announcements) {
+    if (
+      !message ||
+      message === lastAnnouncement ||
+      !currentOptions.announcements
+    ) {
       return;
     }
 
+    lastAnnouncement = message;
     ensureLiveRegion().textContent = message;
   }
 
   function removeLiveRegion(): void {
+    lastAnnouncement = null;
     liveRegion?.remove();
     liveRegion = null;
   }

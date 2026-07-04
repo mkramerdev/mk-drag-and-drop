@@ -26,12 +26,12 @@ import {
   type ActiveDragModifier,
   type DragModifierInput,
 } from "../modifiers/types.js";
-import {
-  pointerToCenter,
-  type DropTarget,
-  type TargetingAlgorithm,
-  type TargetingConstraint,
-} from "../targeting/index.js";
+import { pointerToCenter } from "../targeting/algorithms.js";
+import type {
+  DropTarget,
+  TargetingAlgorithm,
+  TargetingConstraint,
+} from "../targeting/types.js";
 import {
   DropTargetRegistry,
   type DragGroup,
@@ -52,7 +52,7 @@ import type {
 } from "./lifecycle.js";
 import type {
   ActiveDragInput,
-  DragOverlayRenderState,
+  DragOverlayHostUpdate,
   DragRuntimeConfigureInput,
   DragRuntimeOptions,
   DragState,
@@ -62,7 +62,7 @@ import type {
   StartDragInput,
 } from "./types.js";
 
-const noopSetOverlayState = (): void => {};
+const noopUpdateOverlayHost = (): void => {};
 
 type DragSession =
   | { status: "idle" }
@@ -100,6 +100,12 @@ export class DragRuntime {
   private subscriptions = new Set<DragRuntimeSubscription>();
   private disposeCallbacks = new Set<() => void>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
+  private lifecycleHelpers: DragLifecycleHelpers = {
+    getDropPlacement: (draggableId) => this.getDropPlacement(draggableId),
+    getSortablePlacement: (draggableId) =>
+      this.getSortablePlacement(draggableId),
+    getDropTargetRect: (dropTargetId) => this.getDropTargetRect(dropTargetId),
+  };
   private dropTargetRegistry = new DropTargetRegistry();
   private lastDropPlacementInput: {
     draggableId: string;
@@ -115,9 +121,7 @@ export class DragRuntime {
   };
   private keyboardConfiguration: NormalizedKeyboardConfiguration =
     defaultKeyboardConfiguration;
-  private setOverlayState: (
-    overlayState: DragOverlayRenderState | null,
-  ) => void;
+  private updateOverlayHost: (update: DragOverlayHostUpdate) => void;
   private targetingAlgorithm: TargetingAlgorithm;
   private hasDragOverlay: boolean;
   private keepOverlayOnDrop: boolean;
@@ -182,7 +186,7 @@ export class DragRuntime {
   });
 
   constructor(options: DragRuntimeOptions = {}) {
-    this.setOverlayState = options.setOverlayState ?? noopSetOverlayState;
+    this.updateOverlayHost = options.updateOverlayHost ?? noopUpdateOverlayHost;
     this.targetingAlgorithm = options.targetingAlgorithm ?? pointerToCenter;
     this.hasDragOverlay = options.hasDragOverlay ?? false;
     this.keepOverlayOnDrop = options.keepOverlayOnDrop ?? false;
@@ -316,9 +320,9 @@ export class DragRuntime {
     };
     this.setSession(nextSession);
 
-    this.setOverlayState({
+    this.updateOverlayHost({
+      type: "move",
       dragState: this.createDragState(nextSession),
-      phase: "dragging",
     });
     this.notifyDragUpdate({
       draggableId: nextSession.draggableId,
@@ -394,7 +398,7 @@ export class DragRuntime {
     this.pointerActivation.cancel();
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
-    this.setOverlayState(null);
+    this.updateOverlayHost({ type: "unmount" });
   }
 
   getSortablePlacement(draggableId: string): SortablePlacement | null {
@@ -507,7 +511,12 @@ export class DragRuntime {
   }
 
   remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
-    this.removeDisconnectedDropTargets();
+    const pruneGroup =
+      input !== undefined && typeof input !== "string" && !Array.isArray(input)
+        ? input.group
+        : undefined;
+
+    this.removeDisconnectedDropTargets(pruneGroup);
     this.dropTargetRegistry.remeasure(input);
   }
 
@@ -539,7 +548,7 @@ export class DragRuntime {
     this.dropTargetRegistry.clear();
     this.lifecycleCallbacks = {};
     this.modifiers = [];
-    this.setOverlayState = noopSetOverlayState;
+    this.updateOverlayHost = noopUpdateOverlayHost;
   }
 
   private startDragNow(input: StartDragInput): void {
@@ -596,11 +605,14 @@ export class DragRuntime {
     this.lastDropPlacementInput = null;
     this.lastDropPlacement = null;
     this.setSession(nextSession);
-    this.remeasureDropTargets();
+    this.remeasureDropTargets({ group: input.group });
 
-    this.setOverlayState({
-      dragState: this.createDragState(nextSession),
-      phase: "dragging",
+    this.updateOverlayHost({
+      type: "mount",
+      state: {
+        dragState: this.createDragState(nextSession),
+        phase: "dragging",
+      },
     });
     this.suppressTextSelection();
     if (input.inputType === "pointer") {
@@ -671,12 +683,15 @@ export class DragRuntime {
     }
 
     if (input.keepReleasedOverlay && releasedDragState && this.hasDragOverlay) {
-      this.setOverlayState({
-        dragState: releasedDragState,
-        phase: "released",
+      this.updateOverlayHost({
+        type: "release",
+        state: {
+          dragState: releasedDragState,
+          phase: "released",
+        },
       });
     } else {
-      this.setOverlayState(null);
+      this.updateOverlayHost({ type: "unmount" });
     }
   }
 
@@ -834,7 +849,7 @@ export class DragRuntime {
       return null;
     }
 
-    this.removeDisconnectedDropTargets();
+    this.removeDisconnectedDropTargets(session.group);
 
     const overlayRect = this.hasDragOverlay
       ? this.getCurrentDragRectAt(pointerPosition)
@@ -880,17 +895,8 @@ export class DragRuntime {
     });
   }
 
-  private createLifecycleHelpers(): DragLifecycleHelpers {
-    return {
-      getDropPlacement: (draggableId) => this.getDropPlacement(draggableId),
-      getSortablePlacement: (draggableId) => this.getSortablePlacement(draggableId),
-      getDropTargetRect: (dropTargetId) =>
-        this.getDropTargetRect(dropTargetId),
-    };
-  }
-
-  private removeDisconnectedDropTargets(): void {
-    const removedTargets = this.dropTargetRegistry.pruneDisconnected();
+  private removeDisconnectedDropTargets(group?: DragGroup): void {
+    const removedTargets = this.dropTargetRegistry.pruneDisconnected(group);
     this.clearActiveDropTargetIfRemoved(removedTargets);
   }
 
@@ -921,7 +927,7 @@ export class DragRuntime {
   private notifyDragStart(event: DragStartEvent): void {
     this.lifecycleCallbacks.onDragStart?.(
       event,
-      this.createLifecycleHelpers(),
+      this.lifecycleHelpers,
     );
 
     for (const subscription of Array.from(this.subscriptions)) {
@@ -932,7 +938,7 @@ export class DragRuntime {
   private notifyDragUpdate(event: DragUpdateEvent): void {
     this.lifecycleCallbacks.onDragUpdate?.(
       event,
-      this.createLifecycleHelpers(),
+      this.lifecycleHelpers,
     );
 
     for (const subscription of Array.from(this.subscriptions)) {
@@ -943,7 +949,7 @@ export class DragRuntime {
   private notifyDragEnd(event: DragEndEvent): void {
     this.lifecycleCallbacks.onDragEnd?.(
       event,
-      this.createLifecycleHelpers(),
+      this.lifecycleHelpers,
     );
 
     for (const subscription of Array.from(this.subscriptions)) {
@@ -952,7 +958,7 @@ export class DragRuntime {
   }
 
   private notifyDrop(event: DropEvent): void {
-    this.lifecycleCallbacks.onDrop?.(event, this.createLifecycleHelpers());
+    this.lifecycleCallbacks.onDrop?.(event, this.lifecycleHelpers);
 
     for (const subscription of Array.from(this.subscriptions)) {
       subscription.onDrop?.(event);

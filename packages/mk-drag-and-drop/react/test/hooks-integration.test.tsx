@@ -236,6 +236,24 @@ describe("React hooks", () => {
     );
   });
 
+  it("useDropContainer returns a stable result when options do not change", () => {
+    const results: Array<ReturnType<typeof useDropContainer>> = [];
+    const { rerender } = render(
+      <DragProvider>
+        <DropContainerIdentityProbe results={results} />
+      </DragProvider>,
+    );
+
+    rerender(
+      <DragProvider>
+        <DropContainerIdentityProbe results={results} />
+      </DragProvider>,
+    );
+
+    expect(results).toHaveLength(2);
+    expect(results[1]).toBe(results[0]);
+  });
+
   it("ref cleanup works under React StrictMode", () => {
     const unregisterSpy = vi.fn();
     const installRuntimeSpies = createRuntimeSpyInstaller({
@@ -736,6 +754,25 @@ function DynamicDropContainer({ containerId }: { containerId: string }) {
   );
 }
 
+function DropContainerIdentityProbe({
+  results,
+}: {
+  results: Array<ReturnType<typeof useDropContainer>>;
+}) {
+  const dropContainer = useDropContainer({
+    containerId: "container-1",
+    group: "items",
+  });
+
+  results.push(dropContainer);
+
+  return (
+    <div {...dropContainer} data-testid="drop-container-identity">
+      Drop here
+    </div>
+  );
+}
+
 function DraggableWithChild() {
   const draggable = useDraggable({ draggableId: "item-1", group: "items" });
 
@@ -758,7 +795,7 @@ function SortableWithHandle() {
   return (
     <div {...sortable} data-testid="sortable">
       <button {...handle} type="button" aria-label="Drag item">
-        Grip
+        {"\u22ee\u22ee"}
       </button>
       Item
     </div>

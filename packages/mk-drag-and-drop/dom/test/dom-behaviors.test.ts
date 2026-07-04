@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  pointerToCenter,
+} from "../src/index.js";
+import {
   createDomDraggable,
   createDomDropContainer,
   createDomDroppable,
-  createDragRuntime,
-  pointerToCenter,
-} from "../src/index.js";
+} from "../src/integration/index.js";
+import { createDragRuntime } from "../src/runtime/drag-runtime.js";
 import {
   createPointerHandlerEvent,
   createRect,

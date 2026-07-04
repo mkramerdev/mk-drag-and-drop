@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  createDomDropContainer,
-  createDomSortable,
-  createDragRuntime,
   pointerToCenter,
   type DropPlacement,
-  type DragRuntime,
 } from "../src/index.js";
+import {
+  createDomDropContainer,
+  createDomSortable,
+} from "../src/integration/index.js";
+import {
+  createDragRuntime,
+  type DragRuntime,
+} from "../src/runtime/drag-runtime.js";
 import {
   createPointerHandlerEvent,
   createRect,

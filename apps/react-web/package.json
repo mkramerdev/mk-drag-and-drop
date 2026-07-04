@@ -12,7 +12,6 @@
   "dependencies": {
     "@mk-drag-and-drop/dom": "workspace:*",
     "@mk-drag-and-drop/react": "workspace:*",
-    "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

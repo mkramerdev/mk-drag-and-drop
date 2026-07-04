@@ -41,7 +41,7 @@ type KanbanActiveDrag =
 const kanbanColumnGroup = "kanban-columns";
 const kanbanCardGroup = "kanban-cards";
 const boardContainerId = "board";
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 
 // Example state: seed board data owned by the app.
 const initialKanbanState: KanbanState = {

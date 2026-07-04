@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PointerActivationController } from "../src/index.js";
+import { PointerActivationController } from "../src/input/pointer-activation.js";
 import { dispatchPointerMove, dispatchPointerUp } from "./test-utils.js";
 
 describe("PointerActivationController", () => {

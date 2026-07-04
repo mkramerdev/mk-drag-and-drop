@@ -5,6 +5,7 @@ export {
   type DragRuntimeHandleOptions,
 } from "../runtime/drag-runtime-handle.js";
 export type {
+  DragOverlayHostUpdate,
   DragOverlayPhase,
   DragOverlayRenderState,
   DragState,

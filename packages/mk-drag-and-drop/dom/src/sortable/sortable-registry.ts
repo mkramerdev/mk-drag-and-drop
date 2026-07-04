@@ -57,6 +57,7 @@ export type DomSortableRuntime = DomDraggableRuntime & {
 
 export type SortableRegistry = {
   attributeSnapshots: Map<string, SortableAttributeSnapshot>;
+  elementIds: WeakMap<HTMLElement, string>;
   elements: Map<string, WeakRef<HTMLElement>>;
   groups: Map<string, string>;
   snapshots: Map<string, SortableSnapshot>;
@@ -89,6 +90,7 @@ export function getSortableRegistry(
 
   const registry: SortableRegistry = {
     attributeSnapshots: new Map(),
+    elementIds: new WeakMap(),
     elements: new Map(),
     groups: new Map(),
     snapshots: new Map(),
@@ -138,7 +140,6 @@ export function getSortableRegistry(
       });
     },
   });
-  let unsubscribeDispose: (() => void) | undefined;
   const cleanupRegistry = (): void => {
     unsubscribe();
     unsubscribeDispose?.();
@@ -149,8 +150,7 @@ export function getSortableRegistry(
     registry.snapshots.clear();
     sortableRegistries.delete(runtime);
   };
-
-  unsubscribeDispose = runtime.onDispose?.(cleanupRegistry);
+  const unsubscribeDispose = runtime.onDispose?.(cleanupRegistry);
 
   sortableRegistries.set(runtime, registry);
 
@@ -177,6 +177,7 @@ export function registerSortableElement(input: {
   }
 
   input.element.setAttribute("data-dnd-sortable-draggable", "true");
+  input.registry.elementIds.set(input.element, input.draggableId);
   input.registry.elements.set(input.draggableId, new WeakRef(input.element));
   input.registry.groups.set(input.draggableId, input.group);
   input.runtime.registerDropTarget(input.draggableId, input.element, input.group, {
@@ -197,6 +198,10 @@ export function unregisterSortableElement(input: {
       input.registry.elements.get(input.draggableId)?.deref() ?? null;
 
     if (registeredElement === input.element || input.element === null) {
+      if (registeredElement) {
+        input.registry.elementIds.delete(registeredElement);
+      }
+
       input.registry.elements.delete(input.draggableId);
       input.registry.groups.delete(input.draggableId);
     }

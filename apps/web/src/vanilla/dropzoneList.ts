@@ -20,7 +20,7 @@ type DropzoneLine = {
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
-const dragHandleText = "\u2630";
+const dragHandleText = "\u22ee\u22ee";
 // Example state: initial list data is user-owned and committed on drop.
 const initialItems: DropzoneItem[] = [
   { draggableId: "dropzone-item-1", label: "Item 1" },

@@ -1,11 +1,11 @@
 import {
+  useCallback,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ReactElement,
 } from "react";
-import { ChevronDown, ChevronRight, Menu } from "lucide-react";
 
 import {
   DragProvider,
@@ -27,6 +27,7 @@ const treeInsideTargetMaxXDistance = 120;
 const treeInsideTargetMaxYDistance = 8;
 const treeLineTargetMaxXDistance = 180;
 const treeLineTargetMaxYDistance = 24;
+const dragHandleText = "\u22ee\u22ee";
 // Example targeting: custom tree rules are passed into the package runtime.
 const treeTargetingConstraint: TargetingConstraint = ({
   pointerPosition,
@@ -112,6 +113,11 @@ type ParsedTreeDropTarget =
       index: number;
     };
 
+type DropTargetElementRegistrar = (
+  dropTargetId: string,
+  element: HTMLElement | null,
+) => void;
+
 // Example state: seed tree data is user-owned and mutated on drop.
 const seedItems: TreeItem[] = [
   { draggableId: "design", parentId: null, label: "Design" },
@@ -130,6 +136,8 @@ const initialExpandedItemIds = ["design", "components"];
 
 export function TreeExample(): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
+  const activeDropTargetRef = useRef<string | null>(null);
   // Example state: tree data and expansion state live outside the package runtime.
   const [treeState, setTreeState] = useState<TreeState>(() =>
     createTreeState(seedItems),
@@ -141,6 +149,77 @@ export function TreeExample(): ReactElement {
     () => createTreeProjection(treeState, expandedItemIds),
     [expandedItemIds, treeState],
   );
+
+  const registerDropTargetElement = useCallback<DropTargetElementRegistrar>(
+    (dropTargetId, element) => {
+      const elements = dropTargetElementsRef.current;
+
+      if (!element) {
+        const previousElement = elements.get(dropTargetId);
+
+        if (previousElement) {
+          delete previousElement.dataset.treeActiveDropTarget;
+        }
+
+        elements.delete(dropTargetId);
+        return;
+      }
+
+      elements.set(dropTargetId, element);
+
+      if (activeDropTargetRef.current === dropTargetId) {
+        element.dataset.treeActiveDropTarget = "true";
+      } else {
+        delete element.dataset.treeActiveDropTarget;
+      }
+    },
+    [],
+  );
+
+  const setActiveDropTarget = useCallback(
+    (dropTargetId: string | null, isActive: boolean): void => {
+      if (!dropTargetId) {
+        return;
+      }
+
+      const element = dropTargetElementsRef.current.get(dropTargetId);
+
+      if (!element) {
+        return;
+      }
+
+      if (isActive) {
+        element.dataset.treeActiveDropTarget = "true";
+      } else {
+        delete element.dataset.treeActiveDropTarget;
+      }
+    },
+    [],
+  );
+
+  const updateActiveDropTarget = useCallback(
+    ({
+      activeDropTarget,
+      previousDropTarget,
+    }: {
+      activeDropTarget: string | null;
+      previousDropTarget: string | null;
+    }): void => {
+      if (activeDropTarget === previousDropTarget) {
+        return;
+      }
+
+      setActiveDropTarget(previousDropTarget, false);
+      setActiveDropTarget(activeDropTarget, true);
+      activeDropTargetRef.current = activeDropTarget;
+    },
+    [setActiveDropTarget],
+  );
+
+  const clearActiveDropTarget = useCallback((): void => {
+    setActiveDropTarget(activeDropTargetRef.current, false);
+    activeDropTargetRef.current = null;
+  }, [setActiveDropTarget]);
 
   function toggleExpanded(draggableId: string): void {
     setExpandedItemIds((currentExpandedItemIds) => {
@@ -167,17 +246,16 @@ export function TreeExample(): ReactElement {
         />
       )}
       onDragStart={() => {
-        clearActiveTreeDropTargets(rootRef.current);
+        clearActiveDropTarget();
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-        updateActiveTreeDropTarget({
-          root: rootRef.current,
+        updateActiveDropTarget({
           activeDropTarget,
           previousDropTarget,
         });
       }}
       onDragEnd={() => {
-        clearActiveTreeDropTargets(rootRef.current);
+        clearActiveDropTarget();
       }}
       onDrop={({ draggableId, dropTarget }) => {
         // Example drop behavior: interpret package drop target ids for tree data.
@@ -195,9 +273,14 @@ export function TreeExample(): ReactElement {
                 key={`row:${entry.item.draggableId}`}
                 row={entry}
                 onToggleExpanded={toggleExpanded}
+                registerDropTargetElement={registerDropTargetElement}
               />
             ) : (
-              <TreeDropzoneLine key={entry.targetId} line={entry} />
+              <TreeDropzoneLine
+                key={entry.targetId}
+                line={entry}
+                registerDropTargetElement={registerDropTargetElement}
+              />
             ),
           )}
         </div>
@@ -210,9 +293,11 @@ export function TreeExample(): ReactElement {
 function TreeRow({
   row,
   onToggleExpanded,
+  registerDropTargetElement,
 }: {
   row: ProjectedTreeRow;
   onToggleExpanded: (draggableId: string) => void;
+  registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
   const targetId = getInsideTargetId(row.item.draggableId);
   // Package API: each tree row is draggable and also an inside drop target.
@@ -227,9 +312,15 @@ function TreeRow({
   const dragHandle = useDragHandle<HTMLButtonElement>();
   const { ref: draggableRef, ...draggableProps } = draggable;
   const { ref: droppableRef, ...droppableProps } = droppable;
+  const registerRowElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      registerDropTargetElement(targetId, element);
+    },
+    [registerDropTargetElement, targetId],
+  );
   const rowRef = useMemo(
-    () => composeRefs(draggableRef, droppableRef),
-    [draggableRef, droppableRef],
+    () => composeRefs(draggableRef, droppableRef, registerRowElement),
+    [draggableRef, droppableRef, registerRowElement],
   );
 
   return (
@@ -250,7 +341,7 @@ function TreeRow({
         className="treeDragHandle"
         aria-label={`Drag ${row.item.label}`}
       >
-        <Menu />
+        {dragHandleText}
       </button>
       <span className="treeRowLabel">{row.item.label}</span>
       {row.hasChildren ? (
@@ -264,7 +355,7 @@ function TreeRow({
           }
           onClick={() => onToggleExpanded(row.item.draggableId)}
         >
-          {row.isExpanded ? <ChevronDown /> : <ChevronRight />}
+          {row.isExpanded ? "v" : ">"}
         </button>
       ) : null}
     </div>
@@ -274,18 +365,32 @@ function TreeRow({
 // Example rendering: generated line markup is app-owned; droppable hook registers it.
 function TreeDropzoneLine({
   line,
+  registerDropTargetElement,
 }: {
   line: ProjectedDropzoneLine;
+  registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
   // Package API: registers this generated insertion line as a drop target.
   const droppable = useDroppable({
     targetId: line.targetId,
     group: treeGroup,
   });
+  const { ref: droppableRef, ...droppableProps } = droppable;
+  const registerLineElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      registerDropTargetElement(line.targetId, element);
+    },
+    [line.targetId, registerDropTargetElement],
+  );
+  const lineRef = useMemo(
+    () => composeRefs(droppableRef, registerLineElement),
+    [droppableRef, registerLineElement],
+  );
 
   return (
     <div
-      {...droppable}
+      {...droppableProps}
+      ref={lineRef}
       className="treeDropzoneLine"
       style={getTreeDepthStyle(line.depth)}
       data-tree-drop-target-id={line.targetId}
@@ -301,7 +406,7 @@ function TreeDragOverlay({ label }: { label: string }): ReactElement {
   return (
     <div className="treeDragOverlay">
       <div className="treeDragHandle">
-        <Menu />
+        {dragHandleText}
       </div>
       <span className="treeRowLabel">{label}</span>
     </div>
@@ -666,56 +771,4 @@ function getRectCenter(rect: { left: number; top: number; width: number; height:
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   };
-}
-
-// Example styling: active target attributes drive demo CSS highlights.
-function updateActiveTreeDropTarget({
-  root,
-  activeDropTarget,
-  previousDropTarget,
-}: {
-  root: ParentNode | null;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-}): void {
-  if (activeDropTarget === previousDropTarget) {
-    return;
-  }
-
-  setTreeDropTargetActive(root, previousDropTarget, false);
-  setTreeDropTargetActive(root, activeDropTarget, true);
-}
-
-function clearActiveTreeDropTargets(root: ParentNode | null): void {
-  getTreeDropTargetElements(root).forEach((element) => {
-    delete element.dataset.treeActiveDropTarget;
-  });
-}
-
-function setTreeDropTargetActive(
-  root: ParentNode | null,
-  dropTargetId: string | null,
-  isActive: boolean,
-): void {
-  if (!dropTargetId) {
-    return;
-  }
-
-  getTreeDropTargetElements(root).forEach((element) => {
-    if (element.dataset.treeDropTargetId !== dropTargetId) {
-      return;
-    }
-
-    if (isActive) {
-      element.dataset.treeActiveDropTarget = "true";
-    } else {
-      delete element.dataset.treeActiveDropTarget;
-    }
-  });
-}
-
-function getTreeDropTargetElements(
-  root: ParentNode | null,
-): NodeListOf<HTMLElement> {
-  return (root ?? document).querySelectorAll("[data-tree-drop-target-id]");
 }

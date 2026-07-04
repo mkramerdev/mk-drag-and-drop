@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  applyDragModifiers,
   centerToCenter,
-  createActiveDragModifiers,
   createDragController,
-  createDragRuntime,
   lockToXAxis,
   lockToYAxis,
   maxDistanceToRect,
@@ -14,6 +11,12 @@ import {
   restrictToContainer,
   type DropTarget,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
+import {
+  applyDragModifiers,
+  createActiveDragModifiers,
+} from "../src/modifiers/pipeline.js";
+import { createDragRuntime } from "../src/runtime/drag-runtime.js";
 import { createRect, stubBoundingClientRect } from "./test-utils.js";
 
 describe("targeting", () => {
@@ -221,6 +224,7 @@ describe("modifiers", () => {
   it("createDragController applies restrictToContainer modifiers", () => {
     const container = document.createElement("div");
     const source = document.createElement("div");
+    const onDragStart = vi.fn();
     document.body.append(container, source);
     const cleanupContainerRect = stubBoundingClientRect(
       container,
@@ -231,6 +235,7 @@ describe("modifiers", () => {
       createRect({ left: 110, top: 110, width: 20, height: 20 }),
     );
     const controller = createDragController({
+      onDragStart,
       modifiers: [
         restrictToContainer(({ group }) =>
           group === "items" ? container : null,
@@ -239,7 +244,8 @@ describe("modifiers", () => {
     });
 
     try {
-      controller.runtime.requestDragStart({
+      const runtime = getControllerRuntime(controller);
+      runtime.requestDragStart({
         draggableId: "item-1",
         group: "items",
         element: source,
@@ -247,7 +253,10 @@ describe("modifiers", () => {
         pointerPosition: { x: 120, y: 120 },
       });
 
-      expect(controller.runtime.pointerPosition).toEqual({ x: 90, y: 90 });
+      expect(onDragStart).toHaveBeenCalledWith(
+        expect.objectContaining({ pointerPosition: { x: 90, y: 90 } }),
+        expect.any(Object),
+      );
     } finally {
       controller.dispose();
       cleanupSourceRect();

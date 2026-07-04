@@ -8,7 +8,6 @@ import {
     type DragOverlayPhase,
     type DragRect,
 } from "@mk-drag-and-drop/react";
-import { Menu } from "lucide-react";
 import {
     useCallback,
     useEffect,
@@ -20,6 +19,8 @@ import {
     type ReactNode,
     type TransitionEvent,
 } from "react";
+
+const dragHandleText = "\u22ee\u22ee";
 
 const draggableItem = {
     draggableId: "draggable",
@@ -255,7 +256,7 @@ function BasicDragOverlay({
             onTransitionEnd={handleTransitionEnd}
         >
             <div className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div>
             <span>{getDraggableItemLabel(draggableId)}</span>
         </div>
@@ -287,7 +288,7 @@ function DraggableItem({
             }
         >
             <div {...dragHandle} className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div> 
             <span>{item.label}</span>
         </div>
@@ -319,7 +320,7 @@ function DraggableItemPreview({
             onAnimationEnd={handleAnimationEnd}
         >
             <div className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div>
             <span>{item.label}</span>
         </div>

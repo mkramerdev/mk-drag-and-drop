@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createDragHandle,
-  domDragHandleAttribute,
-} from "../src/index.js";
+import { createDragHandle } from "../src/index.js";
+import { domDragHandleAttribute } from "../src/input/drag-handle.js";
 
 describe("createDragHandle", () => {
   it("adds the drag handle marker", () => {

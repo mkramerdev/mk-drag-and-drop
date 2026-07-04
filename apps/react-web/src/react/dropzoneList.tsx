@@ -6,11 +6,11 @@ import {
     useDraggable,
     useDroppable,
 } from "@mk-drag-and-drop/react";
-import { Menu } from "lucide-react";
-import { useRef, useState, type ReactElement } from "react";
+import { useCallback, useRef, useState, type ReactElement } from "react";
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
+const dragHandleText = "\u22ee\u22ee";
 // Example targeting: package helpers are configured with this demo's distance limit.
 const dropzoneListTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
@@ -30,10 +30,88 @@ type DropzoneLine = {
     beforeItemId: string | null;
 };
 
+type DropTargetElementRegistrar = (
+    dropTargetId: string,
+    element: HTMLElement | null,
+) => void;
+
 export function DropzoneList(): ReactElement {
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
+    const activeDropTargetRef = useRef<string | null>(null);
     // Example state: item order is user-owned state outside the package runtime.
     const [items, setItems] = useState(initialItems);
+
+    const registerDropTargetElement = useCallback<DropTargetElementRegistrar>(
+        (dropTargetId, element) => {
+            const elements = dropTargetElementsRef.current;
+
+            if (!element) {
+                const previousElement = elements.get(dropTargetId);
+
+                if (previousElement) {
+                    delete previousElement.dataset.dropzoneLineActive;
+                }
+
+                elements.delete(dropTargetId);
+                return;
+            }
+
+            elements.set(dropTargetId, element);
+
+            if (activeDropTargetRef.current === dropTargetId) {
+                element.dataset.dropzoneLineActive = "true";
+            } else {
+                delete element.dataset.dropzoneLineActive;
+            }
+        },
+        [],
+    );
+
+    const setActiveDropTarget = useCallback(
+        (dropTargetId: string | null, isActive: boolean): void => {
+            if (!dropTargetId) {
+                return;
+            }
+
+            const element = dropTargetElementsRef.current.get(dropTargetId);
+
+            if (!element) {
+                return;
+            }
+
+            if (isActive) {
+                element.dataset.dropzoneLineActive = "true";
+            } else {
+                delete element.dataset.dropzoneLineActive;
+            }
+        },
+        [],
+    );
+
+    const updateActiveDropTarget = useCallback(
+        ({
+            activeDropTarget,
+            previousDropTarget,
+        }: {
+            activeDropTarget: string | null;
+            previousDropTarget: string | null;
+        }): void => {
+            if (activeDropTarget === previousDropTarget) {
+                return;
+            }
+
+            setActiveDropTarget(previousDropTarget, false);
+            setActiveDropTarget(activeDropTarget, true);
+            activeDropTargetRef.current = activeDropTarget;
+        },
+        [setActiveDropTarget],
+    );
+
+    const clearActiveDropTarget = useCallback((): void => {
+        setActiveDropTarget(activeDropTargetRef.current, false);
+        activeDropTargetRef.current = null;
+    }, [setActiveDropTarget]);
 
     return (
         // Package API: DragProvider owns drag lifecycle and runtime configuration.
@@ -43,23 +121,22 @@ export function DropzoneList(): ReactElement {
             dragOverlay={({ dragState }) => (
                 <div className="sortableOverlay">
                     <div className="dragListHandle">
-                        <Menu />
+                        {dragHandleText}
                     </div>
                     <span>{getItemLabel(items, dragState.draggableId)}</span>
                 </div>
             )}
             onDragStart={() => {
-                clearActiveDropzoneLines(rootRef.current);
+                clearActiveDropTarget();
             }}
             onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-                updateActiveDropzoneLine({
-                    root: rootRef.current,
+                updateActiveDropTarget({
                     activeDropTarget,
                     previousDropTarget,
                 });
             }}
             onDragEnd={() => {
-                clearActiveDropzoneLines(rootRef.current);
+                clearActiveDropTarget();
             }}
             onDrop={({ draggableId, dropTarget }) => {
                 // Example drop behavior: translate the package drop target into list order.
@@ -70,9 +147,16 @@ export function DropzoneList(): ReactElement {
         >
             <div ref={rootRef} className="dropzoneList">
                 {items.map((item) => (
-                    <FragmentWithDropzone key={item.draggableId} item={item} />
+                    <FragmentWithDropzone
+                        key={item.draggableId}
+                        item={item}
+                        registerDropTargetElement={registerDropTargetElement}
+                    />
                 ))}
-                <DropzoneLineTarget line={getEndDropzoneLine()} />
+                <DropzoneLineTarget
+                    line={getEndDropzoneLine()}
+                    registerDropTargetElement={registerDropTargetElement}
+                />
             </div>
         </DragProvider>
     );
@@ -81,12 +165,17 @@ export function DropzoneList(): ReactElement {
 // Example rendering: combines app-owned item markup with generated line targets.
 function FragmentWithDropzone({
     item,
+    registerDropTargetElement,
 }: {
     item: DropzoneListItem;
+    registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
     return (
         <>
-            <DropzoneLineTarget line={getDropzoneLineBeforeItem(item.draggableId)} />
+            <DropzoneLineTarget
+                line={getDropzoneLineBeforeItem(item.draggableId)}
+                registerDropTargetElement={registerDropTargetElement}
+            />
             <DropzoneListItem item={item} />
         </>
     );
@@ -108,7 +197,7 @@ function DropzoneListItem({
     return (
         <div {...draggable} className="dropzoneListItem">
             <div {...dragHandle} className="dragListHandle">
-                <Menu />
+                {dragHandleText}
             </div>
             <span>{item.label}</span>
         </div>
@@ -116,16 +205,31 @@ function DropzoneListItem({
 }
 
 // Example rendering: line markup is app-owned; the hook registers the drop target.
-function DropzoneLineTarget({ line }: { line: DropzoneLine }): ReactElement {
+function DropzoneLineTarget({
+    line,
+    registerDropTargetElement,
+}: {
+    line: DropzoneLine;
+    registerDropTargetElement: DropTargetElementRegistrar;
+}): ReactElement {
     // Package API: registers an insertion line as a drop target.
     const droppable = useDroppable({
         targetId: line.targetId,
         group: dropzoneListGroup,
     });
+    const { ref, ...droppableProps } = droppable;
+    const lineRef = useCallback(
+        (element: HTMLDivElement | null) => {
+            ref(element);
+            registerDropTargetElement(line.targetId, element);
+        },
+        [line.targetId, ref, registerDropTargetElement],
+    );
 
     return (
         <div
-            {...droppable}
+            {...droppableProps}
+            ref={lineRef}
             className="dropzoneListLine"
             data-dropzone-line-target-id={line.targetId}
         >
@@ -197,56 +301,4 @@ function getEndDropzoneLine(): DropzoneLine {
 
 function getItemLabel(items: readonly DropzoneListItem[], draggableId: string): string {
     return items.find((item) => item.draggableId === draggableId)?.label ?? "";
-}
-
-// Example styling: active target attributes drive demo CSS highlights.
-function updateActiveDropzoneLine({
-    root,
-    activeDropTarget,
-    previousDropTarget,
-}: {
-    root: ParentNode | null;
-    activeDropTarget: string | null;
-    previousDropTarget: string | null;
-}): void {
-    if (activeDropTarget === previousDropTarget) {
-        return;
-    }
-
-    setDropzoneLineActive(root, previousDropTarget, false);
-    setDropzoneLineActive(root, activeDropTarget, true);
-}
-
-function clearActiveDropzoneLines(root: ParentNode | null): void {
-    getDropzoneLineElements(root).forEach((element) => {
-        delete element.dataset.dropzoneLineActive;
-    });
-}
-
-function setDropzoneLineActive(
-    root: ParentNode | null,
-    dropTarget: string | null,
-    isActive: boolean,
-): void {
-    if (!dropTarget) {
-        return;
-    }
-
-    getDropzoneLineElements(root).forEach((element) => {
-        if (element.dataset.dropzoneLineTargetId !== dropTarget) {
-            return;
-        }
-
-        if (isActive) {
-            element.dataset.dropzoneLineActive = "true";
-        } else {
-            delete element.dataset.dropzoneLineActive;
-        }
-    });
-}
-
-function getDropzoneLineElements(
-    root: ParentNode | null,
-): NodeListOf<HTMLElement> {
-    return (root ?? document).querySelectorAll("[data-dropzone-line-target-id]");
 }

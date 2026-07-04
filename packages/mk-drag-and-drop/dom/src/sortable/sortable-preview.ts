@@ -239,11 +239,20 @@ export function remeasureSortableDropTargetGroup(input: {
 }
 
 export function getSortableDraggableChildren(listElement: HTMLElement): HTMLElement[] {
-  return Array.from(listElement.children).filter(
-    (child): child is HTMLElement =>
+  const sortableChildren: HTMLElement[] = [];
+
+  for (let index = 0; index < listElement.children.length; index += 1) {
+    const child = listElement.children.item(index);
+
+    if (
       child instanceof HTMLElement &&
-      child.dataset.dndSortableDraggable !== undefined,
-  );
+      child.dataset.dndSortableDraggable !== undefined
+    ) {
+      sortableChildren.push(child);
+    }
+  }
+
+  return sortableChildren;
 }
 
 function isPreviewBlockedBySkippedSortableSibling(input: {
@@ -261,10 +270,7 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
 
   const startIndex = Math.min(input.draggedIndex, input.targetIndex) + 1;
   const endIndex = Math.max(input.draggedIndex, input.targetIndex);
-  const targetDistance = getPointToRectCenterDistance(
-    input.pointerPosition,
-    input.targetElement.getBoundingClientRect(),
-  );
+  let targetDistance: number | null = null;
 
   for (let index = startIndex; index < endIndex; index += 1) {
     const sibling = input.sortableElements[index];
@@ -278,6 +284,13 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
 
     if (siblingGroup === input.draggedGroup) {
       continue;
+    }
+
+    if (targetDistance === null) {
+      targetDistance = getPointToRectCenterDistance(
+        input.pointerPosition,
+        input.targetElement.getBoundingClientRect(),
+      );
     }
 
     const siblingDistance = getPointToRectCenterDistance(
@@ -297,13 +310,11 @@ function getSortableDraggableId(
   registry: SortableRegistry,
   element: HTMLElement,
 ): string | null {
-  for (const [draggableId, sortableElement] of registry.elements) {
-    if (sortableElement.deref() === element) {
-      return draggableId;
-    }
-  }
+  const draggableId = registry.elementIds.get(element);
 
-  return null;
+  return draggableId && registry.elements.get(draggableId)?.deref() === element
+    ? draggableId
+    : null;
 }
 
 function getPointToRectCenterDistance(
@@ -393,9 +404,11 @@ function getSortableLayoutAxis(
     return "vertical";
   }
 
-  const childRects = getSortableDraggableChildren(parent).map((child) =>
-    child.getBoundingClientRect(),
-  );
+  const childRects: DOMRect[] = [];
+
+  for (const child of getSortableDraggableChildren(parent)) {
+    childRects.push(child.getBoundingClientRect());
+  }
 
   if (childRects.length >= 2) {
     const horizontalSpread = getCenterSpread(childRects, "x");
@@ -413,13 +426,20 @@ function getCenterSpread(
   rects: DOMRect[],
   axis: "x" | "y",
 ): number {
-  const centers = rects.map((rect) =>
-    axis === "x"
-      ? rect.left + rect.width / 2
-      : rect.top + rect.height / 2,
-  );
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
 
-  return Math.max(...centers) - Math.min(...centers);
+  for (const rect of rects) {
+    const center =
+      axis === "x"
+        ? rect.left + rect.width / 2
+        : rect.top + rect.height / 2;
+
+    min = Math.min(min, center);
+    max = Math.max(max, center);
+  }
+
+  return max - min;
 }
 
 export function cancelSortableDropTargetGroupRemeasure(
