@@ -6,17 +6,17 @@ import {
   type RefCallback,
 } from "react";
 
-import { createDomDroppable } from "@mk-drag-and-drop/dom";
+import { createDomDroppable } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
 
-type UseDroppableItem = {
+export type UseDroppableOptions = {
   targetId: string;
   group?: string;
   containerId?: string | null;
 };
 
-type UseDroppableReturn = HTMLAttributes<HTMLDivElement> & {
+export type UseDroppableResult = HTMLAttributes<HTMLDivElement> & {
   ref: RefCallback<HTMLDivElement>;
 };
 
@@ -26,7 +26,7 @@ export function useDroppable({
   targetId,
   group = defaultDroppableGroup,
   containerId = null,
-}: UseDroppableItem): UseDroppableReturn {
+}: UseDroppableOptions): UseDroppableResult {
   const runtime = useContext(DragContext);
 
   if (!runtime) {

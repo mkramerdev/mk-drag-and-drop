@@ -1,10 +1,11 @@
 import type { DragController } from "../controller/create-drag-controller.js";
+import { getControllerRuntime } from "../controller/controller-internals.js";
 import { createDomSortable } from "./create-sortable.js";
 
 export type CreateSortableInput = {
   controller: DragController;
   element: HTMLElement;
-  itemId: string;
+  draggableId: string;
   group?: string;
   containerId?: string | null;
 };
@@ -13,9 +14,10 @@ const defaultSortableGroup = "default";
 
 export function createSortable(input: CreateSortableInput): void {
   const elementRef = new WeakRef(input.element);
+  const runtime = getControllerRuntime(input.controller);
   const behavior = createDomSortable({
-    runtime: input.controller.runtime,
-    itemId: input.itemId,
+    runtime,
+    draggableId: input.draggableId,
     group: input.group ?? defaultSortableGroup,
     containerId: input.containerId ?? null,
     getElement: () => elementRef.deref() ?? null,
@@ -69,5 +71,5 @@ export function createSortable(input: CreateSortableInput): void {
     behavior.cleanup();
   };
 
-  input.controller.runtime.onDispose(cleanup);
+  runtime.onDispose(cleanup);
 }

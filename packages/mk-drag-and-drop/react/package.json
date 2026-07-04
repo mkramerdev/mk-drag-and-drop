@@ -8,35 +8,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./drag-provider": {
-      "types": "./dist/drag-provider.d.ts",
-      "import": "./dist/drag-provider.js"
-    },
-    "./use-drag-handle": {
-      "types": "./dist/hooks/use-drag-handle.d.ts",
-      "import": "./dist/hooks/use-drag-handle.js"
-    },
-    "./use-draggable": {
-      "types": "./dist/hooks/use-draggable.d.ts",
-      "import": "./dist/hooks/use-draggable.js"
-    },
-    "./use-drop-container": {
-      "types": "./dist/hooks/use-drop-container.d.ts",
-      "import": "./dist/hooks/use-drop-container.js"
-    },
-    "./use-droppable": {
-      "types": "./dist/hooks/use-droppable.d.ts",
-      "import": "./dist/hooks/use-droppable.js"
-    },
-    "./compose-refs": {
-      "types": "./dist/utils/compose-refs.d.ts",
-      "import": "./dist/utils/compose-refs.js"
-    },
-    "./use-sortable": {
-      "types": "./dist/hooks/use-sortable.d.ts",
-      "import": "./dist/hooks/use-sortable.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [

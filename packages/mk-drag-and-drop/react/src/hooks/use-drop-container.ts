@@ -9,7 +9,7 @@ import {
 import {
   createDomDropContainer,
   type DomDropContainerBehavior,
-} from "@mk-drag-and-drop/dom";
+} from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
 

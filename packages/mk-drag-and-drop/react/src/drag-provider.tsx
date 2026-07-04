@@ -8,12 +8,10 @@ import {
 } from "react";
 
 import {
-  DragRuntime,
   pointerToCenter,
   type DragEndEvent,
   type DragLifecycleCallbacks,
   type DragModifierInput,
-  type DragOverlayRenderState,
   type DragRect,
   type DragStartEvent,
   type DragUpdateEvent,
@@ -23,43 +21,17 @@ import {
   type TargetingAlgorithm,
   type TargetingConstraint,
 } from "@mk-drag-and-drop/dom";
+import {
+  createDragRuntimeHandle,
+  type DragOverlayRenderState,
+  type DragRuntimeHandle,
+} from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "./drag-context.js";
 import {
   DragOverlay,
   type DragOverlayInput,
 } from "./drag-overlay.js";
-
-export { DragContext } from "./drag-context.js";
-export { useRemeasureDropTargets } from "./hooks/use-remeasure-drop-targets.js";
-export {
-  lockToXAxis,
-  lockToYAxis,
-  restrictToContainer,
-  type ReactRestrictToContainerInput,
-} from "./modifiers/index.js";
-export type { DragOverlayInput } from "./drag-overlay.js";
-export type {
-  DragEndEvent,
-  DragLifecycleHelpers,
-  DragModifier,
-  DragModifierInput,
-  DragModifierSetupInput,
-  DragModifierTransformInput,
-  DragOverlayPhase,
-  DragRuntimeSubscription,
-  DragStartEvent,
-  DragState,
-  DragUpdateEvent,
-  DropPlacement,
-  DropEvent,
-  KeyboardCommand,
-  KeyboardConfiguration,
-  Point,
-  PointerConfiguration,
-  RemeasureDropTargetsInput,
-  SortablePlacement,
-} from "@mk-drag-and-drop/dom";
 
 export type DragAnnouncements = {
   onDragStart?: (event: DragStartEvent) => string | null;
@@ -68,7 +40,7 @@ export type DragAnnouncements = {
   onDrop?: (event: DropEvent) => string | null;
 };
 
-type DragProviderProps = {
+export type DragProviderProps = {
   children: ReactNode;
   announcements?: DragAnnouncements;
   dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
@@ -113,10 +85,10 @@ export function DragProvider({
     id: 0,
     message: "",
   });
-  const runtimeRef = useRef<DragRuntime | null>(null);
+  const runtimeRef = useRef<DragRuntimeHandle | null>(null);
 
   if (runtimeRef.current === null) {
-    runtimeRef.current = new DragRuntime({
+    runtimeRef.current = createDragRuntimeHandle({
       setOverlayState,
       targetingAlgorithm,
       hasDragOverlay: dragOverlay !== undefined,

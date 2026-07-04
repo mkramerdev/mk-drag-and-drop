@@ -46,18 +46,18 @@ export type GetAvailableDropTargetsInput = {
 };
 
 export type SortablePlacement = {
-  itemId: string;
-  previousItemId: string | null;
-  nextItemId: string | null;
+  draggableId: string;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
 };
 
 export type DropPlacement = {
-  itemId: string;
+  draggableId: string;
   dropTarget: string;
   sourceContainerId: string | null;
   containerId: string | null;
-  previousItemId: string | null;
-  nextItemId: string | null;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
 };
 
 type DropTargetEntry = {
@@ -320,7 +320,7 @@ export class DropTargetRegistry {
   }
 
   getDropPlacement(input: {
-    itemId: string;
+    draggableId: string;
     dropTargetId: string | null;
     group: DragGroup | null;
     sourceContainerId: string | null;
@@ -337,11 +337,11 @@ export class DropTargetRegistry {
       return null;
     }
 
-    const itemRegistration = this.findRegistration(input.itemId, {
+    const itemRegistration = this.findRegistration(input.draggableId, {
       group: input.group,
     });
     const previewContainer =
-      dropTarget.id === input.itemId
+      dropTarget.id === input.draggableId
         ? this.findContainerRegistrationForElement({
             element: itemRegistration?.element.parentElement ?? null,
             group: input.group,
@@ -351,7 +351,7 @@ export class DropTargetRegistry {
     const containerElement =
       previewContainer?.element ?? getDropTargetContainerElement(dropTarget);
     const siblingPlacement = this.getSiblingPlacement({
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       group: input.group,
       itemElement: itemRegistration?.element ?? null,
       dropTarget,
@@ -359,20 +359,20 @@ export class DropTargetRegistry {
     });
 
     return {
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       dropTarget: dropTarget.id,
       sourceContainerId: input.sourceContainerId,
       containerId,
-      previousItemId: siblingPlacement.previousItemId,
-      nextItemId: siblingPlacement.nextItemId,
+      previousDraggableId: siblingPlacement.previousDraggableId,
+      nextDraggableId: siblingPlacement.nextDraggableId,
     };
   }
 
   getSortablePlacement(
-    itemId: string,
+    draggableId: string,
     group?: DragGroup,
   ): SortablePlacement | null {
-    const registration = this.findRegistration(itemId, { group });
+    const registration = this.findRegistration(draggableId, { group });
 
     if (
       !registration?.capabilities.sortable ||
@@ -384,25 +384,25 @@ export class DropTargetRegistry {
     const { element } = registration;
     const itemGroup = registration.group;
 
-    const previousItemId = this.getNearestSortableSiblingItemId(
+    const previousDraggableId = this.getNearestSortableSiblingDraggableId(
       element.previousElementSibling,
       itemGroup,
       "previous",
     );
-    const nextItemId = this.getNearestSortableSiblingItemId(
+    const nextDraggableId = this.getNearestSortableSiblingDraggableId(
       element.nextElementSibling,
       itemGroup,
       "next",
     );
 
-    if (previousItemId === null && nextItemId === null) {
+    if (previousDraggableId === null && nextDraggableId === null) {
       return null;
     }
 
     return {
-      itemId,
-      previousItemId,
-      nextItemId,
+      draggableId,
+      previousDraggableId,
+      nextDraggableId,
     };
   }
 
@@ -537,68 +537,68 @@ export class DropTargetRegistry {
   }
 
   private getSiblingPlacement(input: {
-    itemId: string;
+    draggableId: string;
     group: DragGroup;
     itemElement: HTMLElement | null;
     dropTarget: ResolvedDropTargetEntry;
     containerElement: HTMLElement | null;
-  }): Pick<DropPlacement, "previousItemId" | "nextItemId"> {
+  }): Pick<DropPlacement, "previousDraggableId" | "nextDraggableId"> {
     if (
       input.itemElement?.parentElement &&
       input.itemElement.parentElement === input.containerElement
     ) {
       return {
-        previousItemId: this.getNearestSortableSiblingItemId(
+        previousDraggableId: this.getNearestSortableSiblingDraggableId(
           input.itemElement.previousElementSibling,
           input.group,
           "previous",
-          input.itemId,
+          input.draggableId,
         ),
-        nextItemId: this.getNearestSortableSiblingItemId(
+        nextDraggableId: this.getNearestSortableSiblingDraggableId(
           input.itemElement.nextElementSibling,
           input.group,
           "next",
-          input.itemId,
+          input.draggableId,
         ),
       };
     }
 
     if (input.dropTarget.capabilities.container) {
       return {
-        previousItemId: this.getNearestSortableSiblingItemId(
+        previousDraggableId: this.getNearestSortableSiblingDraggableId(
           input.dropTarget.element.lastElementChild,
           input.group,
           "previous",
-          input.itemId,
+          input.draggableId,
         ),
-        nextItemId: null,
+        nextDraggableId: null,
       };
     }
 
     return {
-      previousItemId: this.getNearestSortableSiblingItemId(
+      previousDraggableId: this.getNearestSortableSiblingDraggableId(
         input.dropTarget.element.previousElementSibling,
         input.group,
         "previous",
-        input.itemId,
+        input.draggableId,
       ),
-      nextItemId: input.dropTarget.id,
+      nextDraggableId: input.dropTarget.id,
     };
   }
 
-  private getNearestSortableSiblingItemId(
+  private getNearestSortableSiblingDraggableId(
     element: Element | null,
     group: DragGroup,
     direction: "previous" | "next",
-    excludeItemId?: string,
+    excludeDraggableId?: string,
   ): string | null {
     let currentElement = element;
 
     while (currentElement) {
-      const itemId = this.getSortableItemId(currentElement, group);
+      const draggableId = this.getSortableDraggableId(currentElement, group);
 
-      if (itemId && itemId !== excludeItemId) {
-        return itemId;
+      if (draggableId && draggableId !== excludeDraggableId) {
+        return draggableId;
       }
 
       currentElement =
@@ -610,7 +610,7 @@ export class DropTargetRegistry {
     return null;
   }
 
-  private getSortableItemId(element: Element, group: DragGroup): string | null {
+  private getSortableDraggableId(element: Element, group: DragGroup): string | null {
     if (!(element instanceof HTMLElement)) {
       return null;
     }

@@ -21,7 +21,8 @@ callbacks, and optional announcements.
 
 The React package wraps `@mk-drag-and-drop/dom`.
 
-`DragProvider` creates and configures a `DragRuntime` from the DOM package.
+`DragProvider` creates and configures the DOM runtime through the package
+integration handle.
 Hooks such as `useDraggable`, `useDroppable`, `useSortable`, and
 `useDropContainer` register DOM nodes with that runtime through React refs.
 React hooks are adapters over DOM behavior, not a separate implementation.
@@ -73,9 +74,9 @@ export function Example() {
 
   return (
     <DragProvider
-      onDrop={({ itemId, dropTarget }) => {
+      onDrop={({ draggableId, dropTarget }) => {
         if (
-          itemId === "card" &&
+          draggableId === "card" &&
           (dropTarget === "left" || dropTarget === "right")
         ) {
           setLocation(dropTarget);
@@ -95,7 +96,7 @@ export function Example() {
 }
 
 function Card() {
-  const draggable = useDraggable({ itemId: "card", group: "demo" });
+  const draggable = useDraggable({ draggableId: "card", group: "demo" });
   const dragHandle = useDragHandle<HTMLButtonElement>();
 
   return (
@@ -157,7 +158,7 @@ Use those callbacks to commit app data. Do not mutate package internals.
 
 ```tsx
 const draggable = useDraggable({
-  itemId: "card-1",
+  draggableId: "card-1",
   group: "cards",
 });
 
@@ -166,7 +167,7 @@ return <div {...draggable}>Card</div>;
 
 Options:
 
-- `itemId`: stable string identifier for the dragged item.
+- `draggableId`: stable string identifier for the dragged item.
 - `group`: optional drag group. Defaults to `"default"`.
 
 Return shape:
@@ -206,7 +207,7 @@ items.
 
 ```tsx
 const sortable = useSortable({
-  itemId: item.id,
+  draggableId: item.id,
   group: "cards",
   containerId: column.id,
 });
@@ -216,7 +217,7 @@ return <article {...sortable}>{item.title}</article>;
 
 Options:
 
-- `itemId`: stable string identifier for the sortable item.
+- `draggableId`: stable string identifier for the sortable item.
 - `group`: optional drag group. Defaults to `"default"`.
 - `containerId`: optional container identity for lists, boards, and columns.
 
@@ -230,8 +231,8 @@ During drag, the runtime may temporarily move sortable DOM nodes to preview
 placement. That preview is transient. It does not commit application order.
 On drop, read placement data from lifecycle helpers and update your own data:
 
-- `helpers.getSortablePlacement(itemId)`
-- `helpers.getDropPlacement(itemId)`
+- `helpers.getSortablePlacement(draggableId)`
+- `helpers.getDropPlacement(draggableId)`
 
 `getSortablePlacement` is useful for simple reorder operations. `getDropPlacement`
 also includes container information for boards and multiple lists.
@@ -303,8 +304,8 @@ compatible. The package does not require React state.
 
 ```tsx
 <DragProvider
-  onDrop={({ itemId }, helpers) => {
-    const placement = helpers.getDropPlacement(itemId);
+  onDrop={({ draggableId }, helpers) => {
+    const placement = helpers.getDropPlacement(draggableId);
 
     if (!placement) {
       return;
@@ -317,9 +318,9 @@ compatible. The package does not require React state.
 </DragProvider>
 ```
 
-`reorderData` is app code. It should translate `placement.itemId`,
-`placement.containerId`, `placement.previousItemId`, and
-`placement.nextItemId` into your data shape.
+`reorderData` is app code. It should translate `placement.draggableId`,
+`placement.containerId`, `placement.previousDraggableId`, and
+`placement.nextDraggableId` into your data shape.
 
 ## Drag Overlays
 
@@ -328,7 +329,7 @@ compatible. The package does not require React state.
 ```tsx
 <DragProvider
   dragOverlay={({ dragState }) => (
-    <div className="dragOverlay">{dragState.itemId}</div>
+    <div className="dragOverlay">{dragState.draggableId}</div>
   )}
 >
   {children}
@@ -350,17 +351,17 @@ Targeting algorithms choose among measured drop targets. Targeting constraints
 filter targets before an algorithm runs. Modifiers transform movement during a
 drag.
 
-The DOM package exports targeting helpers such as `pointerToCenter`,
-`centerToCenter`, `pointerToRectDistance`, and `maxDistanceToRect`. The React
-package exports modifier helpers:
+The React package re-exports targeting helpers such as `pointerToCenter`,
+`centerToCenter`, `pointerToRectDistance`, and `maxDistanceToRect`, plus
+modifier helpers:
 
 - `lockToXAxis()`
 - `lockToYAxis()`
 - `restrictToContainer(refOrResolver)`
 
 `restrictToContainer` accepts either a React ref object or a resolver function.
-Use DOM exports directly when you need lower-level targeting, constraints,
-geometry helpers, or custom behavior.
+Use the DOM package directly when you are building non-React integrations or
+imperative DOM behavior.
 
 ## Accessibility
 
@@ -411,14 +412,12 @@ React examples live in `apps/react-web/src/react`:
   Important props include lifecycle callbacks, overlay rendering, targeting,
   constraints, modifiers, pointer/keyboard configuration, announcements, and
   `keepOverlayOnDrop`.
-- `DragContext`: React context for the runtime. Most users should use the hooks
-  instead of reading it directly.
 - `useDraggable(options)`: registers a drag source. Important options:
-  `itemId`, `group`. Returns ref and input props.
+  `draggableId`, `group`. Returns ref and input props.
 - `useDroppable(options)`: registers a drop target. Important options:
   `targetId`, `group`, `containerId`. Returns a ref prop.
 - `useSortable(options)`: registers a sortable item as both source and target.
-  Important options: `itemId`, `group`, `containerId`. Returns ref and input
+  Important options: `draggableId`, `group`, `containerId`. Returns ref and input
   props.
 - `useDropContainer(options)`: registers a placement-aware container. Important
   options: `containerId`, `group`. Returns a ref prop.

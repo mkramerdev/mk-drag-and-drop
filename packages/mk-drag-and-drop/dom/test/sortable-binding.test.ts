@@ -33,8 +33,8 @@ describe("createSortable", () => {
   it("registers sortable items that participate in sortable drops", () => {
     let placement: DropPlacement | null = null;
     const { list, a, b } = setupSortablePair({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -46,12 +46,12 @@ describe("createSortable", () => {
 
     expect(Array.from(list.children)).toEqual([a, b]);
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: null,
       containerId: null,
-      previousItemId: "b",
-      nextItemId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
     });
   });
 
@@ -62,13 +62,13 @@ describe("createSortable", () => {
       createRect({ left: 0, top: 0, width: 20, height: 20 }),
     );
 
-    createSortable({ controller, element, itemId: "item" });
+    createSortable({ controller, element, draggableId: "item" });
     dispatchPointerDown(element, { pointerId: 1, clientX: 3, clientY: 4 });
 
     expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       {
-        itemId: "item",
+        draggableId: "item",
         pointerPosition: { x: 3, y: 4 },
         sourceRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
       },
@@ -84,7 +84,7 @@ describe("createSortable", () => {
     );
     element.setAttribute("tabindex", "7");
 
-    createSortable({ controller, element, itemId: "item" });
+    createSortable({ controller, element, draggableId: "item" });
 
     expect(element.getAttribute("tabindex")).toBe("0");
 
@@ -92,7 +92,7 @@ describe("createSortable", () => {
 
     expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: "item" }),
+      expect.objectContaining({ draggableId: "item" }),
       expect.any(Object),
     );
   });
@@ -107,7 +107,7 @@ describe("createSortable", () => {
       createRect({ left: 0, top: 0, width: 20, height: 20 }),
     );
 
-    createSortable({ controller, element, itemId: "item" });
+    createSortable({ controller, element, draggableId: "item" });
 
     expect(element.hasAttribute("tabindex")).toBe(false);
 
@@ -120,8 +120,8 @@ describe("createSortable", () => {
   it("passes container metadata into sortable registration", () => {
     let placement: DropPlacement | null = null;
     controller = createDragController({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
     raf = installMockRaf();
@@ -145,14 +145,14 @@ describe("createSortable", () => {
     createSortable({
       controller,
       element: a,
-      itemId: "a",
+      draggableId: "a",
       group: "cards",
       containerId: "column-a",
     });
     createSortable({
       controller,
       element: b,
-      itemId: "b",
+      draggableId: "b",
       group: "cards",
       containerId: "column-a",
     });
@@ -160,12 +160,12 @@ describe("createSortable", () => {
     dragToTarget(a, b);
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: "column-a",
       containerId: "column-a",
-      previousItemId: "b",
-      nextItemId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
     });
   });
 
@@ -173,7 +173,7 @@ describe("createSortable", () => {
     controller = createDragController();
     const element = createMeasuredElement(createRect({ width: 20, height: 20 }));
 
-    const result = createSortable({ controller, element, itemId: "item" });
+    const result = createSortable({ controller, element, draggableId: "item" });
 
     expect(result).toBeUndefined();
   });
@@ -194,8 +194,8 @@ describe("createSortable", () => {
   it("supports vanilla-style rerender without storing item cleanup callbacks", () => {
     let placement: DropPlacement | null = null;
     controller = createDragController({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
     raf = installMockRaf();
@@ -209,21 +209,21 @@ describe("createSortable", () => {
     dragToTarget(a, b);
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: null,
       containerId: null,
-      previousItemId: "b",
-      nextItemId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
     });
 
-    function render(itemIds: string[]): void {
+    function render(draggableIds: string[]): void {
       list.replaceChildren(
-        ...itemIds.map((itemId, index) => {
+        ...draggableIds.map((draggableId, index) => {
           const element = createMeasuredElement(
             createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
           );
-          createSortable({ controller: controller!, element, itemId });
+          createSortable({ controller: controller!, element, draggableId });
           return element;
         }),
       );
@@ -238,7 +238,7 @@ describe("createSortable", () => {
     );
     element.setAttribute("tabindex", "2");
 
-    createSortable({ controller, element, itemId: "item" });
+    createSortable({ controller, element, draggableId: "item" });
     controller.dispose();
 
     expect(element.getAttribute("tabindex")).toBe("2");
@@ -272,8 +272,8 @@ describe("createSortable", () => {
     );
     list.append(a, b);
 
-    createSortable({ controller, element: a, itemId: "a" });
-    createSortable({ controller, element: b, itemId: "b" });
+    createSortable({ controller, element: a, draggableId: "a" });
+    createSortable({ controller, element: b, draggableId: "b" });
 
     return {
       list,

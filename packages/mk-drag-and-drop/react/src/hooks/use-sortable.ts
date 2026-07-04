@@ -7,12 +7,12 @@ import {
   type RefCallback,
 } from "react";
 
-import { createDomSortable } from "@mk-drag-and-drop/dom";
+import { createDomSortable } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
 
 export type UseSortableOptions = {
-  itemId: string;
+  draggableId: string;
   group?: string;
   containerId?: string | null;
 };
@@ -24,7 +24,7 @@ export type UseSortableResult = HTMLAttributes<HTMLDivElement> & {
 const defaultSortableGroup = "default";
 
 export function useSortable({
-  itemId,
+  draggableId,
   group = defaultSortableGroup,
   containerId = null,
 }: UseSortableOptions): UseSortableResult {
@@ -41,12 +41,12 @@ export function useSortable({
     () =>
       createDomSortable({
         runtime,
-        itemId,
+        draggableId,
         group,
         containerId,
         getElement,
       }),
-    [containerId, getElement, group, itemId, keyboardDragEnabled, runtime],
+    [containerId, getElement, group, draggableId, keyboardDragEnabled, runtime],
   );
 
   const setNodeRef = useCallback(

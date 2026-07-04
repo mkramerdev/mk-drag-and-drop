@@ -1,39 +1,69 @@
 export {
-  DragContext,
   DragProvider,
+  type DragAnnouncements,
+  type DragProviderProps,
+} from "./drag-provider.js";
+export type { DragOverlayInput } from "./drag-overlay.js";
+export {
+  centerToCenter,
+  getDistanceToRect,
   lockToXAxis,
   lockToYAxis,
-  restrictToContainer,
-  useRemeasureDropTargets,
-  type DragAnnouncements,
+  maxDistanceToRect,
+  pointerToCenter,
+  pointerToRectDistance,
   type DragEndEvent,
+  type DragLifecycleCallbacks,
   type DragLifecycleHelpers,
   type DragModifier,
   type DragModifierInput,
   type DragModifierSetupInput,
   type DragModifierTransformInput,
-  type DragOverlayPhase,
-  type DragRuntimeSubscription,
+  type DragPoint,
+  type DragRect,
   type DragStartEvent,
-  type DragState,
   type DragUpdateEvent,
-  type DropPlacement,
   type DropEvent,
+  type DropPlacement,
+  type DropTarget,
   type KeyboardCommand,
   type KeyboardConfiguration,
   type PointerConfiguration,
-  type ReactRestrictToContainerInput,
   type RemeasureDropTargetsInput,
   type SortablePlacement,
-} from "./drag-provider.js";
-export { useDragHandle } from "./hooks/use-drag-handle.js";
-export { useDraggable } from "./hooks/use-draggable.js";
+  type TargetingAlgorithm,
+  type TargetingAlgorithmInput,
+  type TargetingConstraint,
+  type TargetingConstraintInput,
+} from "@mk-drag-and-drop/dom";
+export {
+  restrictToContainer,
+  type ReactRestrictToContainerInput,
+} from "./modifiers/index.js";
+export type {
+  DragOverlayPhase,
+  DragState,
+} from "@mk-drag-and-drop/dom/integration";
+export {
+  useDragHandle,
+  type UseDragHandleResult,
+} from "./hooks/use-drag-handle.js";
+export {
+  useDraggable,
+  type UseDraggableOptions,
+  type UseDraggableResult,
+} from "./hooks/use-draggable.js";
 export {
   useDropContainer,
   type UseDropContainerOptions,
   type UseDropContainerResult,
 } from "./hooks/use-drop-container.js";
-export { useDroppable } from "./hooks/use-droppable.js";
+export {
+  useDroppable,
+  type UseDroppableOptions,
+  type UseDroppableResult,
+} from "./hooks/use-droppable.js";
+export { useRemeasureDropTargets } from "./hooks/use-remeasure-drop-targets.js";
 export {
   useSortable,
   type UseSortableOptions,

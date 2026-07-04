@@ -8,6 +8,10 @@ const packageRoot = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      "@mk-drag-and-drop/dom/integration": resolve(
+        packageRoot,
+        "../dom/src/integration/index.ts",
+      ),
       "@mk-drag-and-drop/dom": resolve(packageRoot, "../dom/src/index.ts"),
       "@mk-drag-and-drop/react": resolve(packageRoot, "src/index.ts"),
     },

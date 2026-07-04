@@ -37,12 +37,12 @@ describe("createDropContainer", () => {
     dragToTarget(source, container);
 
     expect(getPlacement()).toEqual({
-      itemId: "item",
+      draggableId: "item",
       dropTarget: "column-a",
       sourceContainerId: null,
       containerId: "column-a",
-      previousItemId: null,
-      nextItemId: null,
+      previousDraggableId: null,
+      nextDraggableId: null,
     });
   });
 
@@ -69,13 +69,13 @@ describe("createDropContainer", () => {
     createDraggable({
       controller,
       element: firstSource,
-      itemId: "other-item",
+      draggableId: "other-item",
       group: "other",
     });
     createDraggable({
       controller,
       element: secondSource,
-      itemId: "target-item",
+      draggableId: "target-item",
       group: "cards",
     });
     createDropContainer({
@@ -92,7 +92,7 @@ describe("createDropContainer", () => {
     dragToTarget(secondSource, container);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "target-item", dropTarget: "column-a" },
+      { draggableId: "target-item", dropTarget: "column-a" },
       expect.any(Object),
     );
   });
@@ -140,8 +140,8 @@ describe("createDropContainer", () => {
     getPlacement: () => DropPlacement | null;
   } {
     let placement: DropPlacement | null = null;
-    const onDrop = vi.fn(({ itemId }, helpers) => {
-      placement = helpers.getDropPlacement(itemId);
+    const onDrop = vi.fn(({ draggableId }, helpers) => {
+      placement = helpers.getDropPlacement(draggableId);
     });
     controller = createDragController({ onDrop });
     raf = installMockRaf();
@@ -150,7 +150,7 @@ describe("createDropContainer", () => {
       createRect({ left: 100, top: 0, width: 80, height: 80 }),
     );
 
-    createDraggable({ controller, element: source, itemId: "item" });
+    createDraggable({ controller, element: source, draggableId: "item" });
     createDropContainer({
       controller,
       element: container,

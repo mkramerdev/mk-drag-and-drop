@@ -1,8 +1,8 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useContext, useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DragRuntime, type SortablePlacement } from "@mk-drag-and-drop/dom";
+import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
 import {
   DragProvider,
   useDragHandle,
@@ -11,7 +11,9 @@ import {
   useDroppable,
   useRemeasureDropTargets,
   useSortable,
+  type SortablePlacement,
 } from "../src/index.js";
+import { DragContext } from "../src/drag-context.js";
 import {
   createRect,
   dispatchKeyDown,
@@ -22,6 +24,81 @@ import {
   installMockRaf,
   stubBoundingClientRect,
 } from "./test-utils.js";
+
+type RuntimeSpyMap = {
+  registerDropTarget?: DragRuntimeHandle["registerDropTarget"];
+  unregisterDropTarget?: DragRuntimeHandle["unregisterDropTarget"];
+  registerDropContainer?: DragRuntimeHandle["registerDropContainer"];
+  unregisterDropContainer?: DragRuntimeHandle["unregisterDropContainer"];
+};
+
+function createRuntimeSpyInstaller(
+  spies: RuntimeSpyMap,
+): (runtime: DragRuntimeHandle) => void {
+  let installed = false;
+
+  return (runtime) => {
+    if (installed) {
+      return;
+    }
+
+    installed = true;
+
+    if (spies.registerDropTarget) {
+      const registerDropTarget = runtime.registerDropTarget;
+      runtime.registerDropTarget = ((
+        ...args: Parameters<DragRuntimeHandle["registerDropTarget"]>
+      ) => {
+        spies.registerDropTarget?.(...args);
+        registerDropTarget(...args);
+      }) as DragRuntimeHandle["registerDropTarget"];
+    }
+
+    if (spies.unregisterDropTarget) {
+      const unregisterDropTarget = runtime.unregisterDropTarget;
+      runtime.unregisterDropTarget = ((
+        ...args: Parameters<DragRuntimeHandle["unregisterDropTarget"]>
+      ) => {
+        spies.unregisterDropTarget?.(...args);
+        unregisterDropTarget(...args);
+      }) as DragRuntimeHandle["unregisterDropTarget"];
+    }
+
+    if (spies.registerDropContainer) {
+      const registerDropContainer = runtime.registerDropContainer;
+      runtime.registerDropContainer = ((
+        ...args: Parameters<DragRuntimeHandle["registerDropContainer"]>
+      ) => {
+        spies.registerDropContainer?.(...args);
+        registerDropContainer(...args);
+      }) as DragRuntimeHandle["registerDropContainer"];
+    }
+
+    if (spies.unregisterDropContainer) {
+      const unregisterDropContainer = runtime.unregisterDropContainer;
+      runtime.unregisterDropContainer = ((
+        ...args: Parameters<DragRuntimeHandle["unregisterDropContainer"]>
+      ) => {
+        spies.unregisterDropContainer?.(...args);
+        unregisterDropContainer(...args);
+      }) as DragRuntimeHandle["unregisterDropContainer"];
+    }
+  };
+}
+
+function RuntimeSpyProbe({
+  install,
+}: {
+  install: (runtime: DragRuntimeHandle) => void;
+}) {
+  const runtime = useContext(DragContext);
+
+  if (runtime) {
+    install(runtime);
+  }
+
+  return null;
+}
 
 describe("React hooks", () => {
   afterEach(() => {
@@ -53,16 +130,22 @@ describe("React hooks", () => {
   });
 
   it("useDroppable registers and unregisters on callback ref changes", () => {
-    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropTarget");
-    const unregisterSpy = vi.spyOn(DragRuntime.prototype, "unregisterDropTarget");
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+      unregisterDropTarget: unregisterSpy,
+    });
     const { rerender, unmount } = render(
       <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <DynamicDroppable targetId="target-1" />
       </DragProvider>,
     );
 
     rerender(
       <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <DynamicDroppable targetId="target-2" />
       </DragProvider>,
     );
@@ -91,10 +174,14 @@ describe("React hooks", () => {
   });
 
   it("useDroppable passes container metadata through", () => {
-    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropTarget");
+    const registerSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+    });
 
     render(
       <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <DynamicDroppable targetId="target-1" containerId="bucket-1" />
       </DragProvider>,
     );
@@ -108,19 +195,22 @@ describe("React hooks", () => {
   });
 
   it("useDropContainer registers and unregisters on callback ref changes", () => {
-    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropContainer");
-    const unregisterSpy = vi.spyOn(
-      DragRuntime.prototype,
-      "unregisterDropContainer",
-    );
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropContainer: registerSpy,
+      unregisterDropContainer: unregisterSpy,
+    });
     const { rerender, unmount } = render(
       <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <DynamicDropContainer containerId="container-1" />
       </DragProvider>,
     );
 
     rerender(
       <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <DynamicDropContainer containerId="container-2" />
       </DragProvider>,
     );
@@ -147,10 +237,14 @@ describe("React hooks", () => {
   });
 
   it("ref cleanup works under React StrictMode", () => {
-    const unregisterSpy = vi.spyOn(DragRuntime.prototype, "unregisterDropTarget");
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      unregisterDropTarget: unregisterSpy,
+    });
     const { unmount } = render(
       <StrictMode>
         <DragProvider>
+          <RuntimeSpyProbe install={installRuntimeSpies} />
           <DynamicDroppable targetId="target-1" />
         </DragProvider>
       </StrictMode>,
@@ -165,14 +259,16 @@ describe("React hooks", () => {
   });
 
   it("drop container ref cleanup works under React StrictMode", () => {
-    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropContainer");
-    const unregisterSpy = vi.spyOn(
-      DragRuntime.prototype,
-      "unregisterDropContainer",
-    );
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropContainer: registerSpy,
+      unregisterDropContainer: unregisterSpy,
+    });
     const { unmount } = render(
       <StrictMode>
         <DragProvider>
+          <RuntimeSpyProbe install={installRuntimeSpies} />
           <DynamicDropContainer containerId="container-1" />
         </DragProvider>
       </StrictMode>,
@@ -189,11 +285,16 @@ describe("React hooks", () => {
   });
 
   it("useSortable registers, unregisters, and supports pointer drag handles", () => {
-    const registerSpy = vi.spyOn(DragRuntime.prototype, "registerDropTarget");
-    const unregisterSpy = vi.spyOn(DragRuntime.prototype, "unregisterDropTarget");
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+      unregisterDropTarget: unregisterSpy,
+    });
     const onDragStart = vi.fn();
     const { unmount } = render(
       <DragProvider onDragStart={onDragStart}>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
         <SortableWithHandle />
       </DragProvider>,
     );
@@ -239,13 +340,13 @@ describe("React integration flows", () => {
     const calls: string[] = [];
     render(
       <DragProvider
-        onDragStart={({ itemId }) => calls.push(`start:${itemId}`)}
+        onDragStart={({ draggableId }) => calls.push(`start:${draggableId}`)}
         onDragUpdate={({ activeDropTarget }) =>
           calls.push(`update:${activeDropTarget}`)
         }
         onDragEnd={({ dropTarget }) => calls.push(`end:${dropTarget}`)}
-        onDrop={({ itemId, dropTarget }) =>
-          calls.push(`drop:${itemId}:${dropTarget}`)
+        onDrop={({ draggableId, dropTarget }) =>
+          calls.push(`drop:${draggableId}:${dropTarget}`)
         }
       >
         <DraggableWithChild />
@@ -365,11 +466,11 @@ describe("React integration flows", () => {
     });
 
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: "item-1" }),
+      expect.objectContaining({ draggableId: "item-1" }),
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", dropTarget: "target-1" },
       expect.any(Object),
     );
 
@@ -384,7 +485,7 @@ describe("React integration flows", () => {
 
     expect(onDragStart).toHaveBeenCalledTimes(1);
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: null },
+      { draggableId: "item-1", dropTarget: null },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -416,7 +517,7 @@ describe("React integration flows", () => {
     render(
       <DragProvider
         announcements={{
-          onDragStart: ({ itemId }) => `Started ${itemId}`,
+          onDragStart: ({ draggableId }) => `Started ${draggableId}`,
         }}
       >
         <DraggableWithChild />
@@ -453,7 +554,7 @@ describe("React integration flows", () => {
     });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: null },
+      { draggableId: "item-1", dropTarget: null },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -585,7 +686,7 @@ describe("React integration flows", () => {
 });
 
 function UseDraggableOutside() {
-  useDraggable({ itemId: "item-1" });
+  useDraggable({ draggableId: "item-1" });
   return null;
 }
 
@@ -600,7 +701,7 @@ function UseDropContainerOutside() {
 }
 
 function UseSortableOutside() {
-  useSortable({ itemId: "item-1" });
+  useSortable({ draggableId: "item-1" });
   return null;
 }
 
@@ -636,7 +737,7 @@ function DynamicDropContainer({ containerId }: { containerId: string }) {
 }
 
 function DraggableWithChild() {
-  const draggable = useDraggable({ itemId: "item-1", group: "items" });
+  const draggable = useDraggable({ draggableId: "item-1", group: "items" });
 
   return (
     <div {...draggable} data-testid="draggable">
@@ -648,7 +749,7 @@ function DraggableWithChild() {
 
 function SortableWithHandle() {
   const sortable = useSortable({
-    itemId: "item-1",
+    draggableId: "item-1",
     group: "items",
     containerId: "container-1",
   });
@@ -683,8 +784,8 @@ function KanbanBoard() {
 
   return (
     <DragProvider
-      onDrop={({ itemId }, { getDropPlacement }) => {
-        const placement = getDropPlacement(itemId);
+      onDrop={({ draggableId }, { getDropPlacement }) => {
+        const placement = getDropPlacement(draggableId);
 
         if (!placement?.containerId) {
           return;
@@ -692,10 +793,10 @@ function KanbanBoard() {
 
         setColumns((currentColumns) =>
           moveKanbanCard(currentColumns, {
-            cardId: itemId,
+            cardId: draggableId,
             toColumnId: placement.containerId ?? "",
-            previousCardId: placement.previousItemId,
-            nextCardId: placement.nextItemId,
+            previousCardId: placement.previousDraggableId,
+            nextCardId: placement.nextDraggableId,
           }),
         );
       }}
@@ -709,7 +810,7 @@ function KanbanBoard() {
 
 function KanbanColumn({ column }: { column: KanbanColumnState }) {
   const columnSortable = useSortable({
-    itemId: column.id,
+    draggableId: column.id,
     group: "kanban-columns",
     containerId: "board",
   });
@@ -737,7 +838,7 @@ function KanbanCard({
   columnId: string;
 }) {
   const sortable = useSortable({
-    itemId: cardId,
+    draggableId: cardId,
     group: "kanban-cards",
     containerId: columnId,
   });
@@ -810,8 +911,8 @@ function StatefulSortableList() {
 
   return (
     <DragProvider
-      onDrop={({ itemId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(itemId);
+      onDrop={({ draggableId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(draggableId);
 
         if (!placement) {
           return;
@@ -823,23 +924,23 @@ function StatefulSortableList() {
       }}
     >
       <div data-testid="stateful-sortable-list">
-        {items.map((itemId) => (
-          <StatefulSortableItem key={itemId} itemId={itemId} />
+        {items.map((draggableId) => (
+          <StatefulSortableItem key={draggableId} draggableId={draggableId} />
         ))}
       </div>
     </DragProvider>
   );
 }
 
-function StatefulSortableItem({ itemId }: { itemId: string }) {
+function StatefulSortableItem({ draggableId }: { draggableId: string }) {
   const sortable = useSortable({
-    itemId,
+    draggableId,
     group: "stateful-sortable",
   });
 
   return (
-    <div {...sortable} data-testid={`stateful-sortable-${itemId}`}>
-      Item {itemId}
+    <div {...sortable} data-testid={`stateful-sortable-${draggableId}`}>
+      Item {draggableId}
     </div>
   );
 }
@@ -848,10 +949,10 @@ function moveSortableIdsToPlacement(
   items: readonly string[],
   placement: SortablePlacement,
 ): string[] {
-  const withoutItem = items.filter((item) => item !== placement.itemId);
+  const withoutItem = items.filter((item) => item !== placement.draggableId);
 
-  if (placement.previousItemId !== null) {
-    const previousIndex = withoutItem.indexOf(placement.previousItemId);
+  if (placement.previousDraggableId !== null) {
+    const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
 
     if (previousIndex === -1) {
       return [...items];
@@ -859,13 +960,13 @@ function moveSortableIdsToPlacement(
 
     return [
       ...withoutItem.slice(0, previousIndex + 1),
-      placement.itemId,
+      placement.draggableId,
       ...withoutItem.slice(previousIndex + 1),
     ];
   }
 
-  if (placement.nextItemId !== null) {
-    const nextIndex = withoutItem.indexOf(placement.nextItemId);
+  if (placement.nextDraggableId !== null) {
+    const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
 
     if (nextIndex === -1) {
       return [...items];
@@ -873,7 +974,7 @@ function moveSortableIdsToPlacement(
 
     return [
       ...withoutItem.slice(0, nextIndex),
-      placement.itemId,
+      placement.draggableId,
       ...withoutItem.slice(nextIndex),
     ];
   }
@@ -886,8 +987,8 @@ function StatefulSortableListWithIsolatedItem() {
 
   return (
     <DragProvider
-      onDrop={({ itemId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(itemId);
+      onDrop={({ draggableId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(draggableId);
 
         if (!placement) {
           return;
@@ -899,26 +1000,26 @@ function StatefulSortableListWithIsolatedItem() {
       }}
     >
       <div data-testid="isolated-sortable-list">
-        {items.map((itemId) => (
-          <IsolatedSortableItem key={itemId} itemId={itemId} />
+        {items.map((draggableId) => (
+          <IsolatedSortableItem key={draggableId} draggableId={draggableId} />
         ))}
       </div>
     </DragProvider>
   );
 }
 
-function IsolatedSortableItem({ itemId }: { itemId: string }) {
+function IsolatedSortableItem({ draggableId }: { draggableId: string }) {
   const sortable = useSortable({
-    itemId,
+    draggableId,
     group:
-      itemId === "isolated"
+      draggableId === "isolated"
         ? "isolated-sortable"
         : "shared-isolated-sortable",
   });
 
   return (
-    <div {...sortable} data-testid={`isolated-sortable-${itemId}`}>
-      Item {itemId}
+    <div {...sortable} data-testid={`isolated-sortable-${draggableId}`}>
+      Item {draggableId}
     </div>
   );
 }

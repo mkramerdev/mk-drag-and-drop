@@ -12,7 +12,7 @@ import {
 } from "@mk-drag-and-drop/dom";
 
 const draggableItem = {
-  itemId: "draggable",
+  draggableId: "draggable",
   label: "Item",
 };
 
@@ -67,7 +67,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     onDragEnd() {
       clearActiveDropzones();
     },
-    onDrop({ itemId: droppedItemId, dropTarget }, { getDropTargetRect }) {
+    onDrop({ draggableId: droppedItemId, dropTarget }, { getDropTargetRect }) {
       // Example drop behavior: commit valid drops into app-owned DOM state.
       if (
         droppedItemId !== "draggable" ||
@@ -215,7 +215,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       phase === "released"
         ? "sortableOverlay basicDragOverlayReleasing"
         : "sortableOverlay";
-    appendItemContents(overlay, dragState.itemId, false);
+    appendItemContents(overlay, dragState.draggableId, false);
 
     if (phase === "released") {
       setupReleaseOverlay(overlay, finish);
@@ -347,7 +347,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     const preview = document.createElement("div");
     preview.className =
       "sortableItem sortableItemPreview sortableItemFadingIn";
-    appendItemContents(preview, draggableItem.itemId, false);
+    appendItemContents(preview, draggableItem.draggableId, false);
 
     const handleAnimationEnd = (event: AnimationEvent): void => {
       if (
@@ -439,24 +439,24 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 // Example rendering: item markup is app-owned; package helpers wire it to dragging.
 function createDraggableItem(
   controller: DragController,
-  itemId: string,
+  draggableId: string,
 ): HTMLElement {
   const element = document.createElement("div");
   element.className = "sortableItem";
-  element.dataset.basicItemId = itemId;
+  element.dataset.basicItemId = draggableId;
 
   const handle = document.createElement("button");
   handle.className = "dragListHandle";
   handle.type = "button";
   handle.setAttribute("aria-label", "Drag item");
   handle.textContent = dragHandleText;
-  appendItemLabel(element, handle, itemId);
+  appendItemLabel(element, handle, draggableId);
 
   // Package API: registers this DOM node and handle as draggable.
   createDraggable({
     controller,
     element,
-    itemId,
+    draggableId,
     group: basicGroup,
   });
   createDragHandle({ element: handle });
@@ -466,7 +466,7 @@ function createDraggableItem(
 
 function appendItemContents(
   element: HTMLElement,
-  itemId: string,
+  draggableId: string,
   interactiveHandle: boolean,
 ): void {
   const handle = interactiveHandle
@@ -480,22 +480,22 @@ function appendItemContents(
     handle.setAttribute("aria-label", "Drag item");
   }
 
-  appendItemLabel(element, handle, itemId);
+  appendItemLabel(element, handle, draggableId);
 }
 
 function appendItemLabel(
   element: HTMLElement,
   handle: HTMLElement,
-  itemId: string,
+  draggableId: string,
 ): void {
   const label = document.createElement("span");
-  label.textContent = getDraggableItemLabel(itemId);
+  label.textContent = getDraggableItemLabel(draggableId);
 
   element.append(handle, label);
 }
 
-function getDraggableItemLabel(itemId: string): string {
-  return itemId === draggableItem.itemId ? draggableItem.label : "";
+function getDraggableItemLabel(draggableId: string): string {
+  return draggableId === draggableItem.draggableId ? draggableItem.label : "";
 }
 
 function isKnownDropTarget(targetId: string): boolean {

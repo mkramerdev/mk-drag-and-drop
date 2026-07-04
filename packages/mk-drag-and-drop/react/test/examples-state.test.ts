@@ -13,7 +13,7 @@ describe("React examples", () => {
 
       expect(source).not.toContain("overlayItemId");
       expect(source).not.toContain("setOverlayItemId");
-      expect(source).toContain("dragState.itemId");
+      expect(source).toContain("dragState.draggableId");
     }
   });
 
@@ -27,7 +27,7 @@ describe("React examples", () => {
       expect(source).not.toContain("overlayDrag");
       expect(source).not.toContain("setOverlayDrag");
       expect(source).toContain("dragState.group");
-      expect(source).toContain("dragState.itemId");
+      expect(source).toContain("dragState.draggableId");
     }
   });
 });

@@ -12,7 +12,7 @@ import {
 
 export type CreateDomSortableInput = {
   runtime: DomSortableRuntime;
-  itemId: string;
+  draggableId: string;
   group?: string;
   containerId?: string | null;
   getElement: () => HTMLElement | null;
@@ -35,12 +35,12 @@ export function createDomSortable(
   const registry = getSortableRegistry(input.runtime);
   const draggable = createDomDraggable({
     runtime: input.runtime,
-    itemId: input.itemId,
+    draggableId: input.draggableId,
     group,
     getElement: input.getElement,
   });
   let registeredElementRef: WeakRef<HTMLElement> | null = null;
-  let registeredItemId: string | null = null;
+  let registeredDraggableId: string | null = null;
 
   const cleanup = (): void => {
     const registeredElement = registeredElementRef?.deref() ?? null;
@@ -48,11 +48,11 @@ export function createDomSortable(
     unregisterSortableElement({
       registry,
       runtime: input.runtime,
-      itemId: registeredItemId,
+      draggableId: registeredDraggableId,
       element: registeredElement,
     });
     registeredElementRef = null;
-    registeredItemId = null;
+    registeredDraggableId = null;
   };
 
   return {
@@ -61,7 +61,7 @@ export function createDomSortable(
 
       if (
         element === registeredElement &&
-        registeredItemId === input.itemId
+        registeredDraggableId === input.draggableId
       ) {
         return;
       }
@@ -75,13 +75,13 @@ export function createDomSortable(
       registerSortableElement({
         registry,
         runtime: input.runtime,
-        itemId: input.itemId,
+        draggableId: input.draggableId,
         group,
         containerId: input.containerId ?? null,
         element,
       });
       registeredElementRef = new WeakRef(element);
-      registeredItemId = input.itemId;
+      registeredDraggableId = input.draggableId;
     },
     cleanup,
     onPointerDown: draggable.onPointerDown,

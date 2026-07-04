@@ -35,7 +35,7 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "item", dropTarget: "target" },
+      { draggableId: "item", dropTarget: "target" },
       expect.any(Object),
     );
   });
@@ -62,13 +62,13 @@ describe("createDroppable", () => {
     createDraggable({
       controller,
       element: firstSource,
-      itemId: "other-item",
+      draggableId: "other-item",
       group: "other",
     });
     createDraggable({
       controller,
       element: secondSource,
-      itemId: "target-item",
+      draggableId: "target-item",
       group: "targets",
     });
     createDroppable({
@@ -85,7 +85,7 @@ describe("createDroppable", () => {
     dragToTarget(secondSource, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "target-item", dropTarget: "target" },
+      { draggableId: "target-item", dropTarget: "target" },
       expect.any(Object),
     );
   });
@@ -124,7 +124,7 @@ describe("createDroppable", () => {
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
 
-    createDraggable({ controller, element: source, itemId: "item" });
+    createDraggable({ controller, element: source, draggableId: "item" });
     createDroppable({ controller, element: target, targetId: "target" });
 
     dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
@@ -160,7 +160,7 @@ describe("createDroppable", () => {
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
 
-    createDraggable({ controller, element: source, itemId: "item" });
+    createDraggable({ controller, element: source, draggableId: "item" });
     createDroppable({ controller, element: target, targetId: "target" });
 
     dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
@@ -178,7 +178,7 @@ describe("createDroppable", () => {
 
     expect(onDrop).not.toHaveBeenCalled();
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item", dropTarget: null },
+      { draggableId: "item", dropTarget: null },
       expect.any(Object),
     );
   });
@@ -204,7 +204,7 @@ describe("createDroppable", () => {
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
 
-    createDraggable({ controller, element: source, itemId: "item" });
+    createDraggable({ controller, element: source, draggableId: "item" });
     createDroppable({
       controller,
       element: target,

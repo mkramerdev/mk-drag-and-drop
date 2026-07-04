@@ -38,7 +38,7 @@ describe("DragRuntime", () => {
     configureRuntime(runtime, { onDragStart });
 
     runtime.requestDragStart({
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       element: source,
       pointerId: 1,
@@ -51,7 +51,7 @@ describe("DragRuntime", () => {
     expect(document.body.style.userSelect).toBe("none");
     expect(onDragStart).toHaveBeenCalledWith(
       {
-        itemId: "item-1",
+        draggableId: "item-1",
         pointerPosition: { x: 4, y: 5 },
         sourceRect: createRect({ width: 40, height: 20 }),
       },
@@ -75,7 +75,7 @@ describe("DragRuntime", () => {
     expect(runtime.activeDropTarget).toBe("target-1");
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
-        itemId: "item-1",
+        draggableId: "item-1",
         pointerPosition: { x: 110, y: 10 },
         activeDropTarget: "target-1",
         previousDropTarget: null,
@@ -100,11 +100,11 @@ describe("DragRuntime", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", dropTarget: "target-1" },
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", dropTarget: "target-1" },
       expect.any(Object),
     );
 
@@ -114,7 +114,7 @@ describe("DragRuntime", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 0, clientY: 0 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: null },
+      { draggableId: "item-1", dropTarget: null },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -160,7 +160,7 @@ describe("DragRuntime", () => {
     dispatchPointerCancel(window, { pointerId: 1 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: null },
+      { draggableId: "item-1", dropTarget: null },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe("DragRuntime", () => {
     runtime.cancelDrag();
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: null },
+      { draggableId: "item-1", dropTarget: null },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -214,7 +214,7 @@ describe("DragRuntime", () => {
 
     expect(raf.pendingCount()).toBe(0);
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", dropTarget: "target-1" },
       expect.any(Object),
     );
   });
@@ -260,7 +260,7 @@ function configureRuntime(
 
 function startRuntimeDrag(runtime: DragRuntime, source: HTMLElement): void {
   runtime.requestDragStart({
-    itemId: "item-1",
+    draggableId: "item-1",
     group: "items",
     element: source,
     pointerId: 1,

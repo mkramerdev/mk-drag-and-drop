@@ -7,7 +7,6 @@ import {
   getDistanceToRect,
   type DragController,
   type DragControllerOverlayInput,
-  type DragState,
   type SortablePlacement,
   type TargetingConstraint,
 } from "@mk-drag-and-drop/dom";
@@ -22,6 +21,8 @@ type ChildItem = {
   parentId: string;
   label: string;
 };
+
+type DragState = DragControllerOverlayInput["dragState"];
 
 type ParsedChildDropTarget =
   | {
@@ -189,9 +190,9 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     targetingConstraint: groupedTargetingConstraint,
     pointerConfiguration: { activationDelay: 100 },
     dragOverlay,
-    onDragStart({ itemId }) {
+    onDragStart({ draggableId }) {
       clearActiveGroupedDropTargets(panel);
-      activeDraggedParentId = parentsById[itemId] ? itemId : null;
+      activeDraggedParentId = parentsById[draggableId] ? draggableId : null;
       updateActiveDraggedParentDom();
 
       if (activeDraggedParentId) {
@@ -212,8 +213,8 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     },
     onDrop(event, { getSortablePlacement }) {
       // Example drop behavior: interpret package targets and commit app data.
-      if (parentsById[event.itemId]) {
-        const placement = getSortablePlacement(event.itemId);
+      if (parentsById[event.draggableId]) {
+        const placement = getSortablePlacement(event.draggableId);
 
         if (placement) {
           parentOrder = reorderParentOrder(parentOrder, placement);
@@ -223,7 +224,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
         return;
       }
 
-      const child = childrenById[event.itemId];
+      const child = childrenById[event.draggableId];
 
       if (!child) {
         return;
@@ -314,7 +315,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     createSortable({
       controller,
       element: parentBlock,
-      itemId: parent.parentId,
+      draggableId: parent.parentId,
       group: groupedParentGroup,
     });
 
@@ -424,7 +425,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     createDraggable({
       controller,
       element: childRow,
-      itemId: child.childId,
+      draggableId: child.childId,
       group: groupedChildGroup,
     });
 
@@ -525,7 +526,7 @@ function createGroupedDragOverlay({
   childOrder: string[];
 }): HTMLElement | null {
   if (dragState.group === groupedParentGroup) {
-    const parent = parentsById[dragState.itemId];
+    const parent = parentsById[dragState.draggableId];
 
     if (!parent) {
       return createEmptyGroupedOverlay();
@@ -556,7 +557,7 @@ function createGroupedDragOverlay({
   }
 
   if (dragState.group === groupedChildGroup) {
-    const child = childrenById[dragState.itemId];
+    const child = childrenById[dragState.draggableId];
     const overlay = document.createElement("div");
     overlay.className = "groupedDragOverlay groupedChildDragOverlay";
 
@@ -572,7 +573,7 @@ function createGroupedDragOverlay({
     return overlay;
   }
 
-  if (parentsById[dragState.itemId]) {
+  if (parentsById[dragState.draggableId]) {
     return createGroupedDragOverlay({
       dragState: { ...dragState, group: groupedParentGroup },
       parentsById,
@@ -581,7 +582,7 @@ function createGroupedDragOverlay({
     });
   }
 
-  if (childrenById[dragState.itemId]) {
+  if (childrenById[dragState.draggableId]) {
     return createGroupedDragOverlay({
       dragState: { ...dragState, group: groupedChildGroup },
       parentsById,
@@ -651,13 +652,13 @@ function reorderParentOrder(
   placement: SortablePlacement,
 ): string[] {
   const withoutDraggedParent = parentOrder.filter(
-    (parentId) => parentId !== placement.itemId,
+    (parentId) => parentId !== placement.draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
 
-  if (placement.previousItemId) {
+  if (placement.previousDraggableId) {
     const previousIndex = withoutDraggedParent.indexOf(
-      placement.previousItemId,
+      placement.previousDraggableId,
     );
 
     if (previousIndex === -1) {
@@ -665,8 +666,8 @@ function reorderParentOrder(
     }
 
     insertIndex = previousIndex + 1;
-  } else if (placement.nextItemId) {
-    const nextIndex = withoutDraggedParent.indexOf(placement.nextItemId);
+  } else if (placement.nextDraggableId) {
+    const nextIndex = withoutDraggedParent.indexOf(placement.nextDraggableId);
 
     if (nextIndex === -1) {
       return parentOrder;
@@ -675,7 +676,7 @@ function reorderParentOrder(
     insertIndex = nextIndex;
   }
 
-  return insertIntoArray(withoutDraggedParent, insertIndex, placement.itemId);
+  return insertIntoArray(withoutDraggedParent, insertIndex, placement.draggableId);
 }
 
 // Example drop behavior: apply parsed child targets to user-owned child order.

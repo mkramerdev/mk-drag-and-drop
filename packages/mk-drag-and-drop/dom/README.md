@@ -51,7 +51,7 @@ The runtime exposes registration methods for drop targets and containers, placem
 
 ### Draggable
 
-`createDraggable` registers pointer and keyboard start behavior on an element. It associates that element with an `itemId` and optional group.
+`createDraggable` registers pointer and keyboard start behavior on an element. It associates that element with an `draggableId` and optional group.
 
 If a drag handle exists inside the draggable element, dragging starts from the handle. Editable child elements are ignored so text inputs and editable content can keep their normal behavior.
 
@@ -117,10 +117,10 @@ const item = document.createElement("button");
 const columns = ["todo", "done"];
 
 const controller = createDragController({
-  onDrop({ itemId, dropTarget }) {
+  onDrop({ draggableId, dropTarget }) {
     // App-owned data update. The package reports the operation only.
     state.itemLocation = dropTarget;
-    status.textContent = `${itemId} moved to ${dropTarget}`;
+    status.textContent = `${draggableId} moved to ${dropTarget}`;
   },
 });
 
@@ -131,7 +131,7 @@ item.setAttribute("aria-label", "Drag item");
 createDraggable({
   controller,
   element: item,
-  itemId: "task-1",
+  draggableId: "task-1",
 });
 
 root.append(status, item);
@@ -175,8 +175,8 @@ import {
 function List({ items, moveItem }) {
   return (
     <DragProvider
-      onDrop={({ itemId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(itemId);
+      onDrop={({ draggableId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(draggableId);
 
         if (placement) {
           moveItem(placement);
@@ -191,7 +191,7 @@ function List({ items, moveItem }) {
 }
 
 function Row({ id, label }) {
-  const sortable = useSortable({ itemId: id });
+  const sortable = useSortable({ draggableId: id });
   const handle = useDragHandle<HTMLButtonElement>();
 
   return (

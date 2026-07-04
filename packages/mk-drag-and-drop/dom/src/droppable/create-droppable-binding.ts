@@ -1,4 +1,5 @@
 import type { DragController } from "../controller/create-drag-controller.js";
+import { getControllerRuntime } from "../controller/controller-internals.js";
 import { createDomDroppable } from "./create-droppable.js";
 
 export type CreateDroppableInput = {
@@ -12,15 +13,16 @@ export type CreateDroppableInput = {
 const defaultDroppableGroup = "default";
 
 export function createDroppable(input: CreateDroppableInput): void {
+  const runtime = getControllerRuntime(input.controller);
   const behavior = createDomDroppable({
-    runtime: input.controller.runtime,
+    runtime,
     targetId: input.targetId,
     containerId: input.containerId ?? null,
     group: input.group ?? defaultDroppableGroup,
   });
 
   behavior.setElement(input.element);
-  input.controller.runtime.onDispose(() => {
+  runtime.onDispose(() => {
     behavior.cleanup();
   });
 }

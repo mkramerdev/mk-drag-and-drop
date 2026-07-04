@@ -7,25 +7,25 @@ import {
   type RefCallback,
 } from "react";
 
-import { createDomDraggable } from "@mk-drag-and-drop/dom";
+import { createDomDraggable } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
 
-type UseDraggableItem = {
-  itemId: string;
+export type UseDraggableOptions = {
+  draggableId: string;
   group?: string;
 };
 
-type UseDraggableReturn = HTMLAttributes<HTMLDivElement> & {
+export type UseDraggableResult = HTMLAttributes<HTMLDivElement> & {
   ref: RefCallback<HTMLDivElement>;
 };
 
 const defaultDraggableGroup = "default";
 
 export function useDraggable({
-  itemId,
+  draggableId,
   group = defaultDraggableGroup,
-}: UseDraggableItem): UseDraggableReturn {
+}: UseDraggableOptions): UseDraggableResult {
   const runtime = useContext(DragContext);
   const nodeRef = useRef<HTMLDivElement | null>(null);
 
@@ -41,16 +41,16 @@ export function useDraggable({
   const behavior = useMemo(
     () =>
       createDomDraggable({
-        itemId,
+        draggableId,
         group,
         runtime,
         getElement: getNode,
       }),
-    [getNode, group, itemId, keyboardDragEnabled, runtime],
+    [getNode, group, draggableId, keyboardDragEnabled, runtime],
   );
 
   return useMemo(() => {
-    const dragProps: UseDraggableReturn = {
+    const dragProps: UseDraggableResult = {
       ref: setNodeRef,
       onPointerDown: behavior.onPointerDown,
     };

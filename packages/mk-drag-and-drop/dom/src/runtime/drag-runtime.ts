@@ -69,7 +69,7 @@ type DragSession =
   | {
       status: "dragging";
       input: ActiveDragInput;
-      itemId: string;
+      draggableId: string;
       group: DragGroup;
       sourceRect: DragRect;
       sourceContainerId: string | null;
@@ -102,7 +102,7 @@ export class DragRuntime {
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private dropTargetRegistry = new DropTargetRegistry();
   private lastDropPlacementInput: {
-    itemId: string;
+    draggableId: string;
     group: DragGroup;
     dropTarget: string | null;
     sourceContainerId: string | null;
@@ -131,7 +131,7 @@ export class DragRuntime {
       }
 
       this.startDragNow({
-        itemId: request.itemId,
+        draggableId: request.draggableId,
         group: request.group,
         inputType: "pointer",
         pointerId: request.pointerId,
@@ -145,7 +145,7 @@ export class DragRuntime {
       }
 
       this.startDragNow({
-        itemId: activation.itemId,
+        draggableId: activation.draggableId,
         group: activation.group,
         inputType: "pointer",
         pointerId: activation.pointerId,
@@ -234,7 +234,7 @@ export class DragRuntime {
     };
 
     this.startDragNow({
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       group: input.group,
       inputType: "keyboard",
       pointerPosition,
@@ -300,7 +300,7 @@ export class DragRuntime {
     const previousDropTarget = session.activeDropTarget;
     const pointerPosition = applyDragModifiers({
       activeModifiers: this.activeDragModifiers,
-      itemId: session.itemId,
+      draggableId: session.draggableId,
       group: session.group,
       sourceRect: session.sourceRect,
       initialPointerPosition: session.startPointerPosition,
@@ -321,7 +321,7 @@ export class DragRuntime {
       phase: "dragging",
     });
     this.notifyDragUpdate({
-      itemId: nextSession.itemId,
+      draggableId: nextSession.draggableId,
       pointerPosition,
       activeDropTarget: nextSession.activeDropTarget,
       previousDropTarget,
@@ -397,8 +397,8 @@ export class DragRuntime {
     this.setOverlayState(null);
   }
 
-  getSortablePlacement(itemId: string): SortablePlacement | null {
-    const placement = this.getDropPlacement(itemId);
+  getSortablePlacement(draggableId: string): SortablePlacement | null {
+    const placement = this.getDropPlacement(draggableId);
 
     if (placement) {
       if (!hasRelativeSortablePlacement(placement)) {
@@ -406,9 +406,9 @@ export class DragRuntime {
       }
 
       const sortablePlacement = {
-        itemId: placement.itemId,
-        previousItemId: placement.previousItemId,
-        nextItemId: placement.nextItemId,
+        draggableId: placement.draggableId,
+        previousDraggableId: placement.previousDraggableId,
+        nextDraggableId: placement.nextDraggableId,
       };
 
       if (isSameSortablePlacement(sortablePlacement, this.getSourceSortablePlacement())) {
@@ -418,23 +418,23 @@ export class DragRuntime {
       return sortablePlacement;
     }
 
-    return this.dropTargetRegistry.getSortablePlacement(itemId);
+    return this.dropTargetRegistry.getSortablePlacement(draggableId);
   }
 
-  getDropPlacement(itemId?: string): DropPlacement | null {
+  getDropPlacement(draggableId?: string): DropPlacement | null {
     const session = this.getDraggingSession();
 
     if (
       !session &&
       this.lastDropPlacement &&
-      (itemId === undefined || itemId === this.lastDropPlacement.itemId)
+      (draggableId === undefined || draggableId === this.lastDropPlacement.draggableId)
     ) {
       return this.lastDropPlacement;
     }
 
     const placementInput = session
       ? {
-          itemId: itemId ?? session.itemId,
+          draggableId: draggableId ?? session.draggableId,
           group: session.group,
           dropTarget: session.activeDropTarget,
           sourceContainerId: session.sourceContainerId,
@@ -442,7 +442,7 @@ export class DragRuntime {
       : this.lastDropPlacementInput
         ? {
             ...this.lastDropPlacementInput,
-            itemId: itemId ?? this.lastDropPlacementInput.itemId,
+            draggableId: draggableId ?? this.lastDropPlacementInput.draggableId,
           }
         : null;
 
@@ -451,7 +451,7 @@ export class DragRuntime {
     }
 
     return this.dropTargetRegistry.getDropPlacement({
-      itemId: placementInput.itemId,
+      draggableId: placementInput.draggableId,
       dropTargetId: placementInput.dropTarget,
       group: placementInput.group,
       sourceContainerId: placementInput.sourceContainerId,
@@ -553,7 +553,7 @@ export class DragRuntime {
     const activeDragModifiers = createActiveDragModifiers({
       modifiers: this.modifiers,
       setupInput: {
-        itemId: input.itemId,
+        draggableId: input.draggableId,
         group: input.group,
         sourceRect: input.sourceRect,
         initialPointerPosition: rawPointerPosition,
@@ -562,7 +562,7 @@ export class DragRuntime {
     this.activeDragModifiers = activeDragModifiers;
     const effectivePointerPosition = applyDragModifiers({
       activeModifiers: activeDragModifiers,
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       group: input.group,
       sourceRect: input.sourceRect,
       initialPointerPosition: rawPointerPosition,
@@ -570,18 +570,18 @@ export class DragRuntime {
     });
     const sourceContainerId =
       this.dropTargetRegistry.getDropTargetRegistration(
-        input.itemId,
+        input.draggableId,
         input.group,
       )?.containerId ?? null;
     const sourceSortablePlacement = this.dropTargetRegistry.getSortablePlacement(
-      input.itemId,
+      input.draggableId,
       input.group,
     );
 
     const nextSession: DraggingSession = {
       status: "dragging",
       input: input.inputType,
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       group: input.group,
       sourceRect: input.sourceRect,
       sourceContainerId,
@@ -609,7 +609,7 @@ export class DragRuntime {
       this.bindKeyboardWindowListeners();
     }
     this.notifyDragStart({
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       pointerPosition: effectivePointerPosition,
       sourceRect: input.sourceRect,
     });
@@ -622,7 +622,7 @@ export class DragRuntime {
     this.pointerActivation.cancel();
 
     const session = this.getDraggingSession();
-    const itemId = session?.itemId ?? null;
+    const draggableId = session?.draggableId ?? null;
     const dropTarget =
       session && input.dropTarget
         ? this.dropTargetRegistry.getDropTargetRegistration(
@@ -634,7 +634,7 @@ export class DragRuntime {
         : null;
     this.lastDropPlacementInput = session
       ? {
-          itemId: session.itemId,
+          draggableId: session.draggableId,
           group: session.group,
           dropTarget,
           sourceContainerId: session.sourceContainerId,
@@ -643,7 +643,7 @@ export class DragRuntime {
       : null;
     this.lastDropPlacement = this.lastDropPlacementInput
       ? this.dropTargetRegistry.getDropPlacement({
-          itemId: this.lastDropPlacementInput.itemId,
+          draggableId: this.lastDropPlacementInput.draggableId,
           dropTargetId: this.lastDropPlacementInput.dropTarget,
           group: this.lastDropPlacementInput.group,
           sourceContainerId: this.lastDropPlacementInput.sourceContainerId,
@@ -656,15 +656,15 @@ export class DragRuntime {
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
 
-    if (itemId) {
+    if (draggableId) {
       this.notifyDragEnd({
-        itemId,
+        draggableId,
         dropTarget,
       });
 
       if (dropTarget) {
         this.notifyDrop({
-          itemId,
+          draggableId,
           dropTarget,
         });
       }
@@ -795,7 +795,7 @@ export class DragRuntime {
     }
 
     this.isDragging = true;
-    this.draggedId = this.session.itemId;
+    this.draggedId = this.session.draggableId;
     this.draggedGroup = this.session.group;
     this.pointerPosition = this.session.pointerPosition;
     this.activeDropTarget = this.session.activeDropTarget;
@@ -819,7 +819,7 @@ export class DragRuntime {
 
   private createDragState(session: DraggingSession): DragState {
     return {
-      itemId: session.itemId,
+      draggableId: session.draggableId,
       group: session.group,
       sourceRect: session.sourceRect,
       startPointerPosition: session.startPointerPosition,
@@ -882,8 +882,8 @@ export class DragRuntime {
 
   private createLifecycleHelpers(): DragLifecycleHelpers {
     return {
-      getDropPlacement: (itemId) => this.getDropPlacement(itemId),
-      getSortablePlacement: (itemId) => this.getSortablePlacement(itemId),
+      getDropPlacement: (draggableId) => this.getDropPlacement(draggableId),
+      getSortablePlacement: (draggableId) => this.getSortablePlacement(draggableId),
       getDropTargetRect: (dropTargetId) =>
         this.getDropTargetRect(dropTargetId),
     };
@@ -991,7 +991,7 @@ export function createDragRuntime(
 }
 
 function hasRelativeSortablePlacement(placement: DropPlacement): boolean {
-  return placement.previousItemId !== null || placement.nextItemId !== null;
+  return placement.previousDraggableId !== null || placement.nextDraggableId !== null;
 }
 
 function isSameSortablePlacement(
@@ -1000,8 +1000,8 @@ function isSameSortablePlacement(
 ): boolean {
   return (
     sourcePlacement !== null &&
-    placement.itemId === sourcePlacement.itemId &&
-    placement.previousItemId === sourcePlacement.previousItemId &&
-    placement.nextItemId === sourcePlacement.nextItemId
+    placement.draggableId === sourcePlacement.draggableId &&
+    placement.previousDraggableId === sourcePlacement.previousDraggableId &&
+    placement.nextDraggableId === sourcePlacement.nextDraggableId
   );
 }

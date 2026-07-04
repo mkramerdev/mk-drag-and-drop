@@ -7,18 +7,18 @@ import {
 } from "react";
 import { ChevronDown, ChevronRight, Menu } from "lucide-react";
 
-import { DragProvider } from "@mk-drag-and-drop/react/drag-provider";
-import { composeRefs } from "@mk-drag-and-drop/react/compose-refs";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
-import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
-import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
-import { getDistanceToRect } from "@mk-drag-and-drop/dom";
-import type {
-  DropTarget,
-  TargetingAlgorithm,
-  TargetingConstraint,
-  TargetingAlgorithmInput,
-} from "@mk-drag-and-drop/dom";
+import {
+  DragProvider,
+  composeRefs,
+  getDistanceToRect,
+  useDragHandle,
+  useDraggable,
+  useDroppable,
+  type DropTarget,
+  type TargetingAlgorithm,
+  type TargetingAlgorithmInput,
+  type TargetingConstraint,
+} from "@mk-drag-and-drop/react";
 
 const treeGroup = "tree-example";
 const rootToken = "root";
@@ -71,7 +71,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
 };
 
 type TreeItem = {
-  itemId: string;
+  draggableId: string;
   parentId: string | null;
   label: string;
 };
@@ -104,7 +104,7 @@ type TreeProjection = {
 type ParsedTreeDropTarget =
   | {
       type: "inside";
-      itemId: string;
+      draggableId: string;
     }
   | {
       type: "children";
@@ -114,16 +114,16 @@ type ParsedTreeDropTarget =
 
 // Example state: seed tree data is user-owned and mutated on drop.
 const seedItems: TreeItem[] = [
-  { itemId: "design", parentId: null, label: "Design" },
-  { itemId: "research", parentId: "design", label: "Research" },
-  { itemId: "components", parentId: "design", label: "Components" },
-  { itemId: "buttons", parentId: "components", label: "Buttons" },
-  { itemId: "menus", parentId: "components", label: "Menus" },
-  { itemId: "engineering", parentId: null, label: "Engineering" },
-  { itemId: "api", parentId: "engineering", label: "API" },
-  { itemId: "runtime", parentId: "engineering", label: "Runtime" },
-  { itemId: "targeting", parentId: "runtime", label: "Targeting" },
-  { itemId: "release", parentId: null, label: "Release" },
+  { draggableId: "design", parentId: null, label: "Design" },
+  { draggableId: "research", parentId: "design", label: "Research" },
+  { draggableId: "components", parentId: "design", label: "Components" },
+  { draggableId: "buttons", parentId: "components", label: "Buttons" },
+  { draggableId: "menus", parentId: "components", label: "Menus" },
+  { draggableId: "engineering", parentId: null, label: "Engineering" },
+  { draggableId: "api", parentId: "engineering", label: "API" },
+  { draggableId: "runtime", parentId: "engineering", label: "Runtime" },
+  { draggableId: "targeting", parentId: "runtime", label: "Targeting" },
+  { draggableId: "release", parentId: null, label: "Release" },
 ];
 
 const initialExpandedItemIds = ["design", "components"];
@@ -142,14 +142,14 @@ export function TreeExample(): ReactElement {
     [expandedItemIds, treeState],
   );
 
-  function toggleExpanded(itemId: string): void {
+  function toggleExpanded(draggableId: string): void {
     setExpandedItemIds((currentExpandedItemIds) => {
       const nextExpandedItemIds = new Set(currentExpandedItemIds);
 
-      if (nextExpandedItemIds.has(itemId)) {
-        nextExpandedItemIds.delete(itemId);
+      if (nextExpandedItemIds.has(draggableId)) {
+        nextExpandedItemIds.delete(draggableId);
       } else {
-        nextExpandedItemIds.add(itemId);
+        nextExpandedItemIds.add(draggableId);
       }
 
       return nextExpandedItemIds;
@@ -163,7 +163,7 @@ export function TreeExample(): ReactElement {
       targetingConstraint={treeTargetingConstraint}
       dragOverlay={({ dragState }) => (
         <TreeDragOverlay
-          label={getTreeItemLabel(treeState, dragState.itemId)}
+          label={getTreeItemLabel(treeState, dragState.draggableId)}
         />
       )}
       onDragStart={() => {
@@ -179,10 +179,10 @@ export function TreeExample(): ReactElement {
       onDragEnd={() => {
         clearActiveTreeDropTargets(rootRef.current);
       }}
-      onDrop={({ itemId, dropTarget }) => {
+      onDrop={({ draggableId, dropTarget }) => {
         // Example drop behavior: interpret package drop target ids for tree data.
         setTreeState((currentTreeState) =>
-          moveTreeItem(currentTreeState, itemId, dropTarget),
+          moveTreeItem(currentTreeState, draggableId, dropTarget),
         );
       }}
     >
@@ -192,7 +192,7 @@ export function TreeExample(): ReactElement {
           {projection.entries.map((entry) =>
             entry.type === "row" ? (
               <TreeRow
-                key={`row:${entry.item.itemId}`}
+                key={`row:${entry.item.draggableId}`}
                 row={entry}
                 onToggleExpanded={toggleExpanded}
               />
@@ -212,12 +212,12 @@ function TreeRow({
   onToggleExpanded,
 }: {
   row: ProjectedTreeRow;
-  onToggleExpanded: (itemId: string) => void;
+  onToggleExpanded: (draggableId: string) => void;
 }): ReactElement {
-  const targetId = getInsideTargetId(row.item.itemId);
+  const targetId = getInsideTargetId(row.item.draggableId);
   // Package API: each tree row is draggable and also an inside drop target.
   const draggable = useDraggable({
-    itemId: row.item.itemId,
+    draggableId: row.item.draggableId,
     group: treeGroup,
   });
   const droppable = useDroppable({
@@ -262,7 +262,7 @@ function TreeRow({
               ? `Collapse ${row.item.label}`
               : `Expand ${row.item.label}`
           }
-          onClick={() => onToggleExpanded(row.item.itemId)}
+          onClick={() => onToggleExpanded(row.item.draggableId)}
         >
           {row.isExpanded ? <ChevronDown /> : <ChevronRight />}
         </button>
@@ -311,9 +311,9 @@ function TreeDragOverlay({ label }: { label: string }): ReactElement {
 function createTreeState(items: readonly TreeItem[]): TreeState {
   return {
     itemsById: Object.fromEntries(
-      items.map((item) => [item.itemId, item]),
+      items.map((item) => [item.draggableId, item]),
     ) as Record<string, TreeItem>,
-    orderedItemIds: items.map((item) => item.itemId),
+    orderedItemIds: items.map((item) => item.draggableId),
   };
 }
 
@@ -334,9 +334,9 @@ function createTreeProjection(
     entries.push(createDropzoneLine(parentId, 0, depth));
 
     children.forEach((item, index) => {
-      const childItems = getChildItems(childrenByParentId, item.itemId);
+      const childItems = getChildItems(childrenByParentId, item.draggableId);
       const hasChildren = childItems.length > 0;
-      const isExpanded = expandedItemIds.has(item.itemId);
+      const isExpanded = expandedItemIds.has(item.draggableId);
 
       entries.push({
         type: "row",
@@ -347,7 +347,7 @@ function createTreeProjection(
       });
 
       if (hasChildren && isExpanded) {
-        appendChildList(item.itemId, depth + 1);
+        appendChildList(item.draggableId, depth + 1);
       }
 
       entries.push(createDropzoneLine(parentId, index + 1, depth));
@@ -360,8 +360,8 @@ function createChildrenByParentId(
 ): Map<string | null, TreeItem[]> {
   const childrenByParentId = new Map<string | null, TreeItem[]>();
 
-  for (const itemId of treeState.orderedItemIds) {
-    const item = treeState.itemsById[itemId];
+  for (const draggableId of treeState.orderedItemIds) {
+    const item = treeState.itemsById[draggableId];
 
     if (!item) {
       continue;
@@ -390,18 +390,18 @@ function createDropzoneLine(
 // Example drop behavior: apply tree-specific target interpretation to app data.
 function moveTreeItem(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   dropTargetId: string,
 ): TreeState {
   const parsedTarget = parseTreeDropTargetId(dropTargetId);
-  const draggedItem = treeState.itemsById[itemId];
+  const draggedItem = treeState.itemsById[draggableId];
 
   if (!parsedTarget || !draggedItem) {
     return treeState;
   }
 
   if (parsedTarget.type === "inside") {
-    const targetItem = treeState.itemsById[parsedTarget.itemId];
+    const targetItem = treeState.itemsById[parsedTarget.draggableId];
 
     if (!targetItem) {
       return treeState;
@@ -409,8 +409,8 @@ function moveTreeItem(
 
     return moveTreeItemToParentIndex(
       treeState,
-      itemId,
-      targetItem.itemId,
+      draggableId,
+      targetItem.draggableId,
       0,
     );
   }
@@ -424,7 +424,7 @@ function moveTreeItem(
 
   return moveTreeItemToParentIndex(
     treeState,
-    itemId,
+    draggableId,
     parsedTarget.parentId,
     parsedTarget.index,
   );
@@ -433,16 +433,16 @@ function moveTreeItem(
 // Example drop behavior: preserve descendants while moving one tree item.
 function moveTreeItemToParentIndex(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   parentId: string | null,
   index: number,
 ): TreeState {
-  const draggedItem = treeState.itemsById[itemId];
+  const draggedItem = treeState.itemsById[draggableId];
 
   if (
     !draggedItem ||
     index < 0 ||
-    isSelfOrDescendantParent(treeState, itemId, parentId)
+    isSelfOrDescendantParent(treeState, draggableId, parentId)
   ) {
     return treeState;
   }
@@ -457,7 +457,7 @@ function moveTreeItemToParentIndex(
   const currentSiblingIndex = getChildItems(
     childrenByParentId,
     draggedItem.parentId,
-  ).findIndex((item) => item.itemId === itemId);
+  ).findIndex((item) => item.draggableId === draggableId);
   let insertionIndex = index;
 
   if (
@@ -469,33 +469,33 @@ function moveTreeItemToParentIndex(
   }
 
   const siblingsAfterRemoval = currentParentChildren.filter(
-    (item) => item.itemId !== itemId,
+    (item) => item.draggableId !== draggableId,
   );
 
   if (insertionIndex > siblingsAfterRemoval.length) {
     return treeState;
   }
 
-  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== itemId);
+  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== draggableId);
   const beforeSibling = siblingsAfterRemoval[insertionIndex] ?? null;
   const nextOrderedItemIds = [...orderedItemIds];
 
   if (beforeSibling) {
-    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.itemId);
+    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.draggableId);
 
     if (beforeSiblingIndex === -1) {
       return treeState;
     }
 
-    nextOrderedItemIds.splice(beforeSiblingIndex, 0, itemId);
+    nextOrderedItemIds.splice(beforeSiblingIndex, 0, draggableId);
   } else {
-    nextOrderedItemIds.push(itemId);
+    nextOrderedItemIds.push(draggableId);
   }
 
   return {
     itemsById: {
       ...treeState.itemsById,
-      [itemId]: {
+      [draggableId]: {
         ...draggedItem,
         parentId,
       },
@@ -506,13 +506,13 @@ function moveTreeItemToParentIndex(
 
 function isSelfOrDescendantParent(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   parentId: string | null,
 ): boolean {
   let currentParentId = parentId;
 
   while (currentParentId !== null) {
-    if (currentParentId === itemId) {
+    if (currentParentId === draggableId) {
       return true;
     }
 
@@ -534,9 +534,9 @@ function parseTreeDropTargetId(
   const insidePrefix = "tree:inside:";
 
   if (isInsideTargetId(dropTargetId)) {
-    const itemId = dropTargetId.slice(insidePrefix.length);
+    const draggableId = dropTargetId.slice(insidePrefix.length);
 
-    return itemId ? { type: "inside", itemId } : null;
+    return draggableId ? { type: "inside", draggableId } : null;
   }
 
   const childrenMatch = /^tree:children:([^:]+):index:(\d+)$/.exec(
@@ -568,12 +568,12 @@ function getChildItems(
   return childrenByParentId.get(parentId) ?? [];
 }
 
-function getTreeItemLabel(treeState: TreeState, itemId: string): string {
-  return treeState.itemsById[itemId]?.label ?? "";
+function getTreeItemLabel(treeState: TreeState, draggableId: string): string {
+  return treeState.itemsById[draggableId]?.label ?? "";
 }
 
-function getInsideTargetId(itemId: string): string {
-  return `tree:inside:${itemId}`;
+function getInsideTargetId(draggableId: string): string {
+  return `tree:inside:${draggableId}`;
 }
 
 function getChildrenTargetId(parentId: string | null, index: number): string {

@@ -4,9 +4,7 @@ import type {
 } from "../input/config.js";
 import { rectToDragRect } from "../geometry/rects.js";
 import type { DragModifierInput } from "../modifiers/types.js";
-import {
-  DragRuntime,
-} from "../runtime/drag-runtime.js";
+import { createDragRuntimeHandle } from "../runtime/drag-runtime-handle.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
 import type {
   DragEndEvent,
@@ -25,6 +23,7 @@ import type {
   TargetingAlgorithm,
   TargetingConstraint,
 } from "../targeting/types.js";
+import { setControllerRuntime } from "./controller-internals.js";
 
 export type DragControllerAnnouncements = {
   onDragStart?: (event: DragStartEvent) => string | null;
@@ -52,7 +51,6 @@ export type DragControllerOptions = {
 } & DragLifecycleCallbacks;
 
 export type DragController = {
-  runtime: DragRuntime;
   update: (options: DragControllerOptions) => void;
   cleanup: () => void;
   dispose: () => void;
@@ -68,7 +66,7 @@ export function createDragController(
   let liveRegion: HTMLElement | null = null;
   let disposed = false;
 
-  const runtime = new DragRuntime({
+  const runtime = createDragRuntimeHandle({
     setOverlayState: renderOverlay,
     targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
     targetingConstraint: options.targetingConstraint,
@@ -79,8 +77,7 @@ export function createDragController(
   configureRuntime(options);
   syncLiveRegion();
 
-  return {
-    runtime,
+  const controller: DragController = {
     update: (nextOptions) => {
       if (disposed) {
         return;
@@ -117,6 +114,10 @@ export function createDragController(
       runtime.remeasureDropTargets(input);
     },
   };
+
+  setControllerRuntime(controller, runtime);
+
+  return controller;
 
   function configureRuntime(nextOptions: DragControllerOptions): void {
     runtime.configure({

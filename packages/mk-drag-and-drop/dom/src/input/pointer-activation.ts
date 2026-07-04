@@ -3,7 +3,7 @@ import type { DragPoint } from "../geometry/rects.js";
 import type { NormalizedPointerConfiguration } from "./config.js";
 
 export type PointerDragActivationRequest = {
-  itemId: string;
+  draggableId: string;
   group: string;
   element: HTMLElement;
   pointerId: number;
@@ -11,7 +11,7 @@ export type PointerDragActivationRequest = {
 };
 
 export type ActivatedPointerDrag = {
-  itemId: string;
+  draggableId: string;
   group: string;
   element: HTMLElement;
   pointerId: number;
@@ -57,7 +57,7 @@ export class PointerActivationController {
       y: request.pointerPosition.y,
     };
     const pendingActivation: PendingPointerActivation = {
-      itemId: request.itemId,
+      draggableId: request.draggableId,
       group: request.group,
       element: request.element,
       pointerId: request.pointerId,
@@ -142,7 +142,7 @@ export class PointerActivationController {
 
     this.cancel();
     this.options.activate({
-      itemId: pendingActivation.itemId,
+      draggableId: pendingActivation.draggableId,
       group: pendingActivation.group,
       element: pendingActivation.element,
       pointerId: pendingActivation.pointerId,

@@ -1,8 +1,13 @@
 import {
     DragProvider,
+    maxDistanceToRect,
+    pointerToRectDistance,
+    useDragHandle,
+    useDraggable,
+    useDroppable,
     type DragOverlayPhase,
-} from "@mk-drag-and-drop/react/drag-provider";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
+    type DragRect,
+} from "@mk-drag-and-drop/react";
 import { Menu } from "lucide-react";
 import {
     useCallback,
@@ -15,16 +20,9 @@ import {
     type ReactNode,
     type TransitionEvent,
 } from "react";
-import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
-import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
-import {
-    maxDistanceToRect,
-    pointerToRectDistance,
-    type DragRect,
-} from "@mk-drag-and-drop/dom";
 
 const draggableItem = {
-    itemId: "draggable",
+    draggableId: "draggable",
     label: "Item",
 };
 
@@ -77,7 +75,7 @@ export function BasicDrag(): ReactElement {
       keepOverlayOnDrop
       dragOverlay={({ dragState, phase, finish }) => (
         <BasicDragOverlay
-            itemId={dragState.itemId}
+            draggableId={dragState.draggableId}
             phase={phase}
             targetRect={releaseTargetRect}
             finish={finish}
@@ -101,10 +99,10 @@ export function BasicDrag(): ReactElement {
         );
         clearActiveDroppableContainers(rootRef.current);
       }}
-      onDrop={({ itemId, dropTarget }) => {
+      onDrop={({ draggableId, dropTarget }) => {
         // Example drop behavior: commit the package drop result into app state.
         if (
-            itemId !== draggableItem.itemId ||
+            draggableId !== draggableItem.draggableId ||
             !isKnownDropTarget(dropTarget)
         ) {
             return;
@@ -164,13 +162,13 @@ export function BasicDrag(): ReactElement {
 
 // Example rendering: overlay markup and release animation are app-owned.
 function BasicDragOverlay({
-    itemId,
+    draggableId,
     phase,
     targetRect,
     finish,
     onFinish,
 }: {
-    itemId: string;
+    draggableId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
     finish: () => void;
@@ -259,7 +257,7 @@ function BasicDragOverlay({
             <div className="dragListHandle">
                 <Menu />
             </div>
-            <span>{getDraggableItemLabel(itemId)}</span>
+            <span>{getDraggableItemLabel(draggableId)}</span>
         </div>
     );
 }
@@ -274,7 +272,7 @@ function DraggableItem({
 }): ReactElement {
     // Package API: registers this rendered element and handle as draggable.
     const draggable = useDraggable({
-        itemId: item.itemId,
+        draggableId: item.draggableId,
         group: "basic",
     });
     const dragHandle = useDragHandle();
@@ -420,6 +418,6 @@ function getRectCenterY(rect: Pick<DOMRect, "top" | "height">): number {
     return rect.top + rect.height / 2;
 }
 
-function getDraggableItemLabel(itemId: string): string {
-    return itemId === draggableItem.itemId ? draggableItem.label : "";
+function getDraggableItemLabel(draggableId: string): string {
+    return draggableId === draggableItem.draggableId ? draggableItem.label : "";
 }

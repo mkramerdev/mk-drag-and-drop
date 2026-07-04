@@ -1,4 +1,5 @@
 import type { DragController } from "../controller/create-drag-controller.js";
+import { getControllerRuntime } from "../controller/controller-internals.js";
 import { createDomDropContainer } from "./create-drop-container.js";
 
 export type CreateDropContainerInput = {
@@ -12,13 +13,14 @@ const defaultDropContainerGroup = "default";
 
 export function createDropContainer(input: CreateDropContainerInput): void {
   const elementRef = new WeakRef(input.element);
+  const runtime = getControllerRuntime(input.controller);
   const behavior = createDomDropContainer({
-    runtime: input.controller.runtime,
+    runtime,
     containerId: input.containerId,
     group: input.group ?? defaultDropContainerGroup,
     getElement: () => elementRef.deref() ?? null,
   });
-  input.controller.runtime.onDispose(() => {
+  runtime.onDispose(() => {
     behavior.cleanup();
   });
 }

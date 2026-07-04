@@ -8,7 +8,7 @@ export type KeyboardMoveDirection = "up" | "down" | "left" | "right";
 export type KeyboardDragActiveInput = "pointer" | "keyboard";
 
 export type KeyboardDragStartInput = {
-  itemId: string;
+  draggableId: string;
   group: string;
   element: HTMLElement;
 };
@@ -47,7 +47,7 @@ export class KeyboardDragController {
       }
 
       this.options.start({
-        itemId: input.itemId,
+        draggableId: input.draggableId,
         group: input.group,
         element: input.element,
       });

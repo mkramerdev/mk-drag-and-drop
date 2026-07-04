@@ -24,7 +24,7 @@ export type Point = DragPoint;
 export type ActiveDragInput = "pointer" | "keyboard";
 
 export type DragState = {
-  itemId: string;
+  draggableId: string;
   group: DragGroup;
   sourceRect: DragRect;
   startPointerPosition: Point;
@@ -41,7 +41,7 @@ export type DragOverlayRenderState = {
 export type RequestDragStartInput = PointerDragActivationRequest;
 
 type BaseStartDragInput = {
-  itemId: string;
+  draggableId: string;
   group: DragGroup;
   pointerPosition: Point;
   sourceRect: DragRect;

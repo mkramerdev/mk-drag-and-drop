@@ -7,7 +7,7 @@ import {
 
 export type DomDraggableRuntime = {
   requestDragStart: (input: {
-    itemId: string;
+    draggableId: string;
     group: string;
     element: HTMLElement;
     pointerId: number;
@@ -15,7 +15,7 @@ export type DomDraggableRuntime = {
   }) => void;
   isKeyboardDragEnabled: () => boolean;
   handleSourceKeyboardKeyDown: (input: {
-    itemId: string;
+    draggableId: string;
     group: string;
     element: HTMLElement;
     key: string;
@@ -24,7 +24,7 @@ export type DomDraggableRuntime = {
 
 export type CreateDomDraggableInput = {
   runtime: DomDraggableRuntime;
-  itemId: string;
+  draggableId: string;
   group: string;
   getElement: () => HTMLElement | null;
 };
@@ -84,7 +84,7 @@ export function createDomDraggable(
       event.stopPropagation();
 
       input.runtime.requestDragStart({
-        itemId: input.itemId,
+        draggableId: input.draggableId,
         group: input.group,
         element,
         pointerId: event.pointerId,
@@ -108,7 +108,7 @@ export function createDomDraggable(
       }
 
       const handled = input.runtime.handleSourceKeyboardKeyDown({
-        itemId: input.itemId,
+        draggableId: input.draggableId,
         group: input.group,
         element,
         key: event.key,

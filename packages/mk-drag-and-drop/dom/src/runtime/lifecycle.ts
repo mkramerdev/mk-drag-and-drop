@@ -5,31 +5,31 @@ import type {
 } from "./drop-target-registry.js";
 
 export type DragStartEvent = {
-  itemId: string;
+  draggableId: string;
   pointerPosition: DragPoint;
   sourceRect: DragRect;
 };
 
 export type DragUpdateEvent = {
-  itemId: string;
+  draggableId: string;
   pointerPosition: DragPoint;
   activeDropTarget: string | null;
   previousDropTarget: string | null;
 };
 
 export type DragEndEvent = {
-  itemId: string;
+  draggableId: string;
   dropTarget: string | null;
 };
 
 export type DropEvent = {
-  itemId: string;
+  draggableId: string;
   dropTarget: string;
 };
 
 export type DragLifecycleHelpers = {
-  getDropPlacement: (itemId?: string) => DropPlacement | null;
-  getSortablePlacement: (itemId: string) => SortablePlacement | null;
+  getDropPlacement: (draggableId?: string) => DropPlacement | null;
+  getSortablePlacement: (draggableId: string) => SortablePlacement | null;
   getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };
 

@@ -14,7 +14,7 @@ const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
 const dragHandleText = "\u2630";
-const sortableItemIdAttribute = "data-vanilla-sortable-item-id";
+const sortableDraggableIdAttribute = "data-vanilla-sortable-item-id";
 
 export function mountSortableList(root: HTMLElement): () => void {
   const pendingAnimationFrames = new Set<number>();
@@ -31,8 +31,8 @@ export function mountSortableList(root: HTMLElement): () => void {
     targetingAlgorithm: centerToCenter,
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
-    onDragStart({ itemId }) {
-      activeItemId = itemId;
+    onDragStart({ draggableId }) {
+      activeItemId = draggableId;
       releaseTargetRect = null;
       updateItemDraggingClasses();
     },
@@ -46,8 +46,8 @@ export function mountSortableList(root: HTMLElement): () => void {
       activeItemId = null;
       updateItemDraggingClasses();
     },
-    onDrop({ itemId }, { getSortablePlacement }) {
-      const placement = getSortablePlacement(itemId);
+    onDrop({ draggableId }, { getSortablePlacement }) {
+      const placement = getSortablePlacement(draggableId);
 
       if (!placement) {
         return;
@@ -83,7 +83,7 @@ export function mountSortableList(root: HTMLElement): () => void {
   // Example rendering: list markup is app-owned and rerendered from data.
   function renderItems(): void {
     listElement.replaceChildren(
-      ...items.map((itemId) => createSortableItem(itemId)),
+      ...items.map((draggableId) => createSortableItem(draggableId)),
     );
     updateItemDraggingClasses();
   }
@@ -91,20 +91,20 @@ export function mountSortableList(root: HTMLElement): () => void {
   // Example styling: active item classes drive demo CSS highlights.
   function updateItemDraggingClasses(): void {
     listElement
-      .querySelectorAll<HTMLElement>(`[${sortableItemIdAttribute}]`)
+      .querySelectorAll<HTMLElement>(`[${sortableDraggableIdAttribute}]`)
       .forEach((element) => {
         element.classList.toggle(
           "sortableItemDragging",
-          element.getAttribute(sortableItemIdAttribute) === activeItemId,
+          element.getAttribute(sortableDraggableIdAttribute) === activeItemId,
         );
       });
   }
 
-  function createSortableItem(itemId: string): HTMLElement {
+  function createSortableItem(draggableId: string): HTMLElement {
     // Example rendering: item markup is app-owned.
     const element = document.createElement("div");
     element.className =
-      activeItemId === itemId
+      activeItemId === draggableId
         ? "sortableItem sortableItemDragging"
         : "sortableItem";
 
@@ -115,17 +115,17 @@ export function mountSortableList(root: HTMLElement): () => void {
     handle.textContent = dragHandleText;
 
     const label = document.createElement("span");
-    label.textContent = `Item ${itemId}`;
+    label.textContent = `Item ${draggableId}`;
 
     element.append(handle, label);
-    element.setAttribute(sortableItemIdAttribute, itemId);
+    element.setAttribute(sortableDraggableIdAttribute, draggableId);
 
     // Package API: registers this DOM node and handle as sortable.
     createSortable({
       controller,
       element,
-      itemId,
-      group: getSortableGroup(itemId),
+      draggableId,
+      group: getSortableGroup(draggableId),
     });
     createDragHandle({ element: handle });
 
@@ -152,7 +152,7 @@ export function mountSortableList(root: HTMLElement): () => void {
       phase === "released"
         ? "sortableOverlay sortableOverlayReleasing"
         : "sortableOverlay";
-    appendOverlayContents(overlay, dragState.itemId);
+    appendOverlayContents(overlay, dragState.draggableId);
 
     if (phase === "released") {
       setupReleaseOverlay(overlay, finish);
@@ -283,19 +283,19 @@ export function mountSortableList(root: HTMLElement): () => void {
 }
 
 // Example rendering: overlay content is app-owned.
-function appendOverlayContents(element: HTMLElement, itemId: string): void {
+function appendOverlayContents(element: HTMLElement, draggableId: string): void {
   const handle = document.createElement("div");
   handle.className = "dragListHandle";
   handle.textContent = dragHandleText;
 
   const label = document.createElement("span");
-  label.textContent = `Item ${itemId}`;
+  label.textContent = `Item ${draggableId}`;
 
   element.append(handle, label);
 }
 
-function getSortableGroup(itemId: string): string {
-  return itemId === "3" ? isolatedSortableGroup : sortableGroup;
+function getSortableGroup(draggableId: string): string {
+  return draggableId === "3" ? isolatedSortableGroup : sortableGroup;
 }
 
 // Example drop behavior: convert sortable placement into user-owned item order.
@@ -303,10 +303,10 @@ function reorderData(
   items: readonly string[],
   placement: SortablePlacement,
 ): string[] {
-  const withoutItem = items.filter((item) => item !== placement.itemId);
+  const withoutItem = items.filter((item) => item !== placement.draggableId);
 
-  if (placement.previousItemId !== null) {
-    const previousIndex = withoutItem.indexOf(placement.previousItemId);
+  if (placement.previousDraggableId !== null) {
+    const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
 
     if (previousIndex === -1) {
       return [...items];
@@ -314,13 +314,13 @@ function reorderData(
 
     return [
       ...withoutItem.slice(0, previousIndex + 1),
-      placement.itemId,
+      placement.draggableId,
       ...withoutItem.slice(previousIndex + 1),
     ];
   }
 
-  if (placement.nextItemId !== null) {
-    const nextIndex = withoutItem.indexOf(placement.nextItemId);
+  if (placement.nextDraggableId !== null) {
+    const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
 
     if (nextIndex === -1) {
       return [...items];
@@ -328,7 +328,7 @@ function reorderData(
 
     return [
       ...withoutItem.slice(0, nextIndex),
-      placement.itemId,
+      placement.draggableId,
       ...withoutItem.slice(nextIndex),
     ];
   }

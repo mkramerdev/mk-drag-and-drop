@@ -1,10 +1,13 @@
-import { DragProvider } from "@mk-drag-and-drop/react/drag-provider";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
-import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
-import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
+import {
+    centerToCenter,
+    DragProvider,
+    maxDistanceToRect,
+    useDragHandle,
+    useDraggable,
+    useDroppable,
+} from "@mk-drag-and-drop/react";
 import { Menu } from "lucide-react";
 import { useRef, useState, type ReactElement } from "react";
-import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/dom";
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
@@ -13,11 +16,11 @@ const dropzoneListTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 // Example state: the app owns list data and commits reorders on drop.
 const initialItems = [
-    { itemId: "dropzone-item-1", label: "Item 1" },
-    { itemId: "dropzone-item-2", label: "Item 2" },
-    { itemId: "dropzone-item-3", label: "Item 3" },
-    { itemId: "dropzone-item-4", label: "Item 4" },
-    { itemId: "dropzone-item-5", label: "Item 5" },
+    { draggableId: "dropzone-item-1", label: "Item 1" },
+    { draggableId: "dropzone-item-2", label: "Item 2" },
+    { draggableId: "dropzone-item-3", label: "Item 3" },
+    { draggableId: "dropzone-item-4", label: "Item 4" },
+    { draggableId: "dropzone-item-5", label: "Item 5" },
 ];
 
 type DropzoneListItem = (typeof initialItems)[number];
@@ -42,7 +45,7 @@ export function DropzoneList(): ReactElement {
                     <div className="dragListHandle">
                         <Menu />
                     </div>
-                    <span>{getItemLabel(items, dragState.itemId)}</span>
+                    <span>{getItemLabel(items, dragState.draggableId)}</span>
                 </div>
             )}
             onDragStart={() => {
@@ -58,16 +61,16 @@ export function DropzoneList(): ReactElement {
             onDragEnd={() => {
                 clearActiveDropzoneLines(rootRef.current);
             }}
-            onDrop={({ itemId, dropTarget }) => {
+            onDrop={({ draggableId, dropTarget }) => {
                 // Example drop behavior: translate the package drop target into list order.
                 setItems((currentItems) =>
-                    moveItemToDropzone(currentItems, itemId, dropTarget),
+                    moveItemToDropzone(currentItems, draggableId, dropTarget),
                 );
             }}
         >
             <div ref={rootRef} className="dropzoneList">
                 {items.map((item) => (
-                    <FragmentWithDropzone key={item.itemId} item={item} />
+                    <FragmentWithDropzone key={item.draggableId} item={item} />
                 ))}
                 <DropzoneLineTarget line={getEndDropzoneLine()} />
             </div>
@@ -83,7 +86,7 @@ function FragmentWithDropzone({
 }): ReactElement {
     return (
         <>
-            <DropzoneLineTarget line={getDropzoneLineBeforeItem(item.itemId)} />
+            <DropzoneLineTarget line={getDropzoneLineBeforeItem(item.draggableId)} />
             <DropzoneListItem item={item} />
         </>
     );
@@ -97,7 +100,7 @@ function DropzoneListItem({
 }): ReactElement {
     // Package API: registers this row and handle as a draggable item.
     const draggable = useDraggable({
-        itemId: item.itemId,
+        draggableId: item.draggableId,
         group: dropzoneListGroup,
     });
     const dragHandle = useDragHandle();
@@ -134,7 +137,7 @@ function DropzoneLineTarget({ line }: { line: DropzoneLine }): ReactElement {
 // Example drop behavior: map a dropzone line id to user-owned item order.
 function moveItemToDropzone(
     items: readonly DropzoneListItem[],
-    itemId: string,
+    draggableId: string,
     dropTargetId: string,
 ): DropzoneListItem[] {
     const dropzoneLine = getDropzoneLines(items).find(
@@ -145,20 +148,20 @@ function moveItemToDropzone(
         return [...items];
     }
 
-    const draggedItem = items.find((item) => item.itemId === itemId);
+    const draggedItem = items.find((item) => item.draggableId === draggableId);
 
     if (!draggedItem) {
         return [...items];
     }
 
-    const nextItems = items.filter((item) => item.itemId !== itemId);
+    const nextItems = items.filter((item) => item.draggableId !== draggableId);
 
     if (dropzoneLine.beforeItemId === null) {
         return [...nextItems, draggedItem];
     }
 
     const insertionIndex = nextItems.findIndex(
-        (item) => item.itemId === dropzoneLine.beforeItemId,
+        (item) => item.draggableId === dropzoneLine.beforeItemId,
     );
 
     if (insertionIndex === -1) {
@@ -173,15 +176,15 @@ function moveItemToDropzone(
 // Example rendering: generated target ids are a demo convention for insertion lines.
 function getDropzoneLines(items: readonly DropzoneListItem[]): DropzoneLine[] {
     return [
-        ...items.map((item) => getDropzoneLineBeforeItem(item.itemId)),
+        ...items.map((item) => getDropzoneLineBeforeItem(item.draggableId)),
         getEndDropzoneLine(),
     ];
 }
 
-function getDropzoneLineBeforeItem(itemId: string): DropzoneLine {
+function getDropzoneLineBeforeItem(draggableId: string): DropzoneLine {
     return {
-        targetId: `dropzone-list:before:${itemId}`,
-        beforeItemId: itemId,
+        targetId: `dropzone-list:before:${draggableId}`,
+        beforeItemId: draggableId,
     };
 }
 
@@ -192,8 +195,8 @@ function getEndDropzoneLine(): DropzoneLine {
     };
 }
 
-function getItemLabel(items: readonly DropzoneListItem[], itemId: string): string {
-    return items.find((item) => item.itemId === itemId)?.label ?? "";
+function getItemLabel(items: readonly DropzoneListItem[], draggableId: string): string {
+    return items.find((item) => item.draggableId === draggableId)?.label ?? "";
 }
 
 // Example styling: active target attributes drive demo CSS highlights.

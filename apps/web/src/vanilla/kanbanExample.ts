@@ -28,15 +28,15 @@ type KanbanState = {
 };
 
 type PlacementInput = {
-  itemId: DropPlacement["itemId"];
+  draggableId: DropPlacement["draggableId"];
   containerId: DropPlacement["containerId"];
-  previousItemId: DropPlacement["previousItemId"];
-  nextItemId: DropPlacement["nextItemId"];
+  previousDraggableId: DropPlacement["previousDraggableId"];
+  nextDraggableId: DropPlacement["nextDraggableId"];
 };
 
 type KanbanActiveDrag =
-  | { type: "column"; itemId: string }
-  | { type: "card"; itemId: string };
+  | { type: "column"; draggableId: string }
+  | { type: "card"; draggableId: string };
 
 const kanbanColumnGroup = "kanban-columns";
 const kanbanCardGroup = "kanban-cards";
@@ -118,29 +118,29 @@ export function mountKanbanExample(root: HTMLElement): () => void {
       ),
     ],
     dragOverlay: createDragOverlay,
-    onDragStart({ itemId }) {
-      activeDrag = getActiveDrag(itemId, kanbanState);
+    onDragStart({ draggableId }) {
+      activeDrag = getActiveDrag(draggableId, kanbanState);
       updateDraggingClasses();
     },
     onDragEnd() {
       activeDrag = null;
       updateDraggingClasses();
     },
-    onDrop({ itemId }, { getDropPlacement }) {
+    onDrop({ draggableId }, { getDropPlacement }) {
       // Example drop behavior: translate package placement into app data.
-      const placement = getDropPlacement(itemId);
+      const placement = getDropPlacement(draggableId);
 
       if (!placement) {
         return;
       }
 
-      if (kanbanState.columns.some((column) => column.id === itemId)) {
+      if (kanbanState.columns.some((column) => column.id === draggableId)) {
         kanbanState = moveKanbanColumn(kanbanState, placement);
         renderBoard();
         return;
       }
 
-      if (kanbanState.cardsById[itemId]) {
+      if (kanbanState.cardsById[draggableId]) {
         kanbanState = moveKanbanCard(kanbanState, placement);
         renderBoard();
       }
@@ -177,11 +177,11 @@ export function mountKanbanExample(root: HTMLElement): () => void {
     dragState,
   }: DragControllerOverlayInput): HTMLElement | null {
     if (dragState.group === kanbanColumnGroup) {
-      return createColumnOverlay(dragState.itemId);
+      return createColumnOverlay(dragState.draggableId);
     }
 
     if (dragState.group === kanbanCardGroup) {
-      return createCardOverlay(dragState.itemId);
+      return createCardOverlay(dragState.draggableId);
     }
 
     return null;
@@ -237,7 +237,7 @@ export function mountKanbanExample(root: HTMLElement): () => void {
         element.classList.toggle(
           "kanbanColumnDragging",
           activeDrag?.type === "column" &&
-            activeDrag.itemId === element.dataset.kanbanColumnId,
+            activeDrag.draggableId === element.dataset.kanbanColumnId,
         );
       });
 
@@ -247,7 +247,7 @@ export function mountKanbanExample(root: HTMLElement): () => void {
         element.classList.toggle(
           "kanbanCardDragging",
           activeDrag?.type === "card" &&
-            activeDrag.itemId === element.dataset.kanbanCardId,
+            activeDrag.draggableId === element.dataset.kanbanCardId,
         );
       });
   }
@@ -267,7 +267,7 @@ function createKanbanColumn(
   createSortable({
     controller,
     element,
-    itemId: column.id,
+    draggableId: column.id,
     group: kanbanColumnGroup,
     containerId: boardContainerId,
   });
@@ -329,7 +329,7 @@ function createKanbanCard(
   createSortable({
     controller,
     element,
-    itemId: card.id,
+    draggableId: card.id,
     group: kanbanCardGroup,
     containerId: columnId,
   });
@@ -355,15 +355,15 @@ function appendKanbanCardContents(
 }
 
 function getActiveDrag(
-  itemId: string,
+  draggableId: string,
   state: KanbanState,
 ): KanbanActiveDrag | null {
-  if (state.columns.some((column) => column.id === itemId)) {
-    return { type: "column", itemId };
+  if (state.columns.some((column) => column.id === draggableId)) {
+    return { type: "column", draggableId };
   }
 
-  if (state.cardsById[itemId]) {
-    return { type: "card", itemId };
+  if (state.cardsById[draggableId]) {
+    return { type: "card", draggableId };
   }
 
   return null;
@@ -400,7 +400,7 @@ function moveKanbanCard(
     ...state,
     columns: state.columns.map((column) => {
       const cardIdsWithoutMovedCard = column.cardIds.filter(
-        (cardId) => cardId !== placement.itemId,
+        (cardId) => cardId !== placement.draggableId,
       );
 
       if (column.id !== placement.containerId) {
@@ -424,7 +424,7 @@ function moveByPlacement<T>(input: {
   placement: PlacementInput;
 }): T[] {
   const item = input.items.find(
-    (currentItem) => input.getItemId(currentItem) === input.placement.itemId,
+    (currentItem) => input.getItemId(currentItem) === input.placement.draggableId,
   );
 
   if (!item) {
@@ -432,7 +432,7 @@ function moveByPlacement<T>(input: {
   }
 
   const itemsWithoutMovedItem = input.items.filter(
-    (currentItem) => input.getItemId(currentItem) !== input.placement.itemId,
+    (currentItem) => input.getItemId(currentItem) !== input.placement.draggableId,
   );
   const insertIndex = getPlacementIndex({
     ids: itemsWithoutMovedItem.map(input.getItemId),
@@ -450,7 +450,7 @@ function insertIdByPlacement(
 ): string[] {
   const nextIds = [...ids];
   const insertIndex = getPlacementIndex({ ids: nextIds, placement });
-  nextIds.splice(insertIndex, 0, placement.itemId);
+  nextIds.splice(insertIndex, 0, placement.draggableId);
 
   return nextIds;
 }
@@ -459,16 +459,16 @@ function getPlacementIndex(input: {
   ids: readonly string[];
   placement: PlacementInput;
 }): number {
-  if (input.placement.previousItemId) {
-    const previousIndex = input.ids.indexOf(input.placement.previousItemId);
+  if (input.placement.previousDraggableId) {
+    const previousIndex = input.ids.indexOf(input.placement.previousDraggableId);
 
     if (previousIndex !== -1) {
       return previousIndex + 1;
     }
   }
 
-  if (input.placement.nextItemId) {
-    const nextIndex = input.ids.indexOf(input.placement.nextItemId);
+  if (input.placement.nextDraggableId) {
+    const nextIndex = input.ids.indexOf(input.placement.nextDraggableId);
 
     if (nextIndex !== -1) {
       return nextIndex;

@@ -1,14 +1,14 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
 
 export type DragModifierSetupInput = {
-  itemId: string;
+  draggableId: string;
   group: string;
   sourceRect: DragRect;
   initialPointerPosition: DragPoint;
 };
 
 export type DragModifierTransformInput<State = unknown> = {
-  itemId: string;
+  draggableId: string;
   group: string;
   sourceRect: DragRect;
   initialPointerPosition: DragPoint;

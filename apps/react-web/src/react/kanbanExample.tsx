@@ -8,15 +8,15 @@ import {
 import { GripVertical } from "lucide-react";
 
 import {
+  centerToCenter,
   DragProvider,
+  composeRefs,
   restrictToContainer,
+  useDragHandle,
+  useDropContainer,
+  useSortable,
   type DragState,
-} from "@mk-drag-and-drop/react/drag-provider";
-import { composeRefs } from "@mk-drag-and-drop/react/compose-refs";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
-import { useDropContainer } from "@mk-drag-and-drop/react/use-drop-container";
-import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
-import { centerToCenter } from "@mk-drag-and-drop/dom";
+} from "@mk-drag-and-drop/react";
 
 type KanbanCard = {
   id: string;
@@ -36,20 +36,20 @@ type KanbanState = {
 };
 
 type PlacementInput = {
-  itemId: string;
+  draggableId: string;
   containerId: string | null;
-  previousItemId: string | null;
-  nextItemId: string | null;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
 };
 
 type KanbanActiveDrag =
   | {
       type: "column";
-      itemId: string;
+      draggableId: string;
     }
   | {
       type: "card";
-      itemId: string;
+      draggableId: string;
     };
 
 const kanbanColumnGroup = "kanban-columns";
@@ -131,21 +131,21 @@ export function KanbanExample(): ReactElement {
       dragOverlay={({ dragState }) => (
         <KanbanDragOverlay dragState={dragState} kanbanState={kanbanState} />
       )}
-      onDragStart={({ itemId }) => {
-        if (kanbanState.columns.some((column) => column.id === itemId)) {
-          setActiveDrag({ type: "column", itemId });
+      onDragStart={({ draggableId }) => {
+        if (kanbanState.columns.some((column) => column.id === draggableId)) {
+          setActiveDrag({ type: "column", draggableId });
           return;
         }
 
-        if (kanbanState.cardsById[itemId]) {
-          setActiveDrag({ type: "card", itemId });
+        if (kanbanState.cardsById[draggableId]) {
+          setActiveDrag({ type: "card", draggableId });
         }
       }}
       onDragEnd={() => {
         setActiveDrag(null);
       }}
-      onDrop={({ itemId }, { getDropPlacement }) => {
-        const placement = getDropPlacement(itemId);
+      onDrop={({ draggableId }, { getDropPlacement }) => {
+        const placement = getDropPlacement(draggableId);
 
         if (!placement) {
           return;
@@ -153,11 +153,11 @@ export function KanbanExample(): ReactElement {
 
         // Example drop behavior: translate package placement into board data.
         setKanbanState((currentState) => {
-          if (currentState.columns.some((column) => column.id === itemId)) {
+          if (currentState.columns.some((column) => column.id === draggableId)) {
             return moveKanbanColumn(currentState, placement);
           }
 
-          if (!currentState.cardsById[itemId]) {
+          if (!currentState.cardsById[draggableId]) {
             return currentState;
           }
 
@@ -184,7 +184,7 @@ function KanbanDragOverlay({
 }): ReactElement | null {
   if (dragState.group === kanbanColumnGroup) {
     const column = kanbanState.columns.find(
-      (currentColumn) => currentColumn.id === dragState.itemId,
+      (currentColumn) => currentColumn.id === dragState.draggableId,
     );
 
     if (!column) {
@@ -206,7 +206,7 @@ function KanbanDragOverlay({
     return null;
   }
 
-  const card = kanbanState.cardsById[dragState.itemId];
+  const card = kanbanState.cardsById[dragState.draggableId];
 
   if (!card) {
     return null;
@@ -274,7 +274,7 @@ function KanbanColumnView({
 }): ReactElement {
   // Package API: registers the column and its card list with the drag runtime.
   const columnSortable = useSortable({
-    itemId: column.id,
+    draggableId: column.id,
     group: kanbanColumnGroup,
     containerId: boardContainerId,
   });
@@ -288,7 +288,7 @@ function KanbanColumnView({
     <section
       {...columnSortable}
       className={
-        activeDrag?.type === "column" && activeDrag.itemId === column.id
+        activeDrag?.type === "column" && activeDrag.draggableId === column.id
           ? "kanbanColumn kanbanColumnDragging"
           : "kanbanColumn"
       }
@@ -315,7 +315,7 @@ function KanbanColumnView({
               card={card}
               columnId={column.id}
               isDragging={
-                activeDrag?.type === "card" && activeDrag.itemId === card.id
+                activeDrag?.type === "card" && activeDrag.draggableId === card.id
               }
             />
           ) : null;
@@ -337,7 +337,7 @@ function KanbanCardView({
 }): ReactElement {
   // Package API: registers this rendered card as a sortable item.
   const sortable = useSortable({
-    itemId: card.id,
+    draggableId: card.id,
     group: kanbanCardGroup,
     containerId: columnId,
   });
@@ -385,7 +385,7 @@ function moveKanbanCard(
     ...state,
     columns: state.columns.map((column) => {
       const cardIdsWithoutMovedCard = column.cardIds.filter(
-        (cardId) => cardId !== placement.itemId,
+        (cardId) => cardId !== placement.draggableId,
       );
 
       if (column.id !== placement.containerId) {
@@ -410,7 +410,7 @@ function moveByPlacement<T>(input: {
   placement: PlacementInput;
 }): T[] {
   const item = input.items.find(
-    (currentItem) => input.getItemId(currentItem) === input.placement.itemId,
+    (currentItem) => input.getItemId(currentItem) === input.placement.draggableId,
   );
 
   if (!item) {
@@ -418,7 +418,7 @@ function moveByPlacement<T>(input: {
   }
 
   const itemsWithoutMovedItem = input.items.filter(
-    (currentItem) => input.getItemId(currentItem) !== input.placement.itemId,
+    (currentItem) => input.getItemId(currentItem) !== input.placement.draggableId,
   );
   const insertIndex = getPlacementIndex({
     ids: itemsWithoutMovedItem.map(input.getItemId),
@@ -436,7 +436,7 @@ function insertIdByPlacement(
 ): string[] {
   const nextIds = [...ids];
   const insertIndex = getPlacementIndex({ ids: nextIds, placement });
-  nextIds.splice(insertIndex, 0, placement.itemId);
+  nextIds.splice(insertIndex, 0, placement.draggableId);
 
   return nextIds;
 }
@@ -445,16 +445,16 @@ function getPlacementIndex(input: {
   ids: readonly string[];
   placement: PlacementInput;
 }): number {
-  if (input.placement.previousItemId) {
-    const previousIndex = input.ids.indexOf(input.placement.previousItemId);
+  if (input.placement.previousDraggableId) {
+    const previousIndex = input.ids.indexOf(input.placement.previousDraggableId);
 
     if (previousIndex !== -1) {
       return previousIndex + 1;
     }
   }
 
-  if (input.placement.nextItemId) {
-    const nextIndex = input.ids.indexOf(input.placement.nextItemId);
+  if (input.placement.nextDraggableId) {
+    const nextIndex = input.ids.indexOf(input.placement.nextDraggableId);
 
     if (nextIndex !== -1) {
       return nextIndex;

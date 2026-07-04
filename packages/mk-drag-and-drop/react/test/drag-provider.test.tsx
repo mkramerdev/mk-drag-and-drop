@@ -3,13 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { useContext } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DragRuntime } from "@mk-drag-and-drop/dom";
+import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
 import {
-  DragContext,
   DragProvider,
   useDraggable,
   useDroppable,
 } from "../src/index.js";
+import { DragContext } from "../src/drag-context.js";
 import {
   createRect,
   dispatchPointerDown,
@@ -18,6 +18,25 @@ import {
   installMockRaf,
   stubBoundingClientRect,
 } from "./test-utils.js";
+
+function createDisposeSpyInstaller(
+  spy: () => void,
+): (runtime: DragRuntimeHandle) => void {
+  let installed = false;
+
+  return (runtime) => {
+    if (installed) {
+      return;
+    }
+
+    installed = true;
+    const dispose = runtime.dispose;
+    runtime.dispose = () => {
+      spy();
+      dispose();
+    };
+  };
+}
 
 describe("DragProvider", () => {
   afterEach(() => {
@@ -53,10 +72,11 @@ describe("DragProvider", () => {
   });
 
   it("disposes runtime on unmount", () => {
-    const disposeSpy = vi.spyOn(DragRuntime.prototype, "dispose");
+    const disposeSpy = vi.fn();
+    const installDisposeSpy = createDisposeSpyInstaller(disposeSpy);
     const { unmount } = render(
       <DragProvider>
-        <div />
+        <RuntimeProbe onRuntime={installDisposeSpy} />
       </DragProvider>,
     );
 
@@ -69,7 +89,7 @@ describe("DragProvider", () => {
     render(
       <DragProvider
         dragOverlay={({ dragState }) => (
-          <div>Overlay item {dragState.itemId}</div>
+          <div>Overlay item {dragState.draggableId}</div>
         )}
       >
         <DraggableBox />
@@ -99,7 +119,7 @@ describe("DragProvider", () => {
         keepOverlayOnDrop
         dragOverlay={({ dragState, phase, finish }) => (
           <button type="button" onClick={finish}>
-            {phase}:{dragState.itemId}
+            {phase}:{dragState.draggableId}
           </button>
         )}
       >
@@ -158,14 +178,22 @@ describe("DragProvider", () => {
   });
 });
 
-function RuntimeProbe() {
+function RuntimeProbe({
+  onRuntime,
+}: {
+  onRuntime?: (runtime: DragRuntimeHandle) => void;
+}) {
   const runtime = useContext(DragContext);
+
+  if (runtime) {
+    onRuntime?.(runtime);
+  }
 
   return <span>{runtime ? "runtime-ready" : "missing-runtime"}</span>;
 }
 
 function DraggableBox() {
-  const draggable = useDraggable({ itemId: "item-1", group: "items" });
+  const draggable = useDraggable({ draggableId: "item-1", group: "items" });
 
   return (
     <div {...draggable} data-testid="draggable">

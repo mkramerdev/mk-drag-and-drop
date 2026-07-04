@@ -9,19 +9,17 @@ import {
 } from "react";
 
 import {
+    centerToCenter,
     DragProvider,
     lockToYAxis,
-    type DragOverlayPhase,
-} from "@mk-drag-and-drop/react/drag-provider";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
-import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
-import { Menu } from "lucide-react";
-import {
-    centerToCenter,
     maxDistanceToRect,
+    useDragHandle,
+    useSortable,
+    type DragOverlayPhase,
     type DragRect,
     type SortablePlacement,
-} from "@mk-drag-and-drop/dom";
+} from "@mk-drag-and-drop/react";
+import { Menu } from "lucide-react";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
@@ -50,8 +48,8 @@ export function SortableList(): ReactElement {
       modifiers={sortableModifiers}
       targetingAlgorithm={centerToCenter}
       targetingConstraint={sortableTargetingConstraint}
-      onDragStart={({ itemId }) => {
-        setActiveItemId(itemId);
+      onDragStart={({ draggableId }) => {
+        setActiveItemId(draggableId);
         setReleaseTargetRect(null);
       }}
       onDragEnd={({ dropTarget }, { getDropTargetRect }) => {
@@ -63,8 +61,8 @@ export function SortableList(): ReactElement {
           setActiveItemId(null);
         }
       }}
-      onDrop={({ itemId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(itemId);
+      onDrop={({ draggableId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(draggableId);
 
         if (!placement) {
           return;
@@ -77,7 +75,7 @@ export function SortableList(): ReactElement {
       }}
       dragOverlay={({ dragState, phase, finish }) => (
         <SortableDragOverlay
-          itemId={dragState.itemId}
+          draggableId={dragState.draggableId}
           phase={phase}
           targetRect={releaseTargetRect}
           finish={finish}
@@ -86,11 +84,11 @@ export function SortableList(): ReactElement {
       )}
     >
       <div className="sortableParent">
-        {items.map((itemId) => (
+        {items.map((draggableId) => (
           <SortableItem
-            key={itemId}
-            itemId={itemId}
-            isDragging={activeItemId === itemId}
+            key={draggableId}
+            draggableId={draggableId}
+            isDragging={activeItemId === draggableId}
           />
         ))}
       </div>
@@ -100,13 +98,13 @@ export function SortableList(): ReactElement {
 
 // Example rendering: overlay markup and release animation are app-owned.
 function SortableDragOverlay({
-    itemId,
+    draggableId,
     phase,
     targetRect,
     finish,
     onFinish,
 }: {
-    itemId: string;
+    draggableId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
     finish: () => void;
@@ -195,23 +193,23 @@ function SortableDragOverlay({
             <div className="dragListHandle">
                 <Menu />
             </div>
-            <span>Item {itemId}</span>
+            <span>Item {draggableId}</span>
         </div>
     );
 }
 
 // Example rendering: item markup is app-owned; hooks wire it to the package.
 function SortableItem({
-    itemId,
+    draggableId,
     isDragging,
 }: {
-    itemId: string;
+    draggableId: string;
     isDragging: boolean;
 }): ReactElement {
     // Package API: registers this rendered row and handle as a sortable item.
     const sortable = useSortable({
-        itemId,
-        group: getSortableGroup(itemId),
+        draggableId,
+        group: getSortableGroup(draggableId),
     });
     const dragHandle = useDragHandle()
 
@@ -225,13 +223,13 @@ function SortableItem({
             <div {...dragHandle} className="dragListHandle">
                 <Menu />
             </div> 
-            <span>Item {itemId}</span>   
+            <span>Item {draggableId}</span>   
         </div>
     );
 }
 
-function getSortableGroup(itemId: string): string {
-    return itemId === "3" ? isolatedSortableGroup : sortableGroup;
+function getSortableGroup(draggableId: string): string {
+    return draggableId === "3" ? isolatedSortableGroup : sortableGroup;
 }
 
 // Example drop behavior: convert sortable placement into user-owned item order.
@@ -239,10 +237,10 @@ function moveItemToSortablePlacement(
     items: readonly string[],
     placement: SortablePlacement,
 ): string[] {
-    const withoutItem = items.filter((item) => item !== placement.itemId);
+    const withoutItem = items.filter((item) => item !== placement.draggableId);
 
-    if (placement.previousItemId !== null) {
-        const previousIndex = withoutItem.indexOf(placement.previousItemId);
+    if (placement.previousDraggableId !== null) {
+        const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
 
         if (previousIndex === -1) {
             return [...items];
@@ -250,13 +248,13 @@ function moveItemToSortablePlacement(
 
         return [
             ...withoutItem.slice(0, previousIndex + 1),
-            placement.itemId,
+            placement.draggableId,
             ...withoutItem.slice(previousIndex + 1),
         ];
     }
 
-    if (placement.nextItemId !== null) {
-        const nextIndex = withoutItem.indexOf(placement.nextItemId);
+    if (placement.nextDraggableId !== null) {
+        const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
 
         if (nextIndex === -1) {
             return [...items];
@@ -264,7 +262,7 @@ function moveItemToSortablePlacement(
 
         return [
             ...withoutItem.slice(0, nextIndex),
-            placement.itemId,
+            placement.draggableId,
             ...withoutItem.slice(nextIndex),
         ];
     }

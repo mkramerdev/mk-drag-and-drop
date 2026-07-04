@@ -48,7 +48,7 @@ describe("PointerActivationController", () => {
 
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({
-        itemId: "item-1",
+        draggableId: "item-1",
         pointerId: 1,
         initialPointerPosition: { x: 0, y: 0 },
         latestPointerPosition: { x: 0, y: 0 },
@@ -77,7 +77,7 @@ describe("PointerActivationController", () => {
 
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({
-        itemId: "item-1",
+        draggableId: "item-1",
         pointerId: 1,
         latestPointerPosition: { x: 10, y: 0 },
       }),
@@ -134,7 +134,7 @@ function createRequest() {
   const element = document.createElement("div");
 
   return {
-    itemId: "item-1",
+    draggableId: "item-1",
     group: "items",
     element,
     pointerId: 1,

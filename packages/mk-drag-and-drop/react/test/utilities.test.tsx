@@ -30,13 +30,13 @@ describe("React utilities", () => {
     const containerRef = { current: container };
     const modifier = restrictToContainer(containerRef);
     const state = modifier.setup?.({
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       sourceRect: createRect({ width: 20, height: 20 }),
       initialPointerPosition: { x: 10, y: 10 },
     });
     const transformInput: DragModifierTransformInput<typeof state> = {
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       sourceRect: createRect({ width: 20, height: 20 }),
       initialPointerPosition: { x: 10, y: 10 },
@@ -56,7 +56,7 @@ describe("React utilities", () => {
       createRect({ left: 0, top: 0, width: 100, height: 100 }),
     );
     const setupInput = {
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       sourceRect: createRect({ width: 20, height: 20 }),
       initialPointerPosition: { x: 10, y: 10 },

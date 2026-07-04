@@ -17,16 +17,16 @@ const pendingRemeasureFrames = new WeakMap<
 
 export function snapshotSortableElement(
   registry: SortableRegistry,
-  itemId: string,
+  draggableId: string,
 ): void {
-  const element = getRegisteredSortableElement(registry, itemId);
+  const element = getRegisteredSortableElement(registry, draggableId);
 
   if (!element?.parentElement) {
     return;
   }
 
   element.dataset.dndDragged = "true";
-  registry.snapshots.set(itemId, {
+  registry.snapshots.set(draggableId, {
     element,
     parent: element.parentElement,
     previousSibling: element.previousSibling,
@@ -39,34 +39,34 @@ export function snapshotSortableElement(
 }
 
 export function isSortablePreviewTarget(input: {
-  draggedItemId: string;
+  draggedDraggableId: string;
   activeDropTarget: string | null;
 }): boolean {
   return (
     input.activeDropTarget !== null &&
-    input.activeDropTarget !== input.draggedItemId
+    input.activeDropTarget !== input.draggedDraggableId
   );
 }
 
 export function moveSortablePreview(input: {
   registry: SortableRegistry;
   runtime: DomSortableRuntime;
-  draggedItemId: string;
+  draggedDraggableId: string;
   activeDropTarget: string | null;
   pointerPosition: { x: number; y: number };
 }): void {
   if (
     input.activeDropTarget === null ||
-    input.activeDropTarget === input.draggedItemId
+    input.activeDropTarget === input.draggedDraggableId
   ) {
     return;
   }
 
   const draggedElement = getRegisteredSortableElement(
     input.registry,
-    input.draggedItemId,
+    input.draggedDraggableId,
   );
-  const draggedGroup = input.registry.groups.get(input.draggedItemId);
+  const draggedGroup = input.registry.groups.get(input.draggedDraggableId);
 
   if (!draggedElement || !draggedGroup) {
     return;
@@ -90,7 +90,7 @@ export function moveSortablePreview(input: {
     remeasureSortableDropTargetGroup({
       registry: input.registry,
       runtime: input.runtime,
-      itemId: input.draggedItemId,
+      draggableId: input.draggedDraggableId,
     });
     return;
   }
@@ -102,7 +102,7 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const sortableElements = getSortableItemChildren(listElement);
+  const sortableElements = getSortableDraggableChildren(listElement);
   const draggedIndex =
     draggedElement.parentElement === listElement
       ? sortableElements.indexOf(draggedElement)
@@ -152,7 +152,7 @@ export function moveSortablePreview(input: {
   remeasureSortableDropTargetGroup({
     registry: input.registry,
     runtime: input.runtime,
-    itemId: input.draggedItemId,
+    draggableId: input.draggedDraggableId,
   });
 }
 
@@ -192,9 +192,9 @@ export function isSortablePreviewAlreadyPlaced(input: {
 
 export function restoreSortableSnapshot(
   registry: SortableRegistry,
-  itemId: string,
+  draggableId: string,
 ): boolean {
-  const snapshot = registry.snapshots.get(itemId);
+  const snapshot = registry.snapshots.get(draggableId);
 
   if (!snapshot) {
     return false;
@@ -209,16 +209,16 @@ export function restoreSortableSnapshot(
 
 export function clearSortableDraggedState(
   registry: SortableRegistry,
-  itemId: string,
+  draggableId: string,
 ): void {
   const element =
-    getRegisteredSortableElement(registry, itemId) ??
-    registry.snapshots.get(itemId)?.element;
+    getRegisteredSortableElement(registry, draggableId) ??
+    registry.snapshots.get(draggableId)?.element;
 
   if (element) {
     restoreSortableDraggedAttribute({
       registry,
-      itemId,
+      draggableId,
       element,
     });
   }
@@ -227,9 +227,9 @@ export function clearSortableDraggedState(
 export function remeasureSortableDropTargetGroup(input: {
   registry: SortableRegistry;
   runtime: DomSortableRuntime;
-  itemId: string;
+  draggableId: string;
 }): void {
-  const group = input.registry.groups.get(input.itemId);
+  const group = input.registry.groups.get(input.draggableId);
 
   if (!group) {
     return;
@@ -238,11 +238,11 @@ export function remeasureSortableDropTargetGroup(input: {
   scheduleSortableDropTargetGroupRemeasure(input.runtime, group);
 }
 
-export function getSortableItemChildren(listElement: HTMLElement): HTMLElement[] {
+export function getSortableDraggableChildren(listElement: HTMLElement): HTMLElement[] {
   return Array.from(listElement.children).filter(
     (child): child is HTMLElement =>
       child instanceof HTMLElement &&
-      child.dataset.dndSortableItem !== undefined,
+      child.dataset.dndSortableDraggable !== undefined,
   );
 }
 
@@ -268,13 +268,13 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
 
   for (let index = startIndex; index < endIndex; index += 1) {
     const sibling = input.sortableElements[index];
-    const siblingItemId = getSortableItemId(input.registry, sibling);
+    const siblingDraggableId = getSortableDraggableId(input.registry, sibling);
 
-    if (!siblingItemId) {
+    if (!siblingDraggableId) {
       continue;
     }
 
-    const siblingGroup = input.registry.groups.get(siblingItemId);
+    const siblingGroup = input.registry.groups.get(siblingDraggableId);
 
     if (siblingGroup === input.draggedGroup) {
       continue;
@@ -293,13 +293,13 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
   return false;
 }
 
-function getSortableItemId(
+function getSortableDraggableId(
   registry: SortableRegistry,
   element: HTMLElement,
 ): string | null {
-  for (const [itemId, sortableElement] of registry.elements) {
+  for (const [draggableId, sortableElement] of registry.elements) {
     if (sortableElement.deref() === element) {
-      return itemId;
+      return draggableId;
     }
   }
 
@@ -393,7 +393,7 @@ function getSortableLayoutAxis(
     return "vertical";
   }
 
-  const childRects = getSortableItemChildren(parent).map((child) =>
+  const childRects = getSortableDraggableChildren(parent).map((child) =>
     child.getBoundingClientRect(),
   );
 

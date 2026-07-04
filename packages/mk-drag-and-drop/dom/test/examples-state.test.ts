@@ -11,7 +11,7 @@ describe("vanilla examples", () => {
       const source = readFileSync(new URL(file, import.meta.url), "utf8");
 
       expect(source).not.toContain("overlayItemId");
-      expect(source).toContain("dragState.itemId");
+      expect(source).toContain("dragState.draggableId");
     }
   });
 });

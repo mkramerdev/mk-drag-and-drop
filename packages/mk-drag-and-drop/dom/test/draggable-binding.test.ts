@@ -27,13 +27,13 @@ describe("createDraggable", () => {
     controller = createDragController({ onDragStart });
     const element = createMeasuredElement();
 
-    createDraggable({ controller, element, itemId: "item" });
+    createDraggable({ controller, element, draggableId: "item" });
     dispatchPointerDown(element, { pointerId: 1, clientX: 4, clientY: 5 });
 
     expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
       {
-        itemId: "item",
+        draggableId: "item",
         pointerPosition: { x: 4, y: 5 },
         sourceRect: createRect({ width: 20, height: 20 }),
       },
@@ -47,7 +47,7 @@ describe("createDraggable", () => {
     const element = createMeasuredElement();
     element.setAttribute("tabindex", "7");
 
-    createDraggable({ controller, element, itemId: "item" });
+    createDraggable({ controller, element, draggableId: "item" });
 
     expect(element.getAttribute("tabindex")).toBe("0");
 
@@ -55,7 +55,7 @@ describe("createDraggable", () => {
 
     expect(controller.runtime.isDragging).toBe(true);
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: "item" }),
+      expect.objectContaining({ draggableId: "item" }),
       expect.any(Object),
     );
 
@@ -69,7 +69,7 @@ describe("createDraggable", () => {
     });
     const element = createMeasuredElement();
 
-    createDraggable({ controller, element, itemId: "item" });
+    createDraggable({ controller, element, draggableId: "item" });
 
     expect(element.hasAttribute("tabindex")).toBe(false);
 
@@ -83,7 +83,7 @@ describe("createDraggable", () => {
     controller = createDragController();
     const element = createMeasuredElement();
 
-    const result = createDraggable({ controller, element, itemId: "item" });
+    const result = createDraggable({ controller, element, draggableId: "item" });
 
     expect(result).toBeUndefined();
   });
@@ -94,7 +94,7 @@ describe("createDraggable", () => {
     const element = createMeasuredElement();
     element.setAttribute("tabindex", "2");
 
-    createDraggable({ controller, element, itemId: "item" });
+    createDraggable({ controller, element, draggableId: "item" });
     controller.dispose();
 
     expect(element.getAttribute("tabindex")).toBe("2");

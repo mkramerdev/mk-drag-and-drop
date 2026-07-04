@@ -9,18 +9,16 @@ import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 
 import {
   DragProvider,
+  getDistanceToRect,
   useRemeasureDropTargets,
+  useDragHandle,
+  useDraggable,
+  useDroppable,
+  useSortable,
   type DragState,
   type SortablePlacement,
-} from "@mk-drag-and-drop/react/drag-provider";
-import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
-import { useDraggable } from "@mk-drag-and-drop/react/use-draggable";
-import { useDroppable } from "@mk-drag-and-drop/react/use-droppable";
-import { useSortable } from "@mk-drag-and-drop/react/use-sortable";
-import {
-  getDistanceToRect,
   type TargetingConstraint,
-} from "@mk-drag-and-drop/dom";
+} from "@mk-drag-and-drop/react";
 
 type ParentItem = {
   parentId: string;
@@ -184,14 +182,14 @@ export function GroupedExample(): ReactElement {
   >(null);
 
   function handleDrop(
-    event: { itemId: string; dropTarget: string },
+    event: { draggableId: string; dropTarget: string },
     helpers: {
-      getSortablePlacement: (itemId: string) => SortablePlacement | null;
+      getSortablePlacement: (draggableId: string) => SortablePlacement | null;
     },
   ): void {
     // Example drop behavior: interpret package placement/target ids for grouped data.
-    if (parentsById[event.itemId]) {
-      const placement = helpers.getSortablePlacement(event.itemId);
+    if (parentsById[event.draggableId]) {
+      const placement = helpers.getSortablePlacement(event.draggableId);
 
       if (placement) {
         setParentOrder((currentOrder) =>
@@ -202,7 +200,7 @@ export function GroupedExample(): ReactElement {
       return;
     }
 
-    if (!childrenById[event.itemId]) {
+    if (!childrenById[event.draggableId]) {
       return;
     }
 
@@ -224,7 +222,7 @@ export function GroupedExample(): ReactElement {
       return;
     }
 
-    const child = childrenById[event.itemId];
+    const child = childrenById[event.draggableId];
     const nextChildOrder = moveChildInOrder({
       child,
       targetParentId: parsedTarget.parentId,
@@ -256,9 +254,9 @@ export function GroupedExample(): ReactElement {
           childOrder={childOrder}
         />
       )}
-      onDragStart={({ itemId }) => {
+      onDragStart={({ draggableId }) => {
         clearActiveGroupedDropTargets(rootRef.current);
-        setActiveDraggedParentId(parentsById[itemId] ? itemId : null);
+        setActiveDraggedParentId(parentsById[draggableId] ? draggableId : null);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
         updateActiveGroupedDropTarget({
@@ -326,7 +324,7 @@ function GroupedDragOverlay({
   }
 
   if (dragState.group === groupedParentGroup) {
-    const parent = parentsById[dragState.itemId];
+    const parent = parentsById[dragState.draggableId];
     const children = parent
       ? getChildrenForParent({
           parentId: parent.parentId,
@@ -348,7 +346,7 @@ function GroupedDragOverlay({
     );
   }
 
-  const child = childrenById[dragState.itemId];
+  const child = childrenById[dragState.draggableId];
 
   return (
     <div className="groupedDragOverlay groupedChildDragOverlay">
@@ -378,7 +376,7 @@ function GroupedParentBlock({
 }): ReactElement {
   // Package API: parent rows are sortable and also accept child drops.
   const sortable = useSortable({
-    itemId: parent.parentId,
+    draggableId: parent.parentId,
     group: groupedParentGroup,
   });
   const dragHandle = useDragHandle<HTMLButtonElement>();
@@ -517,7 +515,7 @@ function GroupedChildDropzoneLine({
 function GroupedChildRow({ child }: { child: ChildItem }): ReactElement {
   // Package API: registers this rendered child row and handle as draggable.
   const draggable = useDraggable({
-    itemId: child.childId,
+    draggableId: child.childId,
     group: groupedChildGroup,
   });
   const dragHandle = useDragHandle<HTMLButtonElement>();
@@ -556,13 +554,13 @@ function reorderParentOrder(
   placement: SortablePlacement,
 ): string[] {
   const withoutDraggedParent = parentOrder.filter(
-    (parentId) => parentId !== placement.itemId,
+    (parentId) => parentId !== placement.draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
 
-  if (placement.previousItemId) {
+  if (placement.previousDraggableId) {
     const previousIndex = withoutDraggedParent.indexOf(
-      placement.previousItemId,
+      placement.previousDraggableId,
     );
 
     if (previousIndex === -1) {
@@ -570,8 +568,8 @@ function reorderParentOrder(
     }
 
     insertIndex = previousIndex + 1;
-  } else if (placement.nextItemId) {
-    const nextIndex = withoutDraggedParent.indexOf(placement.nextItemId);
+  } else if (placement.nextDraggableId) {
+    const nextIndex = withoutDraggedParent.indexOf(placement.nextDraggableId);
 
     if (nextIndex === -1) {
       return parentOrder;
@@ -580,7 +578,7 @@ function reorderParentOrder(
     insertIndex = nextIndex;
   }
 
-  return insertIntoArray(withoutDraggedParent, insertIndex, placement.itemId);
+  return insertIntoArray(withoutDraggedParent, insertIndex, placement.draggableId);
 }
 
 // Example drop behavior: move child ids and parent ownership in demo data.

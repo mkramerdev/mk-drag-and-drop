@@ -1,10 +1,11 @@
 import type { DragController } from "../controller/create-drag-controller.js";
+import { getControllerRuntime } from "../controller/controller-internals.js";
 import { createDomDraggable } from "./create-draggable.js";
 
 export type CreateDraggableInput = {
   controller: DragController;
   element: HTMLElement;
-  itemId: string;
+  draggableId: string;
   group?: string;
 };
 
@@ -12,9 +13,10 @@ const defaultDraggableGroup = "default";
 
 export function createDraggable(input: CreateDraggableInput): void {
   const elementRef = new WeakRef(input.element);
+  const runtime = getControllerRuntime(input.controller);
   const behavior = createDomDraggable({
-    runtime: input.controller.runtime,
-    itemId: input.itemId,
+    runtime,
+    draggableId: input.draggableId,
     group: input.group ?? defaultDraggableGroup,
     getElement: () => elementRef.deref() ?? null,
   });
@@ -62,5 +64,5 @@ export function createDraggable(input: CreateDraggableInput): void {
     }
   };
 
-  input.controller.runtime.onDispose(cleanup);
+  runtime.onDispose(cleanup);
 }

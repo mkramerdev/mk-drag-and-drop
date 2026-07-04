@@ -44,7 +44,7 @@ export function createActiveDragModifiers(input: {
 
 export function applyDragModifiers(input: {
   activeModifiers: readonly ActiveDragModifier[];
-  itemId: string;
+  draggableId: string;
   group: string;
   sourceRect: DragRect;
   initialPointerPosition: DragPoint;
@@ -62,7 +62,7 @@ export function applyDragModifiers(input: {
     });
 
     pointerPosition = activeModifier.transform({
-      itemId: input.itemId,
+      draggableId: input.draggableId,
       group: input.group,
       sourceRect: input.sourceRect,
       initialPointerPosition: input.initialPointerPosition,

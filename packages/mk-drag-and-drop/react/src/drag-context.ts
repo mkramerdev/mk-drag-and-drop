@@ -1,5 +1,5 @@
 import { createContext } from "react";
 
-import type { DragRuntime } from "@mk-drag-and-drop/dom";
+import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
 
-export const DragContext = createContext<DragRuntime | null>(null);
+export const DragContext = createContext<DragRuntimeHandle | null>(null);

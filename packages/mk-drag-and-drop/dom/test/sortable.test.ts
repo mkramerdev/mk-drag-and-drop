@@ -48,7 +48,7 @@ describe("createDomSortable", () => {
     const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
     const sortable = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       getElement: () => item,
     });
@@ -73,7 +73,7 @@ describe("createDomSortable", () => {
     const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
     const sortable = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       containerId: "column-1",
       getElement: () => item,
@@ -106,7 +106,7 @@ describe("createDomSortable", () => {
 
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
     expect(a.dataset.dndDragged).toBeUndefined();
-    expect(a.dataset.dndSortableItem).toBe("true");
+    expect(a.dataset.dndSortableDraggable).toBe("true");
   });
 
   it("restores snapshot position without falling back to end when the original next sibling is removed", () => {
@@ -141,8 +141,8 @@ describe("createDomSortable", () => {
     const { isolated, behaviors } = createMixedGroupSortableList();
     let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getSortablePlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getSortablePlacement(draggableId);
       },
     });
 
@@ -174,8 +174,8 @@ describe("createDomSortable", () => {
     const { a, c } = rows;
     let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getSortablePlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getSortablePlacement(draggableId);
       },
     });
 
@@ -237,38 +237,38 @@ describe("createDomSortable", () => {
     const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
     const sortable = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       getElement: () => item,
     });
 
     sortable.setElement(item);
-    expect(item.dataset.dndSortableItem).toBe("true");
+    expect(item.dataset.dndSortableDraggable).toBe("true");
 
     sortable.cleanup();
 
-    expect(item.dataset.dndSortableItem).toBeUndefined();
+    expect(item.dataset.dndSortableDraggable).toBeUndefined();
     expect(item.dataset.dndDragged).toBeUndefined();
     expect(runtime.getDropTargetRect("a")).toBeNull();
   });
 
   it("restores prior internal sortable attribute values on behavior cleanup", () => {
     const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
-    item.setAttribute("data-dnd-sortable-item", "custom-sortable");
+    item.setAttribute("data-dnd-sortable-draggable", "custom-sortable");
     item.setAttribute("data-dnd-dragged", "custom-dragged");
     const sortable = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       getElement: () => item,
     });
 
     sortable.setElement(item);
-    expect(item.getAttribute("data-dnd-sortable-item")).toBe("true");
+    expect(item.getAttribute("data-dnd-sortable-draggable")).toBe("true");
 
     sortable.cleanup();
 
-    expect(item.getAttribute("data-dnd-sortable-item")).toBe("custom-sortable");
+    expect(item.getAttribute("data-dnd-sortable-draggable")).toBe("custom-sortable");
     expect(item.getAttribute("data-dnd-dragged")).toBe("custom-dragged");
   });
 
@@ -277,8 +277,8 @@ describe("createDomSortable", () => {
     const [a, b, c] = elements;
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -291,12 +291,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: "list",
       containerId: "list",
-      previousItemId: "b",
-      nextItemId: "c",
+      previousDraggableId: "b",
+      nextDraggableId: "c",
     });
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
@@ -326,8 +326,8 @@ describe("createDomSortable", () => {
     });
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -344,12 +344,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 18 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: "left",
       containerId: "right",
-      previousItemId: "b",
-      nextItemId: "c",
+      previousDraggableId: "b",
+      nextDraggableId: "c",
     });
     expect(Array.from(left.container.children)).toEqual([left.a]);
     expect(Array.from(right.container.children)).toEqual([right.b, right.c]);
@@ -381,8 +381,8 @@ describe("createDomSortable", () => {
     });
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -400,12 +400,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 40 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "a",
       sourceContainerId: "left",
       containerId: "right",
-      previousItemId: "b",
-      nextItemId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
     });
   });
 
@@ -415,8 +415,8 @@ describe("createDomSortable", () => {
     });
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -437,12 +437,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 25, clientY: 100 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "left",
       sourceContainerId: "left",
       containerId: "left",
-      previousItemId: null,
-      nextItemId: null,
+      previousDraggableId: null,
+      nextDraggableId: null,
     });
   });
 
@@ -452,8 +452,8 @@ describe("createDomSortable", () => {
     });
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -466,12 +466,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 125, clientY: 100 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "right",
       sourceContainerId: "left",
       containerId: "right",
-      previousItemId: null,
-      nextItemId: null,
+      previousDraggableId: null,
+      nextDraggableId: null,
     });
     expect(Array.from(left.container.children)).toEqual([left.a]);
     expect(Array.from(right.container.children)).toEqual([]);
@@ -483,8 +483,8 @@ describe("createDomSortable", () => {
     });
     let placement: DropPlacement | null = null;
     configureRuntimeCallbacks({
-      onDrop: ({ itemId }, helpers) => {
-        placement = helpers.getDropPlacement(itemId);
+      onDrop: ({ draggableId }, helpers) => {
+        placement = helpers.getDropPlacement(draggableId);
       },
     });
 
@@ -497,12 +497,12 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 125, clientY: 160 });
 
     expect(placement).toEqual({
-      itemId: "a",
+      draggableId: "a",
       dropTarget: "b",
       sourceContainerId: "left",
       containerId: "right",
-      previousItemId: "b",
-      nextItemId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
     });
   });
 
@@ -558,21 +558,21 @@ describe("createDomSortable", () => {
     list.append(a, b, c);
     const behaviorA = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       containerId,
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
       runtime,
-      itemId: "b",
+      draggableId: "b",
       group: "rows",
       containerId,
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
       runtime,
-      itemId: "c",
+      draggableId: "c",
       group: "rows",
       containerId,
       getElement: () => c,
@@ -614,25 +614,25 @@ describe("createDomSortable", () => {
     list.append(a, b, c, d);
     const behaviorA = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
       runtime,
-      itemId: "b",
+      draggableId: "b",
       group: "rows",
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
       runtime,
-      itemId: "c",
+      draggableId: "c",
       group: "rows",
       getElement: () => c,
     });
     const behaviorD = createDomSortable({
       runtime,
-      itemId: "d",
+      draggableId: "d",
       group: "rows",
       getElement: () => d,
     });
@@ -671,19 +671,19 @@ describe("createDomSortable", () => {
     list.append(a, isolated, c);
     const behaviorA = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "rows",
       getElement: () => a,
     });
     const behaviorIsolated = createDomSortable({
       runtime,
-      itemId: "isolated",
+      draggableId: "isolated",
       group: "isolated-rows",
       getElement: () => isolated,
     });
     const behaviorC = createDomSortable({
       runtime,
-      itemId: "c",
+      draggableId: "c",
       group: "rows",
       getElement: () => c,
     });
@@ -747,21 +747,21 @@ describe("createDomSortable", () => {
     });
     const behaviorA = createDomSortable({
       runtime,
-      itemId: "a",
+      draggableId: "a",
       group: "cards",
       containerId: "left",
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
       runtime,
-      itemId: "b",
+      draggableId: "b",
       group: "cards",
       containerId: "right",
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
       runtime,
-      itemId: "c",
+      draggableId: "c",
       group: "cards",
       containerId: "right",
       getElement: () => c,
@@ -769,7 +769,7 @@ describe("createDomSortable", () => {
 
     leftContainer.append(a);
     rightContainer.append(
-      ...input.rightItems.map((itemId) => (itemId === "b" ? b : c)),
+      ...input.rightItems.map((draggableId) => (draggableId === "b" ? b : c)),
     );
     containerLeftBehavior.setElement(leftContainer);
     containerRightBehavior.setElement(rightContainer);
@@ -802,9 +802,9 @@ describe("createDomSortable", () => {
   }
 });
 
-function createSortableElement(itemId: string, rect: ReturnType<typeof createRect>) {
+function createSortableElement(draggableId: string, rect: ReturnType<typeof createRect>) {
   const element = document.createElement("div");
-  element.dataset.itemId = itemId;
+  element.dataset.draggableId = draggableId;
   document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;

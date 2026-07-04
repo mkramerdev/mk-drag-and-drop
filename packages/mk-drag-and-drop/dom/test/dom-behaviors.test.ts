@@ -19,7 +19,7 @@ describe("DOM behaviors", () => {
     const runtime = createDraggableRuntime();
     const draggable = createDomDraggable({
       runtime,
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       getElement: () => element,
     });
@@ -49,7 +49,7 @@ describe("DOM behaviors", () => {
     const runtime = createDraggableRuntime();
     const draggable = createDomDraggable({
       runtime,
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       getElement: () => element,
     });
@@ -72,7 +72,7 @@ describe("DOM behaviors", () => {
     const runtime = createDraggableRuntime();
     const draggable = createDomDraggable({
       runtime,
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       getElement: () => element,
     });

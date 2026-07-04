@@ -89,7 +89,7 @@ describe("createDragController", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: "item" }),
+      expect.objectContaining({ draggableId: "item" }),
       expect.objectContaining({
         getDropPlacement: expect.any(Function),
         getSortablePlacement: expect.any(Function),
@@ -97,11 +97,11 @@ describe("createDragController", () => {
       }),
     );
     expect(onDragEnd).toHaveBeenCalledWith(
-      { itemId: "item", dropTarget: "target" },
+      { draggableId: "item", dropTarget: "target" },
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { itemId: "item", dropTarget: "target" },
+      { draggableId: "item", dropTarget: "target" },
       expect.any(Object),
     );
 
@@ -198,7 +198,7 @@ describe("createDragController", () => {
     expect(overlayCalls.at(-1)).toMatchObject({
       phase: "dragging",
       dragState: {
-        itemId: "item",
+        draggableId: "item",
         group: "items",
       },
     });
@@ -208,7 +208,7 @@ describe("createDragController", () => {
     const raf = installMockRaf();
     const overlayCalls: Array<{
       phase: DragControllerOverlayInput["phase"];
-      itemId: string;
+      draggableId: string;
       group: string;
     }> = [];
     const target = createElementWithRect(
@@ -219,7 +219,7 @@ describe("createDragController", () => {
       dragOverlay: ({ dragState, phase }) => {
         overlayCalls.push({
           phase,
-          itemId: dragState.itemId,
+          draggableId: dragState.draggableId,
           group: dragState.group,
         });
         const element = document.createElement("div");
@@ -238,7 +238,7 @@ describe("createDragController", () => {
       overlayCalls.filter((call) => call.phase === "released").at(-1),
     ).toEqual({
       phase: "released",
-      itemId: "item",
+      draggableId: "item",
       group: "items",
     });
 
@@ -313,7 +313,7 @@ function startDrag(
   pointerPosition = { x: 0, y: 0 },
 ): void {
   controller.runtime.requestDragStart({
-    itemId: "item",
+    draggableId: "item",
     group: "items",
     element,
     pointerId: 1,

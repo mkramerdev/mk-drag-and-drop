@@ -13,7 +13,7 @@ import {
 } from "@mk-drag-and-drop/dom";
 
 type TreeItem = {
-  itemId: string;
+  draggableId: string;
   parentId: string | null;
   label: string;
 };
@@ -46,7 +46,7 @@ type TreeProjection = {
 type ParsedTreeDropTarget =
   | {
       type: "inside";
-      itemId: string;
+      draggableId: string;
     }
   | {
       type: "children";
@@ -108,16 +108,16 @@ const treeTargetingConstraint: TargetingConstraint = ({
 
 // Example state: seed tree data owned by the app.
 const seedItems: TreeItem[] = [
-  { itemId: "design", parentId: null, label: "Design" },
-  { itemId: "research", parentId: "design", label: "Research" },
-  { itemId: "components", parentId: "design", label: "Components" },
-  { itemId: "buttons", parentId: "components", label: "Buttons" },
-  { itemId: "menus", parentId: "components", label: "Menus" },
-  { itemId: "engineering", parentId: null, label: "Engineering" },
-  { itemId: "api", parentId: "engineering", label: "API" },
-  { itemId: "runtime", parentId: "engineering", label: "Runtime" },
-  { itemId: "targeting", parentId: "runtime", label: "Targeting" },
-  { itemId: "release", parentId: null, label: "Release" },
+  { draggableId: "design", parentId: null, label: "Design" },
+  { draggableId: "research", parentId: "design", label: "Research" },
+  { draggableId: "components", parentId: "design", label: "Components" },
+  { draggableId: "buttons", parentId: "components", label: "Buttons" },
+  { draggableId: "menus", parentId: "components", label: "Menus" },
+  { draggableId: "engineering", parentId: null, label: "Engineering" },
+  { draggableId: "api", parentId: "engineering", label: "API" },
+  { draggableId: "runtime", parentId: "engineering", label: "Runtime" },
+  { draggableId: "targeting", parentId: "runtime", label: "Targeting" },
+  { draggableId: "release", parentId: null, label: "Release" },
 ];
 
 const initialExpandedItemIds = ["design", "components"];
@@ -169,9 +169,9 @@ export function mountTreeExample(root: HTMLElement): () => void {
     onDragEnd() {
       clearActiveTreeDropTargets(panel);
     },
-    onDrop({ itemId, dropTarget }) {
+    onDrop({ draggableId, dropTarget }) {
       // Example drop behavior: translate the package target into tree data.
-      const nextTreeState = moveTreeItem(treeState, itemId, dropTarget);
+      const nextTreeState = moveTreeItem(treeState, draggableId, dropTarget);
 
       if (nextTreeState !== treeState) {
         treeState = nextTreeState;
@@ -199,13 +199,13 @@ export function mountTreeExample(root: HTMLElement): () => void {
     );
   }
 
-  function toggleExpanded(itemId: string): void {
+  function toggleExpanded(draggableId: string): void {
     const nextExpandedItemIds = new Set(expandedItemIds);
 
-    if (nextExpandedItemIds.has(itemId)) {
-      nextExpandedItemIds.delete(itemId);
+    if (nextExpandedItemIds.has(draggableId)) {
+      nextExpandedItemIds.delete(draggableId);
     } else {
-      nextExpandedItemIds.add(itemId);
+      nextExpandedItemIds.add(draggableId);
     }
 
     expandedItemIds = nextExpandedItemIds;
@@ -216,7 +216,7 @@ export function mountTreeExample(root: HTMLElement): () => void {
   function createTreeDragOverlay({
     dragState,
   }: DragControllerOverlayInput): HTMLElement | null {
-    const label = getTreeItemLabel(treeState, dragState.itemId);
+    const label = getTreeItemLabel(treeState, dragState.draggableId);
 
     if (!label) {
       return null;
@@ -242,9 +242,9 @@ export function mountTreeExample(root: HTMLElement): () => void {
 function createTreeRow(
   controller: DragController,
   row: ProjectedTreeRow,
-  onToggleExpanded: (itemId: string) => void,
+  onToggleExpanded: (draggableId: string) => void,
 ): HTMLElement {
-  const targetId = getInsideTargetId(row.item.itemId);
+  const targetId = getInsideTargetId(row.item.draggableId);
   const rowElement = document.createElement("div");
   rowElement.className = "treeRow";
   rowElement.dataset.treeDropTargetId = targetId;
@@ -260,7 +260,7 @@ function createTreeRow(
   createDraggable({
     controller,
     element: rowElement,
-    itemId: row.item.itemId,
+    draggableId: row.item.draggableId,
     group: treeGroup,
   });
   createDroppable({
@@ -296,7 +296,7 @@ function createTreeRow(
     );
     toggleButton.textContent = row.isExpanded ? "v" : ">";
     toggleButton.addEventListener("click", () => {
-      onToggleExpanded(row.item.itemId);
+      onToggleExpanded(row.item.draggableId);
     });
     rowElement.append(toggleButton);
   }
@@ -334,9 +334,9 @@ function createTreeDropzoneLine(
 function createTreeState(items: readonly TreeItem[]): TreeState {
   return {
     itemsById: Object.fromEntries(
-      items.map((item) => [item.itemId, item]),
+      items.map((item) => [item.draggableId, item]),
     ) as Record<string, TreeItem>,
-    orderedItemIds: items.map((item) => item.itemId),
+    orderedItemIds: items.map((item) => item.draggableId),
   };
 }
 
@@ -358,9 +358,9 @@ function createTreeProjection(
     entries.push(createDropzoneLine(parentId, 0, depth));
 
     children.forEach((item, index) => {
-      const childItems = getChildItems(childrenByParentId, item.itemId);
+      const childItems = getChildItems(childrenByParentId, item.draggableId);
       const hasChildren = childItems.length > 0;
-      const isExpanded = expandedItemIds.has(item.itemId);
+      const isExpanded = expandedItemIds.has(item.draggableId);
 
       entries.push({
         type: "row",
@@ -371,7 +371,7 @@ function createTreeProjection(
       });
 
       if (hasChildren && isExpanded) {
-        appendChildList(item.itemId, depth + 1);
+        appendChildList(item.draggableId, depth + 1);
       }
 
       entries.push(createDropzoneLine(parentId, index + 1, depth));
@@ -384,8 +384,8 @@ function createChildrenByParentId(
 ): Map<string | null, TreeItem[]> {
   const childrenByParentId = new Map<string | null, TreeItem[]>();
 
-  for (const itemId of treeState.orderedItemIds) {
-    const item = treeState.itemsById[itemId];
+  for (const draggableId of treeState.orderedItemIds) {
+    const item = treeState.itemsById[draggableId];
 
     if (!item) {
       continue;
@@ -414,18 +414,18 @@ function createDropzoneLine(
 // Example drop behavior: interpret package target ids and commit tree data.
 function moveTreeItem(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   dropTargetId: string,
 ): TreeState {
   const parsedTarget = parseTreeDropTargetId(dropTargetId);
-  const draggedItem = treeState.itemsById[itemId];
+  const draggedItem = treeState.itemsById[draggableId];
 
   if (!parsedTarget || !draggedItem) {
     return treeState;
   }
 
   if (parsedTarget.type === "inside") {
-    const targetItem = treeState.itemsById[parsedTarget.itemId];
+    const targetItem = treeState.itemsById[parsedTarget.draggableId];
 
     if (!targetItem) {
       return treeState;
@@ -433,8 +433,8 @@ function moveTreeItem(
 
     return moveTreeItemToParentIndex(
       treeState,
-      itemId,
-      targetItem.itemId,
+      draggableId,
+      targetItem.draggableId,
       0,
     );
   }
@@ -448,7 +448,7 @@ function moveTreeItem(
 
   return moveTreeItemToParentIndex(
     treeState,
-    itemId,
+    draggableId,
     parsedTarget.parentId,
     parsedTarget.index,
   );
@@ -456,16 +456,16 @@ function moveTreeItem(
 
 function moveTreeItemToParentIndex(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   parentId: string | null,
   index: number,
 ): TreeState {
-  const draggedItem = treeState.itemsById[itemId];
+  const draggedItem = treeState.itemsById[draggableId];
 
   if (
     !draggedItem ||
     index < 0 ||
-    isSelfOrDescendantParent(treeState, itemId, parentId)
+    isSelfOrDescendantParent(treeState, draggableId, parentId)
   ) {
     return treeState;
   }
@@ -480,7 +480,7 @@ function moveTreeItemToParentIndex(
   const currentSiblingIndex = getChildItems(
     childrenByParentId,
     draggedItem.parentId,
-  ).findIndex((item) => item.itemId === itemId);
+  ).findIndex((item) => item.draggableId === draggableId);
   let insertionIndex = index;
 
   if (
@@ -492,33 +492,33 @@ function moveTreeItemToParentIndex(
   }
 
   const siblingsAfterRemoval = currentParentChildren.filter(
-    (item) => item.itemId !== itemId,
+    (item) => item.draggableId !== draggableId,
   );
 
   if (insertionIndex > siblingsAfterRemoval.length) {
     return treeState;
   }
 
-  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== itemId);
+  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== draggableId);
   const beforeSibling = siblingsAfterRemoval[insertionIndex] ?? null;
   const nextOrderedItemIds = [...orderedItemIds];
 
   if (beforeSibling) {
-    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.itemId);
+    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.draggableId);
 
     if (beforeSiblingIndex === -1) {
       return treeState;
     }
 
-    nextOrderedItemIds.splice(beforeSiblingIndex, 0, itemId);
+    nextOrderedItemIds.splice(beforeSiblingIndex, 0, draggableId);
   } else {
-    nextOrderedItemIds.push(itemId);
+    nextOrderedItemIds.push(draggableId);
   }
 
   return {
     itemsById: {
       ...treeState.itemsById,
-      [itemId]: {
+      [draggableId]: {
         ...draggedItem,
         parentId,
       },
@@ -529,13 +529,13 @@ function moveTreeItemToParentIndex(
 
 function isSelfOrDescendantParent(
   treeState: TreeState,
-  itemId: string,
+  draggableId: string,
   parentId: string | null,
 ): boolean {
   let currentParentId = parentId;
 
   while (currentParentId !== null) {
-    if (currentParentId === itemId) {
+    if (currentParentId === draggableId) {
       return true;
     }
 
@@ -557,9 +557,9 @@ function parseTreeDropTargetId(
   const insidePrefix = "tree:inside:";
 
   if (isInsideTargetId(dropTargetId)) {
-    const itemId = dropTargetId.slice(insidePrefix.length);
+    const draggableId = dropTargetId.slice(insidePrefix.length);
 
-    return itemId ? { type: "inside", itemId } : null;
+    return draggableId ? { type: "inside", draggableId } : null;
   }
 
   const childrenMatch = /^tree:children:([^:]+):index:(\d+)$/.exec(
@@ -591,12 +591,12 @@ function getChildItems(
   return childrenByParentId.get(parentId) ?? [];
 }
 
-function getTreeItemLabel(treeState: TreeState, itemId: string): string {
-  return treeState.itemsById[itemId]?.label ?? "";
+function getTreeItemLabel(treeState: TreeState, draggableId: string): string {
+  return treeState.itemsById[draggableId]?.label ?? "";
 }
 
-function getInsideTargetId(itemId: string): string {
-  return `tree:inside:${itemId}`;
+function getInsideTargetId(draggableId: string): string {
+  return `tree:inside:${draggableId}`;
 }
 
 function getChildrenTargetId(parentId: string | null, index: number): string {

@@ -4,12 +4,11 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  rectToDragRect,
-  type DragOverlayPhase,
-  type DragRect,
-  type DragState,
-} from "@mk-drag-and-drop/dom";
+import type { DragRect } from "@mk-drag-and-drop/dom";
+import type {
+  DragOverlayPhase,
+  DragState,
+} from "@mk-drag-and-drop/dom/integration";
 
 export type DragOverlayInput = {
   dragState: DragState;
@@ -40,7 +39,7 @@ export function DragOverlay({
 
     const measuredElement = wrapper.firstElementChild ?? wrapper;
     onOverlayRectChange?.(
-      rectToDragRect(measuredElement.getBoundingClientRect()),
+      domRectToDragRect(measuredElement.getBoundingClientRect()),
     );
   });
 
@@ -68,4 +67,17 @@ export function DragOverlay({
       {children}
     </div>
   );
+}
+
+function domRectToDragRect(rect: DOMRectReadOnly): DragRect {
+  return {
+    x: rect.x,
+    y: rect.y,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
 }

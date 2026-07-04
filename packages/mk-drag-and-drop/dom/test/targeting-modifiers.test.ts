@@ -87,13 +87,13 @@ describe("targeting", () => {
 
 describe("modifiers", () => {
   const setupInput = {
-    itemId: "item-1",
+    draggableId: "item-1",
     group: "items",
     sourceRect: createRect({ width: 20, height: 20 }),
     initialPointerPosition: { x: 10, y: 10 },
   };
   const transformInput = {
-    itemId: "item-1",
+    draggableId: "item-1",
     group: "items",
     sourceRect: createRect({ width: 20, height: 20 }),
     initialPointerPosition: { x: 10, y: 10 },
@@ -165,7 +165,7 @@ describe("modifiers", () => {
         return cardContainer;
       }
 
-      if (input.itemId === "special") {
+      if (input.draggableId === "special") {
         return specialContainer;
       }
 
@@ -178,7 +178,7 @@ describe("modifiers", () => {
     };
     const specialSetupInput = {
       ...setupInput,
-      itemId: "special",
+      draggableId: "special",
       group: "items",
     };
 
@@ -240,7 +240,7 @@ describe("modifiers", () => {
 
     try {
       controller.runtime.requestDragStart({
-        itemId: "item-1",
+        draggableId: "item-1",
         group: "items",
         element: source,
         pointerId: 1,
@@ -283,7 +283,7 @@ describe("modifiers", () => {
 
     try {
       runtime.requestDragStart({
-        itemId: "item-1",
+        draggableId: "item-1",
         group: "items",
         element: source,
         pointerId: 1,
@@ -325,7 +325,7 @@ describe("modifiers", () => {
       })),
     };
     const setupInput = {
-      itemId: "item-1",
+      draggableId: "item-1",
       group: "items",
       sourceRect: createRect({ width: 10, height: 10 }),
       initialPointerPosition: { x: 0, y: 0 },
