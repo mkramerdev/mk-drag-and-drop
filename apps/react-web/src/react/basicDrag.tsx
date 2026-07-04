@@ -50,7 +50,7 @@ export function BasicDrag(): ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [itemContainer, setItemContainer] = useState(rootContainer.targetId);
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
-  const [overlayTargetRect, setOverlayTargetRect] = useState<DragRect | null>(
+  const [releaseTargetRect, setReleaseTargetRect] = useState<DragRect | null>(
     null,
   );
 
@@ -64,7 +64,7 @@ export function BasicDrag(): ReactElement {
   }
 
   function clearOverlayState(): void {
-    setOverlayTargetRect(null);
+    setReleaseTargetRect(null);
   }
 
   return (
@@ -72,16 +72,17 @@ export function BasicDrag(): ReactElement {
       targetingAlgorithm={pointerToRectDistance}
       targetingConstraint={basicTargetingConstraint}
       keepOverlayOnDrop
-      dragOverlay={({ phase, finish }) => (
+      dragOverlay={({ dragState, phase, finish }) => (
         <BasicDragOverlay
+            itemId={dragState.itemId}
             phase={phase}
-            targetRect={overlayTargetRect}
+            targetRect={releaseTargetRect}
             finish={finish}
             onFinish={clearOverlayState}
         />
       )}
       onDragStart={() => {
-        setOverlayTargetRect(null);
+        setReleaseTargetRect(null);
         clearActiveDroppableContainers(rootRef.current);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
@@ -91,10 +92,13 @@ export function BasicDrag(): ReactElement {
             previousDropTarget,
         });
       }}
-      onDragEnd={() => {
+      onDragEnd={({ dropTarget }, { getDropTargetRect }) => {
+        setReleaseTargetRect(
+            dropTarget ? getDropTargetRect(dropTarget) : null,
+        );
         clearActiveDroppableContainers(rootRef.current);
       }}
-      onDrop={({ itemId, dropTarget }, { getDropTargetRect }) => {
+      onDrop={({ itemId, dropTarget }) => {
         if (
             itemId !== draggableItem.itemId ||
             !isKnownDropTarget(dropTarget)
@@ -106,7 +110,6 @@ export function BasicDrag(): ReactElement {
             return;
         }
 
-        setOverlayTargetRect(getDropTargetRect(dropTarget));
         setMovePreview({
             fromTargetId: itemContainer,
             toTargetId: dropTarget,
@@ -156,11 +159,13 @@ export function BasicDrag(): ReactElement {
 }
 
 function BasicDragOverlay({
+    itemId,
     phase,
     targetRect,
     finish,
     onFinish,
 }: {
+    itemId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
     finish: () => void;
@@ -248,7 +253,7 @@ function BasicDragOverlay({
             <div className="dragListHandle">
                 <Menu />
             </div>
-            <span>{draggableItem.label}</span>
+            <span>{getDraggableItemLabel(itemId)}</span>
         </div>
     );
 }
@@ -402,4 +407,8 @@ function getRectCenterX(rect: Pick<DOMRect, "left" | "width">): number {
 
 function getRectCenterY(rect: Pick<DOMRect, "top" | "height">): number {
     return rect.top + rect.height / 2;
+}
+
+function getDraggableItemLabel(itemId: string): string {
+    return itemId === draggableItem.itemId ? draggableItem.label : "";
 }

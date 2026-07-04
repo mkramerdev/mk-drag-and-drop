@@ -67,7 +67,11 @@ describe("DragProvider", () => {
 
   it("renders overlay during drag", () => {
     render(
-      <DragProvider dragOverlay={() => <div>Overlay item</div>}>
+      <DragProvider
+        dragOverlay={({ dragState }) => (
+          <div>Overlay item {dragState.itemId}</div>
+        )}
+      >
         <DraggableBox />
       </DragProvider>,
     );
@@ -84,7 +88,7 @@ describe("DragProvider", () => {
       });
     });
 
-    expect(screen.getByText("Overlay item")).toBeInTheDocument();
+    expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
   });
 
   it("supports released overlay phase and finish", async () => {
@@ -93,9 +97,9 @@ describe("DragProvider", () => {
     render(
       <DragProvider
         keepOverlayOnDrop
-        dragOverlay={({ phase, finish }) => (
+        dragOverlay={({ dragState, phase, finish }) => (
           <button type="button" onClick={finish}>
-            {phase}
+            {phase}:{dragState.itemId}
           </button>
         )}
       >
@@ -123,11 +127,15 @@ describe("DragProvider", () => {
       dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
     });
 
-    expect(screen.getByRole("button", { name: "released" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "released:item-1" }),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "released" }));
+    await user.click(screen.getByRole("button", { name: "released:item-1" }));
 
-    expect(screen.queryByRole("button", { name: "released" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "released:item-1" }),
+    ).toBeNull();
     raf.restore();
   });
 

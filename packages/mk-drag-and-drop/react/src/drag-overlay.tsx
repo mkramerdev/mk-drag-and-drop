@@ -12,6 +12,7 @@ import {
 } from "@mk-drag-and-drop/dom";
 
 export type DragOverlayInput = {
+  dragState: DragState;
   phase: DragOverlayPhase;
   finish: () => void;
 };

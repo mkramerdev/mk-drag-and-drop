@@ -25,6 +25,7 @@ export type ActiveDragInput = "pointer" | "keyboard";
 
 export type DragState = {
   itemId: string;
+  group: DragGroup;
   sourceRect: DragRect;
   startPointerPosition: Point;
   pointerPosition: Point;

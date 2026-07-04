@@ -10,6 +10,7 @@ import { GripVertical } from "lucide-react";
 import {
   DragProvider,
   restrictToContainer,
+  type DragState,
 } from "@mk-drag-and-drop/react/drag-provider";
 import { composeRefs } from "@mk-drag-and-drop/react/compose-refs";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
@@ -41,7 +42,7 @@ type PlacementInput = {
   nextItemId: string | null;
 };
 
-type KanbanOverlayDrag =
+type KanbanActiveDrag =
   | {
       type: "column";
       itemId: string;
@@ -107,7 +108,7 @@ export function KanbanExample(): ReactElement {
   const [kanbanState, setKanbanState] = useState<KanbanState>(
     () => initialKanbanState,
   );
-  const [overlayDrag, setOverlayDrag] = useState<KanbanOverlayDrag | null>(
+  const [activeDrag, setActiveDrag] = useState<KanbanActiveDrag | null>(
     null,
   );
   const modifiers = useMemo(
@@ -123,21 +124,21 @@ export function KanbanExample(): ReactElement {
     <DragProvider
       targetingAlgorithm={centerToCenter}
       modifiers={modifiers}
-      dragOverlay={() => (
-        <KanbanDragOverlay overlayDrag={overlayDrag} kanbanState={kanbanState} />
+      dragOverlay={({ dragState }) => (
+        <KanbanDragOverlay dragState={dragState} kanbanState={kanbanState} />
       )}
       onDragStart={({ itemId }) => {
         if (kanbanState.columns.some((column) => column.id === itemId)) {
-          setOverlayDrag({ type: "column", itemId });
+          setActiveDrag({ type: "column", itemId });
           return;
         }
 
         if (kanbanState.cardsById[itemId]) {
-          setOverlayDrag({ type: "card", itemId });
+          setActiveDrag({ type: "card", itemId });
         }
       }}
       onDragEnd={() => {
-        setOverlayDrag(null);
+        setActiveDrag(null);
       }}
       onDrop={({ itemId }, { getDropPlacement }) => {
         const placement = getDropPlacement(itemId);
@@ -161,7 +162,7 @@ export function KanbanExample(): ReactElement {
     >
       <KanbanBoardView
         kanbanState={kanbanState}
-        overlayDrag={overlayDrag}
+        activeDrag={activeDrag}
         boardRef={boardRef}
       />
     </DragProvider>
@@ -169,19 +170,15 @@ export function KanbanExample(): ReactElement {
 }
 
 function KanbanDragOverlay({
-  overlayDrag,
+  dragState,
   kanbanState,
 }: {
-  overlayDrag: KanbanOverlayDrag | null;
+  dragState: DragState;
   kanbanState: KanbanState;
 }): ReactElement | null {
-  if (!overlayDrag) {
-    return null;
-  }
-
-  if (overlayDrag.type === "column") {
+  if (dragState.group === kanbanColumnGroup) {
     const column = kanbanState.columns.find(
-      (currentColumn) => currentColumn.id === overlayDrag.itemId,
+      (currentColumn) => currentColumn.id === dragState.itemId,
     );
 
     if (!column) {
@@ -199,7 +196,11 @@ function KanbanDragOverlay({
     );
   }
 
-  const card = kanbanState.cardsById[overlayDrag.itemId];
+  if (dragState.group !== kanbanCardGroup) {
+    return null;
+  }
+
+  const card = kanbanState.cardsById[dragState.itemId];
 
   if (!card) {
     return null;
@@ -215,11 +216,11 @@ function KanbanDragOverlay({
 
 function KanbanBoardView({
   kanbanState,
-  overlayDrag,
+  activeDrag,
   boardRef,
 }: {
   kanbanState: KanbanState;
-  overlayDrag: KanbanOverlayDrag | null;
+  activeDrag: KanbanActiveDrag | null;
   boardRef: RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const boardContainer = useDropContainer({
@@ -245,7 +246,7 @@ function KanbanBoardView({
             key={column.id}
             column={column}
             cardsById={kanbanState.cardsById}
-            overlayDrag={overlayDrag}
+            activeDrag={activeDrag}
           />
         ))}
       </div>
@@ -256,11 +257,11 @@ function KanbanBoardView({
 function KanbanColumnView({
   column,
   cardsById,
-  overlayDrag,
+  activeDrag,
 }: {
   column: KanbanColumn;
   cardsById: Record<string, KanbanCard>;
-  overlayDrag: KanbanOverlayDrag | null;
+  activeDrag: KanbanActiveDrag | null;
 }): ReactElement {
   const columnSortable = useSortable({
     itemId: column.id,
@@ -277,7 +278,7 @@ function KanbanColumnView({
     <section
       {...columnSortable}
       className={
-        overlayDrag?.type === "column" && overlayDrag.itemId === column.id
+        activeDrag?.type === "column" && activeDrag.itemId === column.id
           ? "kanbanColumn kanbanColumnDragging"
           : "kanbanColumn"
       }
@@ -304,7 +305,7 @@ function KanbanColumnView({
               card={card}
               columnId={column.id}
               isDragging={
-                overlayDrag?.type === "card" && overlayDrag.itemId === card.id
+                activeDrag?.type === "card" && activeDrag.itemId === card.id
               }
             />
           ) : null;

@@ -30,15 +30,15 @@ const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 const sortableModifiers = [lockToYAxis()] as const;
 
 export function SortableList(): ReactElement {
-  const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
-  const [overlayTargetRect, setOverlayTargetRect] = useState<DragRect | null>(
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [releaseTargetRect, setReleaseTargetRect] = useState<DragRect | null>(
     null,
   );
   const [items, setItems] = useState(defaultItems);
 
   function clearOverlayState(): void {
-    setOverlayItemId(null);
-    setOverlayTargetRect(null);
+    setActiveItemId(null);
+    setReleaseTargetRect(null);
   }
 
   return (
@@ -48,13 +48,20 @@ export function SortableList(): ReactElement {
       targetingAlgorithm={centerToCenter}
       targetingConstraint={sortableTargetingConstraint}
       onDragStart={({ itemId }) => {
-        setOverlayItemId(itemId);
-        setOverlayTargetRect(null);
+        setActiveItemId(itemId);
+        setReleaseTargetRect(null);
       }}
-      onDrop={({ itemId }, { getDropTargetRect, getSortablePlacement }) => {
-        const placement = getSortablePlacement(itemId);
+      onDragEnd={({ dropTarget }, { getDropTargetRect }) => {
+        setReleaseTargetRect(
+          dropTarget ? getDropTargetRect(dropTarget) : null,
+        );
 
-        setOverlayTargetRect(getDropTargetRect(itemId));
+        if (!dropTarget) {
+          setActiveItemId(null);
+        }
+      }}
+      onDrop={({ itemId }, { getSortablePlacement }) => {
+        const placement = getSortablePlacement(itemId);
 
         if (!placement) {
           return;
@@ -64,11 +71,11 @@ export function SortableList(): ReactElement {
           moveItemToSortablePlacement(currentItems, placement),
         );
       }}
-      dragOverlay={({ phase, finish }) => (
+      dragOverlay={({ dragState, phase, finish }) => (
         <SortableDragOverlay
-          itemId={overlayItemId}
+          itemId={dragState.itemId}
           phase={phase}
-          targetRect={overlayTargetRect}
+          targetRect={releaseTargetRect}
           finish={finish}
           onFinish={clearOverlayState}
         />
@@ -79,7 +86,7 @@ export function SortableList(): ReactElement {
           <SortableItem
             key={itemId}
             itemId={itemId}
-            isDragging={overlayItemId === itemId}
+            isDragging={activeItemId === itemId}
           />
         ))}
       </div>
@@ -94,7 +101,7 @@ function SortableDragOverlay({
     finish,
     onFinish,
 }: {
-    itemId: string | null;
+    itemId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
     finish: () => void;
@@ -182,7 +189,7 @@ function SortableDragOverlay({
             <div className="dragListHandle">
                 <Menu />
             </div>
-            <span>{itemId ? `Item ${itemId}` : ""}</span>
+            <span>Item {itemId}</span>
         </div>
     );
 }

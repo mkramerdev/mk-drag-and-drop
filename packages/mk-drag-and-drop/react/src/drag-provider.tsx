@@ -192,6 +192,7 @@ export function DragProvider({
           onOverlayRectChange={handleOverlayRectChange}
         >
           {dragOverlay({
+            dragState: overlayState.dragState,
             phase: overlayState.phase,
             finish: finishOverlay,
           })}

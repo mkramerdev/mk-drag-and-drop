@@ -28,17 +28,23 @@ const droppableContainer = {
 
 const basicGroup = "basic";
 const dragHandleText = "\u2630";
-const releaseFallbackMs = 260;
+
+type MovePreviewState = {
+  element: HTMLElement;
+  cleanup: () => void;
+};
+
+type ReleaseOverlayState = {
+  animationFrameId: number | null;
+  animations: Animation[];
+  active: boolean;
+};
 
 export function mountBasicDrag(root: HTMLElement): () => void {
   const pendingAnimationFrames = new Set<number>();
-  const pendingTimeouts = new Set<number>();
-  const eventListenerCleanups = new Set<() => void>();
-  const dropzones = new Map<string, HTMLElement>();
   let overlayTargetRect: DragRect | null = null;
-  let releaseOverlayCleanup: (() => void) | null = null;
-  let movePreviewCleanup: (() => void) | null = null;
-  let item: HTMLElement;
+  let releaseOverlayState: ReleaseOverlayState | null = null;
+  let movePreviewState: MovePreviewState | null = null;
 
   const controller = createDragController({
     targetingAlgorithm: pointerToRectDistance,
@@ -60,13 +66,27 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     },
     onDrop({ itemId: droppedItemId, dropTarget }, { getDropTargetRect }) {
       if (
-        droppedItemId !== draggableItem.itemId ||
+        droppedItemId !== "draggable" ||
         !isKnownDropTarget(dropTarget)
       ) {
         return;
       }
 
-      if (dropTarget === getItemContainerId() || movePreviewCleanup) {
+      const itemElement = root.querySelector<HTMLElement>(
+        '[data-basic-item-id="draggable"]',
+      );
+
+      if (!itemElement) {
+        return;
+      }
+
+      const isSameContainer =
+        (dropTarget === rootContainer.targetId &&
+          itemElement.parentElement === rootDropzoneElement) ||
+        (dropTarget === droppableContainer.targetId &&
+          itemElement.parentElement === targetDropzoneElement);
+
+      if (isSameContainer || movePreviewState) {
         return;
       }
 
@@ -75,75 +95,105 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     },
   });
 
-  const rootDropzone = createDropzone(
+  const rootDropzoneElement = createDropzone(
     controller,
     rootContainer.targetId,
     rootContainer.label,
   );
-  const targetDropzone = createDropzone(
+  const targetDropzoneElement = createDropzone(
     controller,
     droppableContainer.targetId,
     droppableContainer.label,
   );
-  item = createDraggableItem(controller);
+  const itemElement = createDraggableItem(controller, "draggable");
 
-  root.append(rootDropzone, targetDropzone);
-  rootDropzone.append(item);
+  root.append(rootDropzoneElement, targetDropzoneElement);
+  rootDropzoneElement.append(itemElement);
 
   return () => {
     controller.dispose();
     cleanupMovePreview();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
-    cancelPendingTimeouts();
-    removeEventListeners();
     clearActiveDropzones();
     root.replaceChildren();
   };
 
   function startMovePreview(dropTarget: string): void {
-    const targetDropzone = dropzones.get(dropTarget);
+    const itemElement = root.querySelector<HTMLElement>(
+      '[data-basic-item-id="draggable"]',
+    );
 
-    if (!targetDropzone) {
+    if (!itemElement) {
       return;
     }
 
-    const resolvedTargetDropzone = targetDropzone;
-    item.classList.add("sortableItemFadingOut");
+    const targetDropzoneElementForDrop =
+      dropTarget === rootContainer.targetId
+        ? rootDropzoneElement
+        : dropTarget === droppableContainer.targetId
+          ? targetDropzoneElement
+          : null;
+
+    if (!targetDropzoneElementForDrop) {
+      return;
+    }
+
+    const resolvedTargetDropzoneElement = targetDropzoneElementForDrop;
+    itemElement.classList.add("sortableItemFadingOut");
 
     const preview = createDraggableItemPreview(finishMovePreview);
-    resolvedTargetDropzone.append(preview.element);
-    movePreviewCleanup = () => {
-      preview.cleanup();
-      preview.element.remove();
-      item.classList.remove("sortableItemFadingOut");
-      movePreviewCleanup = null;
+    resolvedTargetDropzoneElement.append(preview.element);
+    movePreviewState = {
+      element: preview.element,
+      cleanup: preview.cleanup,
     };
 
     function finishMovePreview(): void {
-      preview.cleanup();
-      preview.element.remove();
-      item.classList.remove("sortableItemFadingOut");
-      resolvedTargetDropzone.append(item);
-      movePreviewCleanup = null;
+      finishMovePreviewToDropzone(resolvedTargetDropzoneElement);
     }
   }
 
   function cleanupMovePreview(): void {
-    movePreviewCleanup?.();
-  }
+    const state = movePreviewState;
 
-  function getItemContainerId(): string | null {
-    for (const [targetId, dropzone] of dropzones) {
-      if (item.parentElement === dropzone) {
-        return targetId;
-      }
+    if (!state) {
+      return;
     }
 
-    return null;
+    state.cleanup();
+    state.element.remove();
+    root
+      .querySelector<HTMLElement>('[data-basic-item-id="draggable"]')
+      ?.classList.remove("sortableItemFadingOut");
+    movePreviewState = null;
+  }
+
+  function finishMovePreviewToDropzone(targetDropzone: HTMLElement): void {
+    const state = movePreviewState;
+
+    if (!state) {
+      return;
+    }
+
+    state.cleanup();
+    state.element.remove();
+    const itemElement = root.querySelector<HTMLElement>(
+      '[data-basic-item-id="draggable"]',
+    );
+
+    if (!itemElement) {
+      movePreviewState = null;
+      return;
+    }
+
+    itemElement.classList.remove("sortableItemFadingOut");
+    targetDropzone.append(itemElement);
+    movePreviewState = null;
   }
 
   function createDragOverlay({
+    dragState,
     phase,
     finish,
   }: DragControllerOverlayInput): HTMLElement | null {
@@ -158,7 +208,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       phase === "released"
         ? "sortableOverlay basicDragOverlayReleasing"
         : "sortableOverlay";
-    appendItemContents(overlay, false);
+    appendItemContents(overlay, dragState.itemId, false);
 
     if (phase === "released") {
       setupReleaseOverlay(overlay, finish);
@@ -174,7 +224,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     finish: () => void,
   ): void {
     cleanupReleaseOverlay();
-
     const targetRect = overlayTargetRect;
 
     if (!targetRect) {
@@ -184,42 +233,26 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     }
 
     let completed = false;
-    let animationFrameId: number | null = null;
-    let fallbackTimeoutId: number | null = null;
-    let transitionCleanup: (() => void) | null = null;
-
-    const clearReleaseOverlay = (): void => {
-      if (animationFrameId !== null) {
-        cancelAnimationFrameId(animationFrameId);
-        animationFrameId = null;
-      }
-
-      if (fallbackTimeoutId !== null) {
-        cancelTimeoutId(fallbackTimeoutId);
-        fallbackTimeoutId = null;
-      }
-
-      transitionCleanup?.();
-      transitionCleanup = null;
-
-      if (releaseOverlayCleanup === clearReleaseOverlay) {
-        releaseOverlayCleanup = null;
-      }
+    const releaseState: ReleaseOverlayState = {
+      animationFrameId: null,
+      animations: [],
+      active: true,
     };
+    releaseOverlayState = releaseState;
 
     const completeReleaseOverlay = (): void => {
-      if (completed) {
+      if (completed || !releaseState.active) {
         return;
       }
 
       completed = true;
-      clearReleaseOverlay();
+      cleanupReleaseOverlay();
       overlayTargetRect = null;
       finish();
     };
 
-    animationFrameId = scheduleAnimationFrame(() => {
-      animationFrameId = null;
+    releaseState.animationFrameId = scheduleAnimationFrame(() => {
+      releaseState.animationFrameId = null;
 
       if (!overlay.isConnected) {
         completeReleaseOverlay();
@@ -237,33 +270,46 @@ export function mountBasicDrag(root: HTMLElement): () => void {
         return;
       }
 
-      transitionCleanup = addManagedEventListener(
-        overlay,
-        "transitionend",
-        (event) => {
-          const transitionEvent = event as TransitionEvent;
-
-          if (
-            event.target !== overlay ||
-            transitionEvent.propertyName !== "transform"
-          ) {
-            return;
-          }
-
-          completeReleaseOverlay();
-        },
-      );
-      fallbackTimeoutId = scheduleTimeout(
-        completeReleaseOverlay,
-        releaseFallbackMs,
-      );
       overlay.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
+      releaseState.animations = overlay.getAnimations();
+
+      if (releaseState.animations.length === 0) {
+        completeReleaseOverlay();
+        return;
+      }
+
+      void Promise.all(
+        releaseState.animations.map((animation) =>
+          animation.finished.catch(() => undefined),
+        ),
+      ).then(() => {
+        if (releaseState.active) {
+          completeReleaseOverlay();
+        }
+      });
     });
-    releaseOverlayCleanup = clearReleaseOverlay;
   }
 
   function cleanupReleaseOverlay(): void {
-    releaseOverlayCleanup?.();
+    const state = releaseOverlayState;
+
+    if (!state) {
+      return;
+    }
+
+    state.active = false;
+
+    if (state.animationFrameId !== null) {
+      cancelAnimationFrameId(state.animationFrameId);
+      state.animationFrameId = null;
+    }
+
+    for (const animation of state.animations) {
+      animation.cancel();
+    }
+
+    state.animations = [];
+    releaseOverlayState = null;
   }
 
   function scheduleAnimationFrame(callback: FrameRequestCallback): number {
@@ -286,48 +332,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     }
   }
 
-  function scheduleTimeout(callback: () => void, timeout: number): number {
-    const timeoutId = window.setTimeout(() => {
-      pendingTimeouts.delete(timeoutId);
-      callback();
-    }, timeout);
-    pendingTimeouts.add(timeoutId);
-    return timeoutId;
-  }
-
-  function cancelTimeoutId(timeoutId: number): void {
-    window.clearTimeout(timeoutId);
-    pendingTimeouts.delete(timeoutId);
-  }
-
-  function cancelPendingTimeouts(): void {
-    for (const timeoutId of Array.from(pendingTimeouts)) {
-      cancelTimeoutId(timeoutId);
-    }
-  }
-
-  function addManagedEventListener(
-    element: EventTarget,
-    type: string,
-    listener: EventListener,
-  ): () => void {
-    element.addEventListener(type, listener);
-
-    const cleanup = (): void => {
-      element.removeEventListener(type, listener);
-      eventListenerCleanups.delete(cleanup);
-    };
-
-    eventListenerCleanups.add(cleanup);
-    return cleanup;
-  }
-
-  function removeEventListeners(): void {
-    for (const cleanup of Array.from(eventListenerCleanups)) {
-      cleanup();
-    }
-  }
-
   function createDraggableItemPreview(onFadeInEnd: () => void): {
     element: HTMLElement;
     cleanup: () => void;
@@ -335,7 +339,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     const preview = document.createElement("div");
     preview.className =
       "sortableItem sortableItemPreview sortableItemFadingIn";
-    appendItemContents(preview, false);
+    appendItemContents(preview, draggableItem.itemId, false);
 
     const handleAnimationEnd = (event: AnimationEvent): void => {
       if (
@@ -347,15 +351,13 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 
       onFadeInEnd();
     };
-    const cleanup = addManagedEventListener(
-      preview,
-      "animationend",
-      handleAnimationEnd as EventListener,
-    );
+    preview.addEventListener("animationend", handleAnimationEnd);
 
     return {
       element: preview,
-      cleanup,
+      cleanup: () => {
+        preview.removeEventListener("animationend", handleAnimationEnd);
+      },
     };
   }
 
@@ -418,7 +420,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       targetId,
       group: basicGroup,
     });
-    dropzones.set(targetId, element);
 
     return element;
   }
@@ -426,21 +427,23 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 
 function createDraggableItem(
   controller: DragController,
+  itemId: string,
 ): HTMLElement {
   const element = document.createElement("div");
   element.className = "sortableItem";
+  element.dataset.basicItemId = itemId;
 
   const handle = document.createElement("button");
   handle.className = "dragListHandle";
   handle.type = "button";
   handle.setAttribute("aria-label", "Drag item");
   handle.textContent = dragHandleText;
-  appendItemLabel(element, handle);
+  appendItemLabel(element, handle, itemId);
 
   createDraggable({
     controller,
     element,
-    itemId: draggableItem.itemId,
+    itemId,
     group: basicGroup,
   });
   createDragHandle({ element: handle });
@@ -450,6 +453,7 @@ function createDraggableItem(
 
 function appendItemContents(
   element: HTMLElement,
+  itemId: string,
   interactiveHandle: boolean,
 ): void {
   const handle = interactiveHandle
@@ -463,14 +467,22 @@ function appendItemContents(
     handle.setAttribute("aria-label", "Drag item");
   }
 
-  appendItemLabel(element, handle);
+  appendItemLabel(element, handle, itemId);
 }
 
-function appendItemLabel(element: HTMLElement, handle: HTMLElement): void {
+function appendItemLabel(
+  element: HTMLElement,
+  handle: HTMLElement,
+  itemId: string,
+): void {
   const label = document.createElement("span");
-  label.textContent = draggableItem.label;
+  label.textContent = getDraggableItemLabel(itemId);
 
   element.append(handle, label);
+}
+
+function getDraggableItemLabel(itemId: string): string {
+  return itemId === draggableItem.itemId ? draggableItem.label : "";
 }
 
 function isKnownDropTarget(targetId: string): boolean {

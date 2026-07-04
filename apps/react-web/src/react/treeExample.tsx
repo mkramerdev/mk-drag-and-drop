@@ -134,7 +134,6 @@ export function TreeExample(): ReactElement {
   const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(
     () => new Set(initialExpandedItemIds),
   );
-  const [overlayItemId, setOverlayItemId] = useState<string | null>(null);
   const projection = useMemo(
     () => createTreeProjection(treeState, expandedItemIds),
     [expandedItemIds, treeState],
@@ -158,13 +157,12 @@ export function TreeExample(): ReactElement {
     <DragProvider
       targetingAlgorithm={treeVerticalTargeting}
       targetingConstraint={treeTargetingConstraint}
-      dragOverlay={() => (
+      dragOverlay={({ dragState }) => (
         <TreeDragOverlay
-          label={overlayItemId ? getTreeItemLabel(treeState, overlayItemId) : ""}
+          label={getTreeItemLabel(treeState, dragState.itemId)}
         />
       )}
-      onDragStart={({ itemId }) => {
-        setOverlayItemId(itemId);
+      onDragStart={() => {
         clearActiveTreeDropTargets(rootRef.current);
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
@@ -175,7 +173,6 @@ export function TreeExample(): ReactElement {
         });
       }}
       onDragEnd={() => {
-        setOverlayItemId(null);
         clearActiveTreeDropTargets(rootRef.current);
       }}
       onDrop={({ itemId, dropTarget }) => {

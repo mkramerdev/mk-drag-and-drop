@@ -10,6 +10,7 @@ import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import {
   DragProvider,
   useRemeasureDropTargets,
+  type DragState,
   type SortablePlacement,
 } from "@mk-drag-and-drop/react/drag-provider";
 import { useDragHandle } from "@mk-drag-and-drop/react/use-drag-handle";
@@ -41,16 +42,6 @@ type ParsedChildDropTarget =
       type: "index";
       parentId: string;
       index: number;
-    };
-
-type GroupedOverlayDrag =
-  | {
-      type: "parent";
-      itemId: string;
-    }
-  | {
-      type: "child";
-      itemId: string;
     };
 
 const groupedParentGroup = "grouped-parents";
@@ -188,9 +179,6 @@ export function GroupedExample(): ReactElement {
   const [activeDraggedParentId, setActiveDraggedParentId] = useState<
     string | null
   >(null);
-  const [overlayDrag, setOverlayDrag] = useState<GroupedOverlayDrag | null>(
-    null,
-  );
 
   function handleDrop(
     event: { itemId: string; dropTarget: string },
@@ -255,9 +243,9 @@ export function GroupedExample(): ReactElement {
     <DragProvider
       targetingConstraint={groupedTargetingConstraint}
       pointerConfiguration={{ activationDelay: 100 }}
-      dragOverlay={() => (
+      dragOverlay={({ dragState }) => (
         <GroupedDragOverlay
-          overlayDrag={overlayDrag}
+          dragState={dragState}
           parentsById={parentsById}
           childrenById={childrenById}
           childOrder={childOrder}
@@ -266,13 +254,6 @@ export function GroupedExample(): ReactElement {
       onDragStart={({ itemId }) => {
         clearActiveGroupedDropTargets(rootRef.current);
         setActiveDraggedParentId(parentsById[itemId] ? itemId : null);
-        setOverlayDrag(
-          parentsById[itemId]
-            ? { type: "parent", itemId }
-            : childrenById[itemId]
-              ? { type: "child", itemId }
-              : null,
-        );
       }}
       onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
         updateActiveGroupedDropTarget({
@@ -284,7 +265,6 @@ export function GroupedExample(): ReactElement {
       onDragEnd={() => {
         clearActiveGroupedDropTargets(rootRef.current);
         setActiveDraggedParentId(null);
-        setOverlayDrag(null);
       }}
       onDrop={handleDrop}
     >
@@ -322,22 +302,25 @@ export function GroupedExample(): ReactElement {
 }
 
 function GroupedDragOverlay({
-  overlayDrag,
+  dragState,
   parentsById,
   childrenById,
   childOrder,
 }: {
-  overlayDrag: GroupedOverlayDrag | null;
+  dragState: DragState;
   parentsById: Record<string, ParentItem>;
   childrenById: Record<string, ChildItem>;
   childOrder: string[];
 }): ReactElement {
-  if (!overlayDrag) {
+  if (
+    dragState.group !== groupedParentGroup &&
+    dragState.group !== groupedChildGroup
+  ) {
     return <div className="groupedDragOverlay" />;
   }
 
-  if (overlayDrag.type === "parent") {
-    const parent = parentsById[overlayDrag.itemId];
+  if (dragState.group === groupedParentGroup) {
+    const parent = parentsById[dragState.itemId];
     const children = parent
       ? getChildrenForParent({
           parentId: parent.parentId,
@@ -359,7 +342,7 @@ function GroupedDragOverlay({
     );
   }
 
-  const child = childrenById[overlayDrag.itemId];
+  const child = childrenById[dragState.itemId];
 
   return (
     <div className="groupedDragOverlay groupedChildDragOverlay">

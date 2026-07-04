@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDragController,
   type DragController,
+  type DragControllerOverlayInput,
 } from "../src/index.js";
 import {
   createRect,
@@ -177,6 +178,69 @@ describe("createDragController", () => {
     controller.finishOverlay();
 
     expect(getOverlayChild()).toBeNull();
+
+    raf.restore();
+  });
+
+  it("passes active drag state to dragOverlay", () => {
+    const overlayCalls: DragControllerOverlayInput[] = [];
+    controller = createDragController({
+      dragOverlay: (input) => {
+        overlayCalls.push(input);
+        const element = document.createElement("div");
+        element.className = "drag-overlay-child";
+        return element;
+      },
+    });
+
+    startDrag(controller, createElementWithRect());
+
+    expect(overlayCalls.at(-1)).toMatchObject({
+      phase: "dragging",
+      dragState: {
+        itemId: "item",
+        group: "items",
+      },
+    });
+  });
+
+  it("passes the same drag state to released overlays", () => {
+    const raf = installMockRaf();
+    const overlayCalls: Array<{
+      phase: DragControllerOverlayInput["phase"];
+      itemId: string;
+      group: string;
+    }> = [];
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      keepOverlayOnDrop: true,
+      dragOverlay: ({ dragState, phase }) => {
+        overlayCalls.push({
+          phase,
+          itemId: dragState.itemId,
+          group: dragState.group,
+        });
+        const element = document.createElement("div");
+        element.className = "drag-overlay-child";
+        return element;
+      },
+    });
+    controller.runtime.registerDropTarget("target", target, "items");
+
+    startDrag(controller, createElementWithRect());
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+
+    expect(
+      overlayCalls.filter((call) => call.phase === "released").at(-1),
+    ).toEqual({
+      phase: "released",
+      itemId: "item",
+      group: "items",
+    });
 
     raf.restore();
   });

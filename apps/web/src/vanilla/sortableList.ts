@@ -19,8 +19,8 @@ const sortableItemIdAttribute = "data-vanilla-sortable-item-id";
 export function mountSortableList(root: HTMLElement): () => void {
   const pendingAnimationFrames = new Set<number>();
   let items = [...defaultItems];
-  let overlayItemId: string | null = null;
-  let overlayTargetRect: DragRect | null = null;
+  let activeItemId: string | null = null;
+  let releaseTargetRect: DragRect | null = null;
   let releaseOverlayCleanup: (() => void) | null = null;
 
   const controller = createDragController({
@@ -30,23 +30,22 @@ export function mountSortableList(root: HTMLElement): () => void {
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
     onDragStart({ itemId }) {
-      overlayItemId = itemId;
-      overlayTargetRect = null;
+      activeItemId = itemId;
+      releaseTargetRect = null;
       updateItemDraggingClasses();
     },
-    onDragEnd({ dropTarget }) {
+    onDragEnd({ dropTarget }, { getDropTargetRect }) {
+      releaseTargetRect = dropTarget ? getDropTargetRect(dropTarget) : null;
+
       if (dropTarget !== null) {
         return;
       }
 
-      overlayItemId = null;
-      overlayTargetRect = null;
+      activeItemId = null;
       updateItemDraggingClasses();
     },
-    onDrop({ itemId }, { getDropTargetRect, getSortablePlacement }) {
+    onDrop({ itemId }, { getSortablePlacement }) {
       const placement = getSortablePlacement(itemId);
-
-      overlayTargetRect = getDropTargetRect(itemId);
 
       if (!placement) {
         return;
@@ -91,7 +90,7 @@ export function mountSortableList(root: HTMLElement): () => void {
       .forEach((element) => {
         element.classList.toggle(
           "sortableItemDragging",
-          element.getAttribute(sortableItemIdAttribute) === overlayItemId,
+          element.getAttribute(sortableItemIdAttribute) === activeItemId,
         );
       });
   }
@@ -99,7 +98,7 @@ export function mountSortableList(root: HTMLElement): () => void {
   function createSortableItem(itemId: string): HTMLElement {
     const element = document.createElement("div");
     element.className =
-      overlayItemId === itemId
+      activeItemId === itemId
         ? "sortableItem sortableItemDragging"
         : "sortableItem";
 
@@ -131,18 +130,10 @@ export function mountSortableList(root: HTMLElement): () => void {
     phase,
     finish,
   }: DragControllerOverlayInput): HTMLElement | null {
-    const currentOverlayItemId = overlayItemId ?? dragState.itemId;
-
-    if (!currentOverlayItemId) {
+    if (phase === "released" && !releaseTargetRect) {
       cleanupReleaseOverlay();
-      finish();
-      return null;
-    }
-
-    if (phase === "released" && !overlayTargetRect) {
-      cleanupReleaseOverlay();
-      overlayItemId = null;
-      overlayTargetRect = null;
+      activeItemId = null;
+      releaseTargetRect = null;
       finish();
       renderItems();
       return null;
@@ -153,7 +144,7 @@ export function mountSortableList(root: HTMLElement): () => void {
       phase === "released"
         ? "sortableOverlay sortableOverlayReleasing"
         : "sortableOverlay";
-    appendOverlayContents(overlay, currentOverlayItemId);
+    appendOverlayContents(overlay, dragState.itemId);
 
     if (phase === "released") {
       setupReleaseOverlay(overlay, finish);
@@ -168,13 +159,12 @@ export function mountSortableList(root: HTMLElement): () => void {
     overlay: HTMLElement,
     finish: () => void,
   ): void {
+    const targetRect = releaseTargetRect;
     cleanupReleaseOverlay();
 
-    const targetRect = overlayTargetRect;
-
     if (!targetRect) {
-      overlayItemId = null;
-      overlayTargetRect = null;
+      activeItemId = null;
+      releaseTargetRect = null;
       finish();
       renderItems();
       return;
@@ -202,6 +192,8 @@ export function mountSortableList(root: HTMLElement): () => void {
       if (releaseOverlayCleanup === clearReleaseOverlay) {
         releaseOverlayCleanup = null;
       }
+
+      releaseTargetRect = null;
     };
 
     const completeReleaseOverlay = (): void => {
@@ -211,8 +203,7 @@ export function mountSortableList(root: HTMLElement): () => void {
 
       completed = true;
       clearReleaseOverlay();
-      overlayItemId = null;
-      overlayTargetRect = null;
+      activeItemId = null;
       finish();
       renderItems();
     };

@@ -806,6 +806,7 @@ export class DragRuntime {
   private createDragState(session: DraggingSession): DragState {
     return {
       itemId: session.itemId,
+      group: session.group,
       sourceRect: session.sourceRect,
       startPointerPosition: session.startPointerPosition,
       pointerPosition: session.pointerPosition,
