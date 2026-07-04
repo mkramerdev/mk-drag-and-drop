@@ -56,6 +56,7 @@ const kanbanColumnGroup = "kanban-columns";
 const kanbanCardGroup = "kanban-cards";
 const boardContainerId = "board";
 
+// Example state: initial board data is user-owned and committed on drop.
 const initialKanbanState: KanbanState = {
   columns: [
     {
@@ -105,12 +106,14 @@ const initialKanbanState: KanbanState = {
 
 export function KanbanExample(): ReactElement {
   const boardRef = useRef<HTMLDivElement | null>(null);
+  // Example state: board data and active styling state live outside the package runtime.
   const [kanbanState, setKanbanState] = useState<KanbanState>(
     () => initialKanbanState,
   );
   const [activeDrag, setActiveDrag] = useState<KanbanActiveDrag | null>(
     null,
   );
+  // Package API: modifier constrains card drags to the rendered board element.
   const modifiers = useMemo(
     () => [
       restrictToContainer(({ group }) =>
@@ -121,6 +124,7 @@ export function KanbanExample(): ReactElement {
   );
 
   return (
+    // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
       targetingAlgorithm={centerToCenter}
       modifiers={modifiers}
@@ -147,6 +151,7 @@ export function KanbanExample(): ReactElement {
           return;
         }
 
+        // Example drop behavior: translate package placement into board data.
         setKanbanState((currentState) => {
           if (currentState.columns.some((column) => column.id === itemId)) {
             return moveKanbanColumn(currentState, placement);
@@ -169,6 +174,7 @@ export function KanbanExample(): ReactElement {
   );
 }
 
+// Example rendering: overlay markup is app-owned and derives from drag state.
 function KanbanDragOverlay({
   dragState,
   kanbanState,
@@ -214,6 +220,7 @@ function KanbanDragOverlay({
   );
 }
 
+// Example rendering: board markup is app-owned; drop-container hooks wire it to the package.
 function KanbanBoardView({
   kanbanState,
   activeDrag,
@@ -223,6 +230,7 @@ function KanbanBoardView({
   activeDrag: KanbanActiveDrag | null;
   boardRef: RefObject<HTMLDivElement | null>;
 }): ReactElement {
+  // Package API: registers the board as the column drop container.
   const boardContainer = useDropContainer({
     containerId: boardContainerId,
     group: kanbanColumnGroup,
@@ -254,6 +262,7 @@ function KanbanBoardView({
   );
 }
 
+// Example rendering: column markup is app-owned; package hooks register sortable/drop roles.
 function KanbanColumnView({
   column,
   cardsById,
@@ -263,6 +272,7 @@ function KanbanColumnView({
   cardsById: Record<string, KanbanCard>;
   activeDrag: KanbanActiveDrag | null;
 }): ReactElement {
+  // Package API: registers the column and its card list with the drag runtime.
   const columnSortable = useSortable({
     itemId: column.id,
     group: kanbanColumnGroup,
@@ -315,6 +325,7 @@ function KanbanColumnView({
   );
 }
 
+// Example rendering: card markup is app-owned; sortable hook wires it to the package.
 function KanbanCardView({
   card,
   columnId,
@@ -324,6 +335,7 @@ function KanbanCardView({
   columnId: string;
   isDragging: boolean;
 }): ReactElement {
+  // Package API: registers this rendered card as a sortable item.
   const sortable = useSortable({
     itemId: card.id,
     group: kanbanCardGroup,
@@ -341,6 +353,7 @@ function KanbanCardView({
   );
 }
 
+// Example drop behavior: move a column using package placement data.
 function moveKanbanColumn(
   state: KanbanState,
   placement: PlacementInput,
@@ -359,6 +372,7 @@ function moveKanbanColumn(
   };
 }
 
+// Example drop behavior: move a card between user-owned column arrays.
 function moveKanbanCard(
   state: KanbanState,
   placement: PlacementInput,
@@ -389,6 +403,7 @@ function moveKanbanCard(
   };
 }
 
+// Example drop behavior: shared placement helper for this demo's data shape.
 function moveByPlacement<T>(input: {
   items: readonly T[];
   getItemId: (item: T) => string;

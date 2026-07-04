@@ -8,8 +8,10 @@ import { centerToCenter, maxDistanceToRect } from "@mk-drag-and-drop/dom";
 
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
+// Example targeting: package helpers are configured with this demo's distance limit.
 const dropzoneListTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
+// Example state: the app owns list data and commits reorders on drop.
 const initialItems = [
     { itemId: "dropzone-item-1", label: "Item 1" },
     { itemId: "dropzone-item-2", label: "Item 2" },
@@ -27,9 +29,11 @@ type DropzoneLine = {
 
 export function DropzoneList(): ReactElement {
     const rootRef = useRef<HTMLDivElement | null>(null);
+    // Example state: item order is user-owned state outside the package runtime.
     const [items, setItems] = useState(initialItems);
 
     return (
+        // Package API: DragProvider owns drag lifecycle and runtime configuration.
         <DragProvider
             targetingAlgorithm= {centerToCenter}
             targetingConstraint={dropzoneListTargetingConstraint}
@@ -55,6 +59,7 @@ export function DropzoneList(): ReactElement {
                 clearActiveDropzoneLines(rootRef.current);
             }}
             onDrop={({ itemId, dropTarget }) => {
+                // Example drop behavior: translate the package drop target into list order.
                 setItems((currentItems) =>
                     moveItemToDropzone(currentItems, itemId, dropTarget),
                 );
@@ -70,6 +75,7 @@ export function DropzoneList(): ReactElement {
     );
 }
 
+// Example rendering: combines app-owned item markup with generated line targets.
 function FragmentWithDropzone({
     item,
 }: {
@@ -83,11 +89,13 @@ function FragmentWithDropzone({
     );
 }
 
+// Example rendering: item markup is app-owned; hooks wire it to the package.
 function DropzoneListItem({
     item,
 }: {
     item: DropzoneListItem;
 }): ReactElement {
+    // Package API: registers this row and handle as a draggable item.
     const draggable = useDraggable({
         itemId: item.itemId,
         group: dropzoneListGroup,
@@ -104,7 +112,9 @@ function DropzoneListItem({
     );
 }
 
+// Example rendering: line markup is app-owned; the hook registers the drop target.
 function DropzoneLineTarget({ line }: { line: DropzoneLine }): ReactElement {
+    // Package API: registers an insertion line as a drop target.
     const droppable = useDroppable({
         targetId: line.targetId,
         group: dropzoneListGroup,
@@ -121,6 +131,7 @@ function DropzoneLineTarget({ line }: { line: DropzoneLine }): ReactElement {
     );
 }
 
+// Example drop behavior: map a dropzone line id to user-owned item order.
 function moveItemToDropzone(
     items: readonly DropzoneListItem[],
     itemId: string,
@@ -159,6 +170,7 @@ function moveItemToDropzone(
     return nextItems;
 }
 
+// Example rendering: generated target ids are a demo convention for insertion lines.
 function getDropzoneLines(items: readonly DropzoneListItem[]): DropzoneLine[] {
     return [
         ...items.map((item) => getDropzoneLineBeforeItem(item.itemId)),
@@ -184,6 +196,7 @@ function getItemLabel(items: readonly DropzoneListItem[], itemId: string): strin
     return items.find((item) => item.itemId === itemId)?.label ?? "";
 }
 
+// Example styling: active target attributes drive demo CSS highlights.
 function updateActiveDropzoneLine({
     root,
     activeDropTarget,

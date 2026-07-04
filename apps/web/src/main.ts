@@ -1,7 +1,10 @@
 import "./style.css";
 import { mountBasicDrag } from "./vanilla/basicDrag";
 import { mountDropzoneList } from "./vanilla/dropzoneList";
+import { mountGroupedExample } from "./vanilla/groupedExample";
+import { mountKanbanExample } from "./vanilla/kanbanExample";
 import { mountSortableList } from "./vanilla/sortableList";
+import { mountTreeExample } from "./vanilla/treeExample";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -15,16 +18,29 @@ if (app) {
   const basicExample = document.createElement("div");
   const sortableExample = document.createElement("div");
   const dropzoneExample = document.createElement("div");
+  const kanbanExample = document.createElement("div");
+  const groupedExample = document.createElement("div");
+  const treeExample = document.createElement("div");
 
   const cleanups = [
-    mountBasicDrag(basicExample),
     mountSortableList(sortableExample),
+    mountBasicDrag(basicExample),
     mountDropzoneList(dropzoneExample),
+    mountKanbanExample(kanbanExample),
+    mountGroupedExample(groupedExample),
+    mountTreeExample(treeExample),
   ];
 
   void cleanups;
 
-  examples.append(basicExample, sortableExample, dropzoneExample);
+  examples.append(
+    sortableExample,
+    basicExample,
+    dropzoneExample,
+    kanbanExample,
+    groupedExample,
+    treeExample,
+  );
   shell.append(examples);
   app.replaceChildren(shell);
 }

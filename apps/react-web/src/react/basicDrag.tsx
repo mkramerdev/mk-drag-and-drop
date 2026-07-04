@@ -37,6 +37,7 @@ const droppableContainer = {
     targetId: "droppable",
     label: "Drop Here",
 };
+// Example targeting: package helpers are configured with this demo's distance limit.
 const basicTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 
 type DraggableItemModel = typeof draggableItem;
@@ -48,6 +49,7 @@ type MovePreview = {
 
 export function BasicDrag(): ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Example state: the app owns item location, preview state, and release animation geometry.
   const [itemContainer, setItemContainer] = useState(rootContainer.targetId);
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
   const [releaseTargetRect, setReleaseTargetRect] = useState<DragRect | null>(
@@ -68,6 +70,7 @@ export function BasicDrag(): ReactElement {
   }
 
   return (
+    // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
       targetingAlgorithm={pointerToRectDistance}
       targetingConstraint={basicTargetingConstraint}
@@ -99,6 +102,7 @@ export function BasicDrag(): ReactElement {
         clearActiveDroppableContainers(rootRef.current);
       }}
       onDrop={({ itemId, dropTarget }) => {
+        // Example drop behavior: commit the package drop result into app state.
         if (
             itemId !== draggableItem.itemId ||
             !isKnownDropTarget(dropTarget)
@@ -158,6 +162,7 @@ export function BasicDrag(): ReactElement {
   );
 }
 
+// Example rendering: overlay markup and release animation are app-owned.
 function BasicDragOverlay({
     itemId,
     phase,
@@ -171,6 +176,7 @@ function BasicDragOverlay({
     finish: () => void;
     onFinish: () => void;
 }): ReactElement {
+    // Example state: release offset exists only to animate this demo's overlay.
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const completedRef = useRef(false);
     const [releaseOffset, setReleaseOffset] = useState<{
@@ -258,6 +264,7 @@ function BasicDragOverlay({
     );
 }
 
+// Example rendering: this item UI is replaceable; hooks wire it to the package.
 function DraggableItem({
     item,
     isFadingOut,
@@ -265,6 +272,7 @@ function DraggableItem({
     item: DraggableItemModel;
     isFadingOut: boolean;
 }): ReactElement {
+    // Package API: registers this rendered element and handle as draggable.
     const draggable = useDraggable({
         itemId: item.itemId,
         group: "basic",
@@ -288,6 +296,7 @@ function DraggableItem({
     );
 }
 
+// Example rendering: transient move preview is owned by the demo, not the package.
 function DraggableItemPreview({
     item,
     onFadeInEnd,
@@ -333,6 +342,7 @@ function DroppableContainer({
     targetId: string;
     children: ReactNode;
 }): ReactElement {
+    // Package API: registers this rendered container as a drop target.
     const droppable = useDroppable({
         targetId,
         group: "basic",
@@ -350,6 +360,7 @@ function DroppableContainer({
     );
 }
 
+// Example styling: active target attributes drive demo CSS highlights.
 function updateActiveDroppableContainer({
     root,
     activeDropTarget,

@@ -26,10 +26,12 @@ import {
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
+// Example targeting: package helpers are configured with this demo's distance limit.
 const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
 const sortableModifiers = [lockToYAxis()] as const;
 
 export function SortableList(): ReactElement {
+  // Example state: the app owns item order, active styling, and release geometry.
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [releaseTargetRect, setReleaseTargetRect] = useState<DragRect | null>(
     null,
@@ -42,6 +44,7 @@ export function SortableList(): ReactElement {
   }
 
   return (
+    // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
       keepOverlayOnDrop
       modifiers={sortableModifiers}
@@ -67,6 +70,7 @@ export function SortableList(): ReactElement {
           return;
         }
 
+        // Example drop behavior: translate package sortable placement into app data.
         setItems((currentItems) =>
           moveItemToSortablePlacement(currentItems, placement),
         );
@@ -94,6 +98,7 @@ export function SortableList(): ReactElement {
   );
 }
 
+// Example rendering: overlay markup and release animation are app-owned.
 function SortableDragOverlay({
     itemId,
     phase,
@@ -107,6 +112,7 @@ function SortableDragOverlay({
     finish: () => void;
     onFinish: () => void;
 }): ReactElement {
+    // Example state: release offset exists only to animate this demo's overlay.
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const completedRef = useRef(false);
     const [releaseOffset, setReleaseOffset] = useState<{
@@ -194,6 +200,7 @@ function SortableDragOverlay({
     );
 }
 
+// Example rendering: item markup is app-owned; hooks wire it to the package.
 function SortableItem({
     itemId,
     isDragging,
@@ -201,6 +208,7 @@ function SortableItem({
     itemId: string;
     isDragging: boolean;
 }): ReactElement {
+    // Package API: registers this rendered row and handle as a sortable item.
     const sortable = useSortable({
         itemId,
         group: getSortableGroup(itemId),
@@ -226,6 +234,7 @@ function getSortableGroup(itemId: string): string {
     return itemId === "3" ? isolatedSortableGroup : sortableGroup;
 }
 
+// Example drop behavior: convert sortable placement into user-owned item order.
 function moveItemToSortablePlacement(
     items: readonly string[],
     placement: SortablePlacement,

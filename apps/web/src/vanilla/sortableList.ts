@@ -18,11 +18,13 @@ const sortableItemIdAttribute = "data-vanilla-sortable-item-id";
 
 export function mountSortableList(root: HTMLElement): () => void {
   const pendingAnimationFrames = new Set<number>();
+  // Example state: the app owns item order, active styling, and release geometry.
   let items = [...defaultItems];
   let activeItemId: string | null = null;
   let releaseTargetRect: DragRect | null = null;
   let releaseOverlayCleanup: (() => void) | null = null;
 
+  // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
     keepOverlayOnDrop: true,
     modifiers: [lockToYAxis()],
@@ -51,6 +53,7 @@ export function mountSortableList(root: HTMLElement): () => void {
         return;
       }
 
+      // Example drop behavior: translate package sortable placement into app data.
       items = reorderData(items, placement);
       renderItems();
     },
@@ -77,6 +80,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     root.replaceChildren();
   };
 
+  // Example rendering: list markup is app-owned and rerendered from data.
   function renderItems(): void {
     listElement.replaceChildren(
       ...items.map((itemId) => createSortableItem(itemId)),
@@ -84,6 +88,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     updateItemDraggingClasses();
   }
 
+  // Example styling: active item classes drive demo CSS highlights.
   function updateItemDraggingClasses(): void {
     listElement
       .querySelectorAll<HTMLElement>(`[${sortableItemIdAttribute}]`)
@@ -96,6 +101,7 @@ export function mountSortableList(root: HTMLElement): () => void {
   }
 
   function createSortableItem(itemId: string): HTMLElement {
+    // Example rendering: item markup is app-owned.
     const element = document.createElement("div");
     element.className =
       activeItemId === itemId
@@ -114,6 +120,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     element.append(handle, label);
     element.setAttribute(sortableItemIdAttribute, itemId);
 
+    // Package API: registers this DOM node and handle as sortable.
     createSortable({
       controller,
       element,
@@ -130,6 +137,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     phase,
     finish,
   }: DragControllerOverlayInput): HTMLElement | null {
+    // Example rendering: overlay markup and release animation are app-owned.
     if (phase === "released" && !releaseTargetRect) {
       cleanupReleaseOverlay();
       activeItemId = null;
@@ -274,6 +282,7 @@ export function mountSortableList(root: HTMLElement): () => void {
 
 }
 
+// Example rendering: overlay content is app-owned.
 function appendOverlayContents(element: HTMLElement, itemId: string): void {
   const handle = document.createElement("div");
   handle.className = "dragListHandle";
@@ -289,6 +298,7 @@ function getSortableGroup(itemId: string): string {
   return itemId === "3" ? isolatedSortableGroup : sortableGroup;
 }
 
+// Example drop behavior: convert sortable placement into user-owned item order.
 function reorderData(
   items: readonly string[],
   placement: SortablePlacement,

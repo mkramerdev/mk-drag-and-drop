@@ -21,6 +21,7 @@ type DropzoneLine = {
 const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
 const dragHandleText = "\u2630";
+// Example state: initial list data is user-owned and committed on drop.
 const initialItems: DropzoneItem[] = [
   { itemId: "dropzone-item-1", label: "Item 1" },
   { itemId: "dropzone-item-2", label: "Item 2" },
@@ -30,8 +31,10 @@ const initialItems: DropzoneItem[] = [
 ];
 
 export function mountDropzoneList(root: HTMLElement): () => void {
+  // Example state: the app owns item order outside the package runtime.
   let items = [...initialItems];
 
+  // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
     targetingAlgorithm: centerToCenter,
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
@@ -50,6 +53,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
       clearActiveDropzoneLines(listElement);
     },
     onDrop({ itemId, dropTarget }) {
+      // Example drop behavior: translate the package drop target into list order.
       items = reorderData(items, itemId, dropTarget);
       renderItems();
     },
@@ -75,6 +79,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
     root.replaceChildren();
   };
 
+  // Example rendering: list markup is app-owned and rerendered from data.
   function renderItems(): void {
     const children: HTMLElement[] = [];
 
@@ -90,6 +95,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   }
 
   function createDropzoneItem(item: DropzoneItem): HTMLElement {
+    // Example rendering: item markup is app-owned.
     const element = document.createElement("div");
     element.className = "dropzoneListItem";
 
@@ -104,6 +110,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
 
     element.append(handle, label);
 
+    // Package API: registers this DOM node and handle as draggable.
     createDraggable({
       controller,
       element,
@@ -116,6 +123,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   }
 
   function createDropzoneLine(line: DropzoneLine): HTMLElement {
+    // Example rendering: generated line markup is app-owned.
     const element = document.createElement("div");
     element.className = "dropzoneListLine";
     element.dataset.dropzoneLineTargetId = line.targetId;
@@ -124,6 +132,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
     indicator.className = "dropzoneListLineIndicator";
     element.append(indicator);
 
+    // Package API: registers this generated line as a drop target.
     createDroppable({
       controller,
       element,
@@ -137,6 +146,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   function createDragOverlay({
     dragState,
   }: DragControllerOverlayInput): HTMLElement | null {
+    // Example rendering: overlay markup is app-owned and derives from drag state.
     const label = getItemLabel(items, dragState.itemId);
 
     if (!label) {
@@ -159,6 +169,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   }
 }
 
+// Example drop behavior: map a generated dropzone line id to user-owned item order.
 function reorderData(
   items: readonly DropzoneItem[],
   itemId: string,
@@ -197,6 +208,7 @@ function reorderData(
   return nextItems;
 }
 
+// Example rendering: generated target ids are a demo convention for insertion lines.
 function getDropzoneLines(items: readonly DropzoneItem[]): DropzoneLine[] {
   return [
     ...items.map((item) => getDropzoneLineBeforeItem(item.itemId)),
@@ -222,6 +234,7 @@ function getItemLabel(items: readonly DropzoneItem[], itemId: string): string {
   return items.find((item) => item.itemId === itemId)?.label ?? "";
 }
 
+// Example styling: active target attributes drive demo CSS highlights.
 function updateActiveDropzoneLine({
   root,
   activeDropTarget,

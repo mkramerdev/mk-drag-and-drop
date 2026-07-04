@@ -53,6 +53,7 @@ const groupedChildTargetPrefix = "grouped:children:";
 const groupedInsideTargetMaxYDistance = 0;
 const groupedChildLineTargetMaxYDistance = 24;
 
+// Example targeting: custom rules decide which grouped drop targets are eligible.
 const groupedTargetingConstraint: TargetingConstraint = ({
   pointerPosition,
   dropTarget,
@@ -86,6 +87,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
   return true;
 };
 
+// Example state: seed data and order arrays are owned by this demo.
 const initialParentsById: Record<string, ParentItem> = {
   "parent-roadmap": {
     parentId: "parent-roadmap",
@@ -162,6 +164,7 @@ const initialChildOrder = [
 
 export function GroupedExample(): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  // Example state: parent/child data, expansion, and active styling are app-owned.
   const [parentsById] = useState<Record<string, ParentItem>>(
     () => initialParentsById,
   );
@@ -186,6 +189,7 @@ export function GroupedExample(): ReactElement {
       getSortablePlacement: (itemId: string) => SortablePlacement | null;
     },
   ): void {
+    // Example drop behavior: interpret package placement/target ids for grouped data.
     if (parentsById[event.itemId]) {
       const placement = helpers.getSortablePlacement(event.itemId);
 
@@ -240,6 +244,7 @@ export function GroupedExample(): ReactElement {
   }
 
   return (
+    // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
       targetingConstraint={groupedTargetingConstraint}
       pointerConfiguration={{ activationDelay: 100 }}
@@ -301,6 +306,7 @@ export function GroupedExample(): ReactElement {
   );
 }
 
+// Example rendering: overlay markup is app-owned and derives from drag state.
 function GroupedDragOverlay({
   dragState,
   parentsById,
@@ -354,6 +360,7 @@ function GroupedDragOverlay({
   );
 }
 
+// Example rendering: parent block markup is app-owned; hooks wire it to the package.
 function GroupedParentBlock({
   parent,
   children,
@@ -369,6 +376,7 @@ function GroupedParentBlock({
   ) => void;
   isActivelyDragged: boolean;
 }): ReactElement {
+  // Package API: parent rows are sortable and also accept child drops.
   const sortable = useSortable({
     itemId: parent.parentId,
     group: groupedParentGroup,
@@ -392,6 +400,7 @@ function GroupedParentBlock({
       return;
     }
 
+    // Package API: remeasure after demo-owned expansion changes affect targets.
     remeasureDropTargets({ group: groupedParentGroup });
     remeasureDropTargets({ group: groupedChildGroup });
   }, [isActivelyDragged, remeasureDropTargets]);
@@ -477,6 +486,7 @@ function GroupedParentBlock({
   );
 }
 
+// Example rendering: insertion line markup is app-owned; droppable hook registers it.
 function GroupedChildDropzoneLine({
   parentId,
   index,
@@ -484,6 +494,7 @@ function GroupedChildDropzoneLine({
   parentId: string;
   index: number;
 }): ReactElement {
+  // Package API: registers this generated child insertion line as a drop target.
   const targetId = getChildIndexTargetId(parentId, index);
   const droppable = useDroppable({
     targetId,
@@ -502,7 +513,9 @@ function GroupedChildDropzoneLine({
   );
 }
 
+// Example rendering: child row markup is app-owned; hooks wire it to the package.
 function GroupedChildRow({ child }: { child: ChildItem }): ReactElement {
+  // Package API: registers this rendered child row and handle as draggable.
   const draggable = useDraggable({
     itemId: child.childId,
     group: groupedChildGroup,
@@ -537,6 +550,7 @@ function getChildrenForParent(input: {
     );
 }
 
+// Example drop behavior: reorder parent ids from package sortable placement.
 function reorderParentOrder(
   parentOrder: string[],
   placement: SortablePlacement,
@@ -569,6 +583,7 @@ function reorderParentOrder(
   return insertIntoArray(withoutDraggedParent, insertIndex, placement.itemId);
 }
 
+// Example drop behavior: move child ids and parent ownership in demo data.
 function moveChildInOrder(input: {
   child: ChildItem;
   targetParentId: string;
@@ -687,6 +702,7 @@ function getChildIndexTargetId(parentId: string, index: number): string {
   return `grouped:children:${parentId}:index:${index}`;
 }
 
+// Example styling: active target attributes drive demo CSS highlights.
 function clearActiveGroupedDropTargets(root: ParentNode | null): void {
   for (const element of Array.from(
     (root ?? document).querySelectorAll<HTMLElement>(

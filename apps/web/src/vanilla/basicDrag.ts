@@ -29,6 +29,7 @@ const droppableContainer = {
 const basicGroup = "basic";
 const dragHandleText = "\u2630";
 
+// Example state: preview and release animation state are owned by this demo.
 type MovePreviewState = {
   element: HTMLElement;
   cleanup: () => void;
@@ -42,10 +43,12 @@ type ReleaseOverlayState = {
 
 export function mountBasicDrag(root: HTMLElement): () => void {
   const pendingAnimationFrames = new Set<number>();
+  // Example state: the app owns transient preview and overlay geometry.
   let overlayTargetRect: DragRect | null = null;
   let releaseOverlayState: ReleaseOverlayState | null = null;
   let movePreviewState: MovePreviewState | null = null;
 
+  // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
     targetingAlgorithm: pointerToRectDistance,
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
@@ -65,6 +68,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       clearActiveDropzones();
     },
     onDrop({ itemId: droppedItemId, dropTarget }, { getDropTargetRect }) {
+      // Example drop behavior: commit valid drops into app-owned DOM state.
       if (
         droppedItemId !== "draggable" ||
         !isKnownDropTarget(dropTarget)
@@ -119,6 +123,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     root.replaceChildren();
   };
 
+  // Example drop behavior: create a demo-owned move preview before final DOM commit.
   function startMovePreview(dropTarget: string): void {
     const itemElement = root.querySelector<HTMLElement>(
       '[data-basic-item-id="draggable"]',
@@ -169,6 +174,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     movePreviewState = null;
   }
 
+  // Example drop behavior: finish the app-owned preview and move the real DOM item.
   function finishMovePreviewToDropzone(targetDropzone: HTMLElement): void {
     const state = movePreviewState;
 
@@ -192,6 +198,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     movePreviewState = null;
   }
 
+  // Example rendering: overlay markup and release animation are app-owned.
   function createDragOverlay({
     dragState,
     phase,
@@ -332,6 +339,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     }
   }
 
+  // Example rendering: transient preview markup is owned by the demo.
   function createDraggableItemPreview(onFadeInEnd: () => void): {
     element: HTMLElement;
     cleanup: () => void;
@@ -361,6 +369,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     };
   }
 
+  // Example styling: active target attributes drive demo CSS highlights.
   function clearActiveDropzones(): void {
     root
       .querySelectorAll<HTMLElement>("[data-basic-drop-target-id]")
@@ -406,6 +415,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     targetId: string,
     label: string,
   ): HTMLElement {
+    // Example rendering: dropzone markup is app-owned.
     const element = document.createElement("div");
     element.className = "droppableContainer";
     element.dataset.basicDropTargetId = targetId;
@@ -414,6 +424,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     labelElement.textContent = label;
     element.append(labelElement);
 
+    // Package API: registers this DOM node as a drop target.
     createDroppable({
       controller: dragController,
       element,
@@ -425,6 +436,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   }
 }
 
+// Example rendering: item markup is app-owned; package helpers wire it to dragging.
 function createDraggableItem(
   controller: DragController,
   itemId: string,
@@ -440,6 +452,7 @@ function createDraggableItem(
   handle.textContent = dragHandleText;
   appendItemLabel(element, handle, itemId);
 
+  // Package API: registers this DOM node and handle as draggable.
   createDraggable({
     controller,
     element,
