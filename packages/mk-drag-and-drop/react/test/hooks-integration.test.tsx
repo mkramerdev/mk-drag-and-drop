@@ -799,6 +799,7 @@ function SortableWithHandle() {
     draggableId: "item-1",
     group: "items",
     containerId: "container-1",
+    placementBoundary: { start: 0.5, end: 0.5 },
   });
   const handle = useDragHandle<HTMLButtonElement>();
 
@@ -860,6 +861,7 @@ function KanbanColumn({ column }: { column: KanbanColumnState }) {
     draggableId: column.id,
     group: "kanban-columns",
     containerId: "board",
+    axis: "horizontal",
   });
   const cardContainer = useDropContainer({
     containerId: column.id,

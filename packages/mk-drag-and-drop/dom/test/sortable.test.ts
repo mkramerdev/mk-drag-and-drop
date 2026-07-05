@@ -23,6 +23,10 @@ import {
   stubBoundingClientRect,
 } from "./test-utils.js";
 
+type SortableTestOptions = Partial<
+  Pick<Parameters<typeof createDomSortable>[0], "axis" | "placementBoundary">
+>;
+
 describe("createDomSortable", () => {
   let runtime: DragRuntime;
   let raf: ReturnType<typeof installMockRaf>;
@@ -95,7 +99,7 @@ describe("createDomSortable", () => {
     });
   });
 
-  it("moves preview DOM on active target change and restores snapshot on cancel", () => {
+  it("defaults to vertical axis and restores snapshot on cancel", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
 
@@ -187,6 +191,108 @@ describe("createDomSortable", () => {
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
+  it("uses an explicit horizontal axis without DOM layout inference", () => {
+    const { elements, behaviors } = createSortableList(undefined, {
+      axis: "horizontal",
+    });
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 4, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 6, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+  });
+
+  it("uses custom placementBoundary.start for movement toward axis end", () => {
+    const { elements, behaviors } = createSortableList(undefined, {
+      placementBoundary: { start: 0.5 },
+    });
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+  });
+
+  it("uses custom placementBoundary.end for movement toward axis start", () => {
+    const { elements, behaviors } = createSortableList(undefined, {
+      placementBoundary: { end: 0.5 },
+    });
+    const [a, b, c] = elements;
+
+    behaviors.c.onPointerDown(
+      createPointerHandlerEvent({ target: c, clientX: 10, clientY: 70 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
+  });
+
+  it("normalizes placement boundary ratios", () => {
+    const first = createSortableList(undefined, {
+      placementBoundary: { start: -1 },
+    });
+    const [firstA, firstB, firstC] = first.elements;
+
+    first.behaviors.a.onPointerDown(createPointerHandlerEvent({ target: firstA }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(firstA.parentElement?.children ?? [])).toEqual([
+      firstB,
+      firstA,
+      firstC,
+    ]);
+
+    dispatchPointerCancel(window, { pointerId: 1 });
+    raf.flush();
+    firstA.parentElement?.remove();
+
+    const second = createSortableList(undefined, {
+      placementBoundary: { start: Number.NaN },
+    });
+    const [secondA, secondB, secondC] = second.elements;
+
+    second.behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: secondA }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(secondA.parentElement?.children ?? [])).toEqual([
+      secondA,
+      secondB,
+      secondC,
+    ]);
+  });
+
   it("uses the forward boundary for tall targets and can change side on the same active target", () => {
     const { elements, behaviors } = createTallSortableList();
     const [a, b] = elements;
@@ -243,6 +349,26 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTarget).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("changes horizontal side when direction reverses over the same active target", () => {
+    const { elements, behaviors } = createSortableList(undefined, {
+      axis: "horizontal",
+    });
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 16, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 14, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
   it("uses the neutral midpoint boundary before movement direction is known", () => {
@@ -770,7 +896,10 @@ describe("createDomSortable", () => {
     });
   }
 
-  function createSortableList(containerId?: string) {
+  function createSortableList(
+    containerId?: string,
+    options: SortableTestOptions = {},
+  ) {
     const list = document.createElement("div");
     document.body.append(list);
     const a = createSortableElement(
@@ -791,6 +920,8 @@ describe("createDomSortable", () => {
       draggableId: "a",
       group: "rows",
       containerId,
+      axis: options.axis,
+      placementBoundary: options.placementBoundary,
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
@@ -798,6 +929,8 @@ describe("createDomSortable", () => {
       draggableId: "b",
       group: "rows",
       containerId,
+      axis: options.axis,
+      placementBoundary: options.placementBoundary,
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
@@ -805,6 +938,8 @@ describe("createDomSortable", () => {
       draggableId: "c",
       group: "rows",
       containerId,
+      axis: options.axis,
+      placementBoundary: options.placementBoundary,
       getElement: () => c,
     });
 
@@ -841,18 +976,21 @@ describe("createDomSortable", () => {
       runtime,
       draggableId: "a",
       group: "columns",
+      axis: "horizontal",
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
       runtime,
       draggableId: "b",
       group: "columns",
+      axis: "horizontal",
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
       runtime,
       draggableId: "c",
       group: "columns",
+      axis: "horizontal",
       getElement: () => c,
     });
 

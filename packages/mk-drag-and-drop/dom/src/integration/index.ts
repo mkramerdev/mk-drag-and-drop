@@ -37,4 +37,8 @@ export {
   type DomSortableBehavior,
 } from "../sortable/create-sortable.js";
 export type { DomSortableRuntime } from "../sortable/sortable-registry.js";
+export type {
+  SortableAxis,
+  SortablePlacementBoundary,
+} from "../sortable/sortable-options.js";
 export { domDragHandleAttribute } from "../input/drag-handle.js";

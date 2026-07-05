@@ -30,6 +30,8 @@ export {
   type KeyboardConfiguration,
   type PointerConfiguration,
   type RemeasureDropTargetsInput,
+  type SortableAxis,
+  type SortablePlacementBoundary,
   type SortablePlacement,
   type TargetingAlgorithm,
   type TargetingAlgorithmInput,

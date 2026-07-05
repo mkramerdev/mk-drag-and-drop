@@ -1,8 +1,9 @@
 import type { DragController } from "../controller/create-drag-controller.js";
 import { getControllerRuntime } from "../controller/controller-internals.js";
 import { createDomSortable } from "./create-sortable.js";
+import type { SortableOptions } from "./sortable-options.js";
 
-export type CreateSortableInput = {
+export type CreateSortableInput = SortableOptions & {
   controller: DragController;
   element: HTMLElement;
   draggableId: string;
@@ -20,6 +21,8 @@ export function createSortable(input: CreateSortableInput): void {
     draggableId: input.draggableId,
     group: input.group ?? defaultSortableGroup,
     containerId: input.containerId ?? null,
+    axis: input.axis,
+    placementBoundary: input.placementBoundary,
     getElement: () => elementRef.deref() ?? null,
   });
   const hadPreviousTabIndex = input.element.hasAttribute("tabindex");

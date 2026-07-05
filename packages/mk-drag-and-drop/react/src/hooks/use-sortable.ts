@@ -7,7 +7,11 @@ import {
   type RefCallback,
 } from "react";
 
-import { createDomSortable } from "@mk-drag-and-drop/dom/integration";
+import {
+  createDomSortable,
+  type SortableAxis,
+  type SortablePlacementBoundary,
+} from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
 
@@ -15,6 +19,8 @@ export type UseSortableOptions = {
   draggableId: string;
   group?: string;
   containerId?: string | null;
+  axis?: SortableAxis;
+  placementBoundary?: SortablePlacementBoundary;
 };
 
 export type UseSortableResult = HTMLAttributes<HTMLDivElement> & {
@@ -27,6 +33,8 @@ export function useSortable({
   draggableId,
   group = defaultSortableGroup,
   containerId = null,
+  axis,
+  placementBoundary,
 }: UseSortableOptions): UseSortableResult {
   const runtime = useContext(DragContext);
   const nodeRef = useRef<HTMLDivElement | null>(null);
@@ -44,9 +52,20 @@ export function useSortable({
         draggableId,
         group,
         containerId,
+        axis,
+        placementBoundary,
         getElement,
       }),
-    [containerId, getElement, group, draggableId, keyboardDragEnabled, runtime],
+    [
+      axis,
+      containerId,
+      getElement,
+      group,
+      draggableId,
+      keyboardDragEnabled,
+      placementBoundary,
+      runtime,
+    ],
   );
 
   const setNodeRef = useCallback(

@@ -9,8 +9,9 @@ import {
   unregisterSortableElement,
   type DomSortableRuntime,
 } from "./sortable-registry.js";
+import type { SortableOptions } from "./sortable-options.js";
 
-export type CreateDomSortableInput = {
+export type CreateDomSortableInput = SortableOptions & {
   runtime: DomSortableRuntime;
   draggableId: string;
   group?: string;
@@ -79,6 +80,7 @@ export function createDomSortable(
         group,
         containerId: input.containerId ?? null,
         element,
+        options: input,
       });
       registeredElementRef = new WeakRef(element);
       registeredDraggableId = input.draggableId;

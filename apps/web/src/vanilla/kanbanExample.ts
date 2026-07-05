@@ -270,6 +270,8 @@ function createKanbanColumn(
     draggableId: column.id,
     group: kanbanColumnGroup,
     containerId: boardContainerId,
+    axis: "horizontal",
+    placementBoundary: { start: 0, end: 1 },
   });
 
   const header = document.createElement("header");

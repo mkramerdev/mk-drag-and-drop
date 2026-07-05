@@ -13,6 +13,11 @@ import {
   type SortablePointerMovementState,
   updateSortablePointerMovement,
 } from "./sortable-preview.js";
+import {
+  normalizeSortableOptions,
+  type NormalizedSortableOptions,
+  type SortableOptions,
+} from "./sortable-options.js";
 
 export type DomSortableRuntime = DomDraggableRuntime & {
   registerDropTarget: (
@@ -70,6 +75,7 @@ export type SortableRegistry = {
   groups: Map<string, string>;
   pointerMovement: SortablePointerMovementState | null;
   snapshots: Map<string, SortableSnapshot>;
+  sortableOptions: Map<string, NormalizedSortableOptions>;
 };
 
 export type SortableAttributeSnapshot = {
@@ -104,6 +110,7 @@ export function getSortableRegistry(
     groups: new Map(),
     pointerMovement: null,
     snapshots: new Map(),
+    sortableOptions: new Map(),
   };
 
   const unsubscribe = runtime.subscribe({
@@ -125,6 +132,7 @@ export function getSortableRegistry(
           activeDropTarget: event.activeDropTarget,
           pointerPosition: event.pointerPosition,
           placementPosition: event.placementPosition ?? event.pointerPosition,
+          options: getSortableOptions(registry, event.draggableId),
         });
       }
 
@@ -163,6 +171,7 @@ export function getSortableRegistry(
     registry.pointerMovement = null;
     registry.attributeSnapshots.clear();
     registry.snapshots.clear();
+    registry.sortableOptions.clear();
     sortableRegistries.delete(runtime);
   };
   const unsubscribeDispose = runtime.onDispose?.(cleanupRegistry);
@@ -179,6 +188,7 @@ export function registerSortableElement(input: {
   group: string;
   containerId?: string | null;
   element: HTMLElement;
+  options?: SortableOptions;
 }): void {
   const existingSnapshot = input.registry.attributeSnapshots.get(input.draggableId);
   const existingSnapshotElement = existingSnapshot?.elementRef.deref() ?? null;
@@ -195,6 +205,10 @@ export function registerSortableElement(input: {
   input.registry.elementIds.set(input.element, input.draggableId);
   input.registry.elements.set(input.draggableId, new WeakRef(input.element));
   input.registry.groups.set(input.draggableId, input.group);
+  input.registry.sortableOptions.set(
+    input.draggableId,
+    normalizeSortableOptions(input.options),
+  );
   input.runtime.registerDropTarget(input.draggableId, input.element, input.group, {
     containerId: input.containerId ?? null,
     sortable: true,
@@ -219,6 +233,7 @@ export function unregisterSortableElement(input: {
 
       input.registry.elements.delete(input.draggableId);
       input.registry.groups.delete(input.draggableId);
+      input.registry.sortableOptions.delete(input.draggableId);
     }
   }
 
@@ -279,6 +294,15 @@ export function getRegisteredSortableElement(
   const element = registry.elements.get(draggableId)?.deref() ?? null;
 
   return element?.isConnected ? element : null;
+}
+
+function getSortableOptions(
+  registry: SortableRegistry,
+  draggableId: string,
+): NormalizedSortableOptions {
+  return (
+    registry.sortableOptions.get(draggableId) ?? normalizeSortableOptions(undefined)
+  );
 }
 
 function restoreAttribute(

@@ -277,6 +277,8 @@ function KanbanColumnView({
     draggableId: column.id,
     group: kanbanColumnGroup,
     containerId: boardContainerId,
+    axis: "horizontal",
+    placementBoundary: { start: 0, end: 1 },
   });
   const cardContainer = useDropContainer({
     containerId: column.id,

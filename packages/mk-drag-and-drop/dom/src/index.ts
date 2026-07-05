@@ -21,6 +21,10 @@ export {
   createSortable,
   type CreateSortableInput,
 } from "./sortable/create-sortable-binding.js";
+export type {
+  SortableAxis,
+  SortablePlacementBoundary,
+} from "./sortable/sortable-options.js";
 export {
   createDragHandle,
   type CreateDragHandleInput,
