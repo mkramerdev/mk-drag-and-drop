@@ -7,6 +7,7 @@ import {
   maxOverlayCenterDistanceToRect,
   type DragControllerOverlayInput,
   type DragRect,
+  type SortableDropPlacement,
 } from "@mk-drag-and-drop/dom";
 
 import { moveItemToSortablePlacement } from "./sortablePlacement";
@@ -62,8 +63,7 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
 
       // Example drop behavior: translate package sortable placement into app data.
       items = moveItemToSortablePlacement(items, draggableId, placement);
-      // The sortable preview has already moved the DOM into the committed
-      // position. Re-rendering 10k nodes here delays the release animation.
+      moveItemElementToSortablePlacement(draggableId, placement);
     },
   });
 
@@ -157,6 +157,55 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
     }
 
     renderedActiveItemId = activeItemId;
+  }
+
+  function moveItemElementToSortablePlacement(
+    draggableId: string,
+    placement: SortableDropPlacement,
+  ): void {
+    const element = itemElements.get(draggableId);
+
+    if (!element) {
+      return;
+    }
+
+    if (placement.targetDraggableId !== null && placement.side !== null) {
+      const target = itemElements.get(placement.targetDraggableId);
+
+      if (!target) {
+        return;
+      }
+
+      if (placement.side === "after") {
+        target.after(element);
+      } else {
+        target.before(element);
+      }
+
+      return;
+    }
+
+    if (placement.previousDraggableId !== null) {
+      const previous = itemElements.get(placement.previousDraggableId);
+
+      if (previous) {
+        previous.after(element);
+      }
+
+      return;
+    }
+
+    if (placement.nextDraggableId !== null) {
+      const next = itemElements.get(placement.nextDraggableId);
+
+      if (next) {
+        next.before(element);
+      }
+
+      return;
+    }
+
+    listElement.append(element);
   }
 
   function createSortableItem(draggableId: string): HTMLElement {

@@ -433,6 +433,54 @@ describe("createSortable", () => {
     }
   });
 
+  it("supports vanilla-style keyed DOM commit without recreating bindings", () => {
+    const itemElements = new Map<string, HTMLElement>();
+    let items = ["a", "b", "c"];
+    let orderBeforeCommit: string[] = [];
+    let orderAfterCommit: string[] = [];
+    controller = createDragController({
+      onDrop: ({ draggableId, sortablePlacement }) => {
+        if (!sortablePlacement) {
+          return;
+        }
+
+        orderBeforeCommit = getSortableItemIds(list);
+        items = moveItemToSortablePlacement(items, draggableId, sortablePlacement);
+        moveSortableElementToPlacement({
+          itemElements,
+          list,
+          draggableId,
+          placement: sortablePlacement,
+        });
+        orderAfterCommit = getSortableItemIds(list);
+      },
+    });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const list = document.createElement("div");
+    document.body.append(list);
+
+    for (const [index, draggableId] of items.entries()) {
+      const element = createDetachedMeasuredElement(
+        createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
+      );
+
+      element.dataset.sortableId = draggableId;
+      itemElements.set(draggableId, element);
+      createSortable({ controller, element, draggableId });
+      list.append(element);
+    }
+
+    const [a, b] = Array.from(list.children) as HTMLElement[];
+    dragToTarget(a, b);
+
+    expect(orderBeforeCommit).toEqual(["a", "b", "c"]);
+    expect(orderAfterCommit).toEqual(["b", "a", "c"]);
+    expect(items).toEqual(["b", "a", "c"]);
+    expect(getSortableItemIds(list)).toEqual(["b", "a", "c"]);
+    expect(runtime.getBindingCleanupRecordCount()).toBe(3);
+  });
+
   it("cleans up sortable listeners and registration when the controller is disposed", () => {
     const onDragStart = vi.fn();
     controller = createDragController({ onDragStart });
@@ -578,4 +626,58 @@ function moveItemToSortablePlacement(
   }
 
   return [...items];
+}
+
+function moveSortableElementToPlacement(input: {
+  itemElements: Map<string, HTMLElement>;
+  list: HTMLElement;
+  draggableId: string;
+  placement: SortableDropPlacement;
+}): void {
+  const element = input.itemElements.get(input.draggableId);
+
+  if (!element) {
+    return;
+  }
+
+  if (
+    input.placement.targetDraggableId !== null &&
+    input.placement.side !== null
+  ) {
+    const target = input.itemElements.get(input.placement.targetDraggableId);
+
+    if (!target) {
+      return;
+    }
+
+    if (input.placement.side === "after") {
+      target.after(element);
+    } else {
+      target.before(element);
+    }
+
+    return;
+  }
+
+  if (input.placement.previousDraggableId !== null) {
+    const previous = input.itemElements.get(input.placement.previousDraggableId);
+
+    if (previous) {
+      previous.after(element);
+    }
+
+    return;
+  }
+
+  if (input.placement.nextDraggableId !== null) {
+    const next = input.itemElements.get(input.placement.nextDraggableId);
+
+    if (next) {
+      next.before(element);
+    }
+
+    return;
+  }
+
+  input.list.append(element);
 }
