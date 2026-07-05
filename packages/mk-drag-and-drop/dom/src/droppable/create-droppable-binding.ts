@@ -5,7 +5,7 @@ import { createDomDroppable } from "./create-droppable.js";
 export type CreateDroppableInput = {
   controller: DragController;
   element: HTMLElement;
-  targetId: string;
+  dropTargetId: string;
   containerId?: string | null;
   group?: string;
 };
@@ -17,7 +17,7 @@ export function createDroppable(input: CreateDroppableInput): void {
   const runtime = getControllerRuntime(input.controller);
   const behavior = createDomDroppable({
     runtime,
-    targetId: input.targetId,
+    dropTargetId: input.dropTargetId,
     containerId: input.containerId ?? null,
     group: input.group ?? defaultDroppableGroup,
   });

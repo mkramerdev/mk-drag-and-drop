@@ -5,7 +5,7 @@ import {
   createDropContainer,
   createSortable,
   type DragController,
-  type DropPlacement,
+  type SortableDropPlacement,
 } from "../src/index.js";
 import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
@@ -32,10 +32,10 @@ describe("createSortable", () => {
   });
 
   it("registers sortable items that participate in sortable drops", () => {
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | null = null;
     const { list, a, b } = setupSortablePair({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement ?? null;
       },
     });
 
@@ -55,8 +55,6 @@ describe("createSortable", () => {
 
     expect(Array.from(list.children)).toEqual([a, b]);
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: null,
       containerId: null,
       previousDraggableId: "b",
@@ -77,6 +75,7 @@ describe("createSortable", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        source: "pointer",
         pointerPosition: { x: 3, y: 4 },
         sourceRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
       },
@@ -124,10 +123,10 @@ describe("createSortable", () => {
   });
 
   it("passes container metadata into sortable registration", () => {
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | null = null;
     controller = createDragController({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement ?? null;
       },
     });
     raf = installMockRaf();
@@ -166,8 +165,6 @@ describe("createSortable", () => {
     dragToTarget(a, b);
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: "column-a",
       containerId: "column-a",
       previousDraggableId: "b",
@@ -240,10 +237,10 @@ describe("createSortable", () => {
   });
 
   it("supports vanilla-style rerender while pruning stale binding records", () => {
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | null = null;
     controller = createDragController({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement ?? null;
       },
     });
     raf = installMockRaf();
@@ -262,8 +259,6 @@ describe("createSortable", () => {
     dragToTarget(a, b);
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: null,
       containerId: null,
       previousDraggableId: "b",

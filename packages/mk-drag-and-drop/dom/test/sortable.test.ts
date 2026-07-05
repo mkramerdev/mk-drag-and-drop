@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   centerToCenter,
   pointerToCenter,
-  type DropPlacement,
+  type SortableDropPlacement,
 } from "../src/index.js";
 import {
   createDomDropContainer,
@@ -126,13 +126,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 36 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 36 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
@@ -146,13 +146,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
   });
 
@@ -181,13 +181,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 36 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
@@ -201,13 +201,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 4, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 6, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
@@ -221,13 +221,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
@@ -243,13 +243,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
   });
 
@@ -263,7 +263,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(firstA.parentElement?.children ?? [])).toEqual([
       firstB,
       firstA,
@@ -285,7 +285,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(secondA.parentElement?.children ?? [])).toEqual([
       secondA,
       secondB,
@@ -301,13 +301,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 195 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 221 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a]);
   });
 
@@ -321,13 +321,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 46 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
   });
 
@@ -341,13 +341,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 46 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
@@ -361,13 +361,13 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 16, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 14, clientY: 40 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
@@ -381,7 +381,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 35 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
@@ -402,16 +402,16 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 120, clientY: 20 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("b");
+    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
   it("returns no sortable placement for an isolated self-target drop", () => {
     const { isolated, behaviors } = createMixedGroupSortableList();
-    let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getSortablePlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -421,11 +421,11 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 65 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("isolated");
+    expect(runtime.activeDropTargetId).toBe("isolated");
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 65 });
 
-    expect(placement).toBeNull();
+    expect(placement).toBeUndefined();
   });
 
   it("skips different-group sortable items when targeting", () => {
@@ -435,16 +435,16 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 55 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("c");
+    expect(runtime.activeDropTargetId).toBe("c");
   });
 
   it("does not move past a skipped-group sibling while the pointer is closer to that sibling", () => {
     const { rows, isolated, behaviors } = createMixedGroupSortableList();
     const { a, c } = rows;
-    let placement: ReturnType<DragRuntime["getSortablePlacement"]> | undefined;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getSortablePlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -452,7 +452,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("c");
+    expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([
       a,
       isolated,
@@ -461,7 +461,7 @@ describe("createDomSortable", () => {
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
-    expect(placement).toBeNull();
+    expect(placement).toBeUndefined();
   });
 
   it("moves past a skipped-group sibling once the pointer is closer to the same-group target", () => {
@@ -472,7 +472,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 76 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("c");
+    expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([
       isolated,
       c,
@@ -544,10 +544,10 @@ describe("createDomSortable", () => {
   it("returns same-container drop placement", () => {
     const { elements, behaviors } = createSortableList("list");
     const [a, b, c] = elements;
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -560,8 +560,6 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: "list",
       containerId: "list",
       previousDraggableId: "b",
@@ -660,7 +658,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 500 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBeNull();
+    expect(runtime.activeDropTargetId).toBeNull();
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 500 });
 
@@ -674,10 +672,10 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b", "c"],
     });
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -694,8 +692,6 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 18 });
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: "left",
       containerId: "right",
       previousDraggableId: "b",
@@ -717,7 +713,7 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 95 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("c");
+    expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(right.container.children)).toEqual([
       right.b,
       left.a,
@@ -729,10 +725,10 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b"],
     });
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -750,8 +746,6 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 40 });
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "a",
       sourceContainerId: "left",
       containerId: "right",
       previousDraggableId: "b",
@@ -763,10 +757,10 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b"],
     });
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -780,30 +774,23 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 25, clientY: 100 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("left");
+    expect(runtime.activeDropTargetId).toBe("left");
     expect(Array.from(left.container.children)).toEqual([left.a]);
     expect(Array.from(right.container.children)).toEqual([right.b]);
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 25, clientY: 100 });
 
-    expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "left",
-      sourceContainerId: "left",
-      containerId: "left",
-      previousDraggableId: null,
-      nextDraggableId: null,
-    });
+    expect(placement).toBeUndefined();
   });
 
   it("returns empty-container drop placement", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: [],
     });
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -816,8 +803,6 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 125, clientY: 100 });
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "right",
       sourceContainerId: "left",
       containerId: "right",
       previousDraggableId: null,
@@ -831,10 +816,10 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b"],
     });
-    let placement: DropPlacement | null = null;
+    let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
-      onDrop: ({ draggableId }, helpers) => {
-        placement = helpers.getDropPlacement(draggableId);
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement;
       },
     });
 
@@ -847,8 +832,6 @@ describe("createDomSortable", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 125, clientY: 160 });
 
     expect(placement).toEqual({
-      draggableId: "a",
-      dropTarget: "b",
       sourceContainerId: "left",
       containerId: "right",
       previousDraggableId: "b",

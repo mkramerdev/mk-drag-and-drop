@@ -1,35 +1,44 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
-import type {
-  DropPlacement,
-  SortablePlacement,
-} from "./drop-target-registry.js";
+import type { SortableDropPlacement } from "./drop-target-registry.js";
+
+export type DragSource = "pointer" | "keyboard";
+
+export type DragEndResult =
+  | "dropped"
+  | "no-target"
+  | "invalid-target"
+  | "canceled";
 
 export type DragStartEvent = {
   draggableId: string;
+  source: DragSource;
   pointerPosition: DragPoint;
   sourceRect: DragRect;
 };
 
 export type DragUpdateEvent = {
   draggableId: string;
+  source: DragSource;
   pointerPosition: DragPoint;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
 };
 
 export type DragEndEvent = {
   draggableId: string;
-  dropTarget: string | null;
+  source: DragSource;
+  result: DragEndResult;
+  dropTargetId: string | null;
 };
 
 export type DropEvent = {
   draggableId: string;
-  dropTarget: string;
+  source: DragSource;
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
 };
 
 export type DragLifecycleHelpers = {
-  getDropPlacement: (draggableId?: string) => DropPlacement | null;
-  getSortablePlacement: (draggableId: string) => SortablePlacement | null;
   getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };
 

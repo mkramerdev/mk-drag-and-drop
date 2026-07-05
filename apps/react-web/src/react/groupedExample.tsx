@@ -15,8 +15,9 @@ import {
   useDraggable,
   useDroppable,
   useSortable,
+  type DropEvent,
   type DragState,
-  type SortablePlacement,
+  type SortableDropPlacement,
   type TargetingConstraint,
   centerToCenter,
 } from "@mk-drag-and-drop/react";
@@ -61,9 +62,9 @@ const groupedTargetingConstraint: TargetingConstraint = ({
   pointerPosition,
   dropTarget,
 }) => {
-  const targetId = dropTarget.dropTargetKey;
+  const dropTargetId = dropTarget.dropTargetId;
 
-  if (targetId.startsWith(groupedInsideTargetPrefix)) {
+  if (dropTargetId.startsWith(groupedInsideTargetPrefix)) {
     const distance = getDistanceToRect(
       pointerPosition,
       dropTarget.dropTargetRect,
@@ -72,7 +73,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
     return distance.x === 0 && distance.y <= groupedInsideTargetMaxYDistance;
   }
 
-  const parsedTarget = parseChildDropTargetId(targetId);
+  const parsedTarget = parseChildDropTargetId(dropTargetId);
 
   if (parsedTarget?.type === "index") {
     const distance = getDistanceToRect(
@@ -83,7 +84,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
     return distance.x === 0 && distance.y <= groupedChildLineTargetMaxYDistance;
   }
 
-  if (targetId.startsWith(groupedChildTargetPrefix)) {
+  if (dropTargetId.startsWith(groupedChildTargetPrefix)) {
     return false;
   }
 
@@ -168,7 +169,7 @@ const initialChildOrder = [
 export function GroupedExample(): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
   const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
-  const activeDropTargetRef = useRef<string | null>(null);
+  const activeDropTargetIdRef = useRef<string | null>(null);
   // Example state: parent/child data, expansion, and active styling are app-owned.
   const [parentsById] = useState<Record<string, ParentItem>>(
     () => initialParentsById,
@@ -205,7 +206,7 @@ export function GroupedExample(): ReactElement {
 
       elements.set(dropTargetId, element);
 
-      if (activeDropTargetRef.current === dropTargetId) {
+      if (activeDropTargetIdRef.current === dropTargetId) {
         element.dataset.groupedActiveDropTarget = "true";
       } else {
         delete element.dataset.groupedActiveDropTarget;
@@ -214,7 +215,7 @@ export function GroupedExample(): ReactElement {
     [],
   );
 
-  const setActiveDropTarget = useCallback(
+  const setActiveDropTargetId = useCallback(
     (dropTargetId: string | null, isActive: boolean): void => {
       if (!dropTargetId) {
         return;
@@ -235,43 +236,38 @@ export function GroupedExample(): ReactElement {
     [],
   );
 
-  const updateActiveDropTarget = useCallback(
+  const updateActiveDropTargetId = useCallback(
     ({
-      activeDropTarget,
-      previousDropTarget,
+      activeDropTargetId,
+      previousDropTargetId,
     }: {
-      activeDropTarget: string | null;
-      previousDropTarget: string | null;
+      activeDropTargetId: string | null;
+      previousDropTargetId: string | null;
     }): void => {
-      if (activeDropTarget === previousDropTarget) {
+      if (activeDropTargetId === previousDropTargetId) {
         return;
       }
 
-      setActiveDropTarget(previousDropTarget, false);
-      setActiveDropTarget(activeDropTarget, true);
-      activeDropTargetRef.current = activeDropTarget;
+      setActiveDropTargetId(previousDropTargetId, false);
+      setActiveDropTargetId(activeDropTargetId, true);
+      activeDropTargetIdRef.current = activeDropTargetId;
     },
-    [setActiveDropTarget],
+    [setActiveDropTargetId],
   );
 
-  const clearActiveDropTarget = useCallback((): void => {
-    setActiveDropTarget(activeDropTargetRef.current, false);
-    activeDropTargetRef.current = null;
-  }, [setActiveDropTarget]);
+  const clearActiveDropTargetId = useCallback((): void => {
+    setActiveDropTargetId(activeDropTargetIdRef.current, false);
+    activeDropTargetIdRef.current = null;
+  }, [setActiveDropTargetId]);
 
-  function handleDrop(
-    event: { draggableId: string; dropTarget: string },
-    helpers: {
-      getSortablePlacement: (draggableId: string) => SortablePlacement | null;
-    },
-  ): void {
-    // Example drop behavior: interpret package placement/target ids for grouped data.
+  function handleDrop(event: DropEvent): void {
+    // Example drop behavior: interpret package placement/drop target ids for grouped data.
     if (parentsById[event.draggableId]) {
-      const placement = helpers.getSortablePlacement(event.draggableId);
+      const placement = event.sortablePlacement;
 
       if (placement) {
         setParentOrder((currentOrder) =>
-          reorderParentOrder(currentOrder, placement),
+          reorderParentOrder(currentOrder, event.draggableId, placement),
         );
       }
 
@@ -282,7 +278,7 @@ export function GroupedExample(): ReactElement {
       return;
     }
 
-    const parsedTarget = parseChildDropTargetId(event.dropTarget);
+    const parsedTarget = parseChildDropTargetId(event.dropTargetId);
 
     if (!parsedTarget || !parentsById[parsedTarget.parentId]) {
       return;
@@ -334,17 +330,17 @@ export function GroupedExample(): ReactElement {
         />
       )}
       onDragStart={({ draggableId }) => {
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
         setActiveDraggedParentId(parentsById[draggableId] ? draggableId : null);
       }}
-      onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-        updateActiveDropTarget({
-          activeDropTarget,
-          previousDropTarget,
+      onDragUpdate={({ activeDropTargetId, previousDropTargetId }) => {
+        updateActiveDropTargetId({
+          activeDropTargetId,
+          previousDropTargetId,
         });
       }}
       onDragEnd={() => {
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
         setActiveDraggedParentId(null);
       }}
       onDrop={handleDrop}
@@ -461,9 +457,9 @@ function GroupedParentBlock({
     group: groupedParentGroup,
   });
   const dragHandle = useDragHandle<HTMLButtonElement>();
-  const insideTargetId = getInsideTargetId(parent.parentId);
+  const insideDropTargetId = getInsideDropTargetId(parent.parentId);
   const insideDroppable = useDroppable({
-    targetId: insideTargetId,
+    dropTargetId: insideDropTargetId,
     group: groupedChildGroup,
     containerId: parent.parentId,
   });
@@ -486,9 +482,9 @@ function GroupedParentBlock({
   const insideTargetRef = useCallback(
     (element: HTMLDivElement | null) => {
       insideDroppableRef(element);
-      registerDropTargetElement(insideTargetId, element);
+      registerDropTargetElement(insideDropTargetId, element);
     },
-    [insideDroppableRef, insideTargetId, registerDropTargetElement],
+    [insideDroppableRef, insideDropTargetId, registerDropTargetElement],
   );
 
   useLayoutEffect(() => {
@@ -532,7 +528,7 @@ function GroupedParentBlock({
         {...insideDroppableProps}
         ref={insideTargetRef}
         className="groupedParentRow"
-        data-grouped-drop-target-id={insideTargetId}
+        data-grouped-drop-target-id={insideDropTargetId}
       >
         <button
           type="button"
@@ -591,9 +587,9 @@ function GroupedChildDropzoneLine({
   registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
   // Package API: registers this generated child insertion line as a drop target.
-  const targetId = getChildIndexTargetId(parentId, index);
+  const dropTargetId = getChildIndexDropTargetId(parentId, index);
   const droppable = useDroppable({
-    targetId,
+    dropTargetId,
     group: groupedChildGroup,
     containerId: parentId,
   });
@@ -601,9 +597,9 @@ function GroupedChildDropzoneLine({
   const lineRef = useCallback(
     (element: HTMLDivElement | null) => {
       ref(element);
-      registerDropTargetElement(targetId, element);
+      registerDropTargetElement(dropTargetId, element);
     },
-    [ref, registerDropTargetElement, targetId],
+    [ref, registerDropTargetElement, dropTargetId],
   );
 
   return (
@@ -611,7 +607,7 @@ function GroupedChildDropzoneLine({
       {...droppableProps}
       ref={lineRef}
       className="groupedChildDropzoneLine"
-      data-grouped-drop-target-id={targetId}
+      data-grouped-drop-target-id={dropTargetId}
     >
       <div className="groupedChildDropzoneIndicator" />
     </div>
@@ -658,10 +654,11 @@ function getChildrenForParent(input: {
 // Example drop behavior: reorder parent ids from package sortable placement.
 function reorderParentOrder(
   parentOrder: string[],
-  placement: SortablePlacement,
+  draggableId: string,
+  placement: SortableDropPlacement,
 ): string[] {
   const withoutDraggedParent = parentOrder.filter(
-    (parentId) => parentId !== placement.draggableId,
+    (parentId) => parentId !== draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
 
@@ -685,7 +682,7 @@ function reorderParentOrder(
     insertIndex = nextIndex;
   }
 
-  return insertIntoArray(withoutDraggedParent, insertIndex, placement.draggableId);
+  return insertIntoArray(withoutDraggedParent, insertIndex, draggableId);
 }
 
 // Example drop behavior: move child ids and parent ownership in demo data.
@@ -799,10 +796,10 @@ function parseChildDropTargetId(
   };
 }
 
-function getInsideTargetId(parentId: string): string {
+function getInsideDropTargetId(parentId: string): string {
   return `${groupedInsideTargetPrefix}${parentId}`;
 }
 
-function getChildIndexTargetId(parentId: string, index: number): string {
+function getChildIndexDropTargetId(parentId: string, index: number): string {
   return `grouped:children:${parentId}:index:${index}`;
 }

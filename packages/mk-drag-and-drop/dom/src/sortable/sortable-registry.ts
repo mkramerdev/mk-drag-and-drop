@@ -46,22 +46,27 @@ export type DomSortableRuntime = DomDraggableRuntime & {
   subscribe: (subscription: {
     onDragStart?: (event: {
       draggableId: string;
+      source: "pointer" | "keyboard";
       pointerPosition: { x: number; y: number };
     }) => void;
     onDragUpdate?: (event: {
       draggableId: string;
+      source: "pointer" | "keyboard";
       pointerPosition: { x: number; y: number };
       placementPosition?: { x: number; y: number };
-      activeDropTarget: string | null;
-      previousDropTarget: string | null;
+      activeDropTargetId: string | null;
+      previousDropTargetId: string | null;
     }) => void;
     onDragEnd?: (event: {
       draggableId: string;
-      dropTarget: string | null;
+      source: "pointer" | "keyboard";
+      result: "dropped" | "no-target" | "invalid-target" | "canceled";
+      dropTargetId: string | null;
     }) => void;
     onDrop?: (event: {
       draggableId: string;
-      dropTarget: string;
+      source: "pointer" | "keyboard";
+      dropTargetId: string;
     }) => void;
   }) => () => void;
   onDispose?: (callback: () => void) => () => void;
@@ -122,14 +127,14 @@ export function getSortableRegistry(
       if (
         isSortablePreviewTarget({
           draggedDraggableId: event.draggableId,
-          activeDropTarget: event.activeDropTarget,
+          activeDropTargetId: event.activeDropTargetId,
         })
       ) {
         moveSortablePreview({
           registry,
           runtime,
           draggedDraggableId: event.draggableId,
-          activeDropTarget: event.activeDropTarget,
+          activeDropTargetId: event.activeDropTargetId,
           pointerPosition: event.pointerPosition,
           placementPosition: event.placementPosition ?? event.pointerPosition,
           options: getSortableOptions(registry, event.draggableId),

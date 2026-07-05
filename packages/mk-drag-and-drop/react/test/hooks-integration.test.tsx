@@ -11,7 +11,7 @@ import {
   useDroppable,
   useRemeasureDropTargets,
   useSortable,
-  type SortablePlacement,
+  type SortableDropPlacement,
 } from "../src/index.js";
 import { DragContext } from "../src/drag-context.js";
 import {
@@ -91,10 +91,10 @@ function RuntimeSpyProbe({
 }: {
   install: (runtime: DragRuntimeHandle) => void;
 }) {
-  const runtime = useContext(DragContext);
+  const context = useContext(DragContext);
 
-  if (runtime) {
-    install(runtime);
+  if (context) {
+    install(context.runtime);
   }
 
   return null;
@@ -129,6 +129,17 @@ describe("React hooks", () => {
     consoleError.mockRestore();
   });
 
+  it("hook result types support non-div host elements", () => {
+    render(
+      <DragProvider>
+        <NonDivHookTypes />
+      </DragProvider>,
+    );
+
+    expect(screen.getByText("Article")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Button" })).toBeInTheDocument();
+  });
+
   it("useDroppable registers and unregisters on callback ref changes", () => {
     const registerSpy = vi.fn();
     const unregisterSpy = vi.fn();
@@ -139,7 +150,7 @@ describe("React hooks", () => {
     const { rerender, unmount } = render(
       <DragProvider>
         <RuntimeSpyProbe install={installRuntimeSpies} />
-        <DynamicDroppable targetId="target-1" />
+        <DynamicDroppable dropTargetId="target-1" />
       </DragProvider>,
     );
     const element = screen.getByTestId("droppable");
@@ -147,7 +158,7 @@ describe("React hooks", () => {
     rerender(
       <DragProvider>
         <RuntimeSpyProbe install={installRuntimeSpies} />
-        <DynamicDroppable targetId="target-2" />
+        <DynamicDroppable dropTargetId="target-2" />
       </DragProvider>,
     );
     unmount();
@@ -185,7 +196,7 @@ describe("React hooks", () => {
     render(
       <DragProvider>
         <RuntimeSpyProbe install={installRuntimeSpies} />
-        <DynamicDroppable targetId="target-1" containerId="bucket-1" />
+        <DynamicDroppable dropTargetId="target-1" containerId="bucket-1" />
       </DragProvider>,
     );
     const element = screen.getByTestId("droppable");
@@ -271,7 +282,7 @@ describe("React hooks", () => {
       <StrictMode>
         <DragProvider>
           <RuntimeSpyProbe install={installRuntimeSpies} />
-          <DynamicDroppable targetId="target-1" />
+          <DynamicDroppable dropTargetId="target-1" />
         </DragProvider>
       </StrictMode>,
     );
@@ -369,16 +380,16 @@ describe("React integration flows", () => {
     render(
       <DragProvider
         onDragStart={({ draggableId }) => calls.push(`start:${draggableId}`)}
-        onDragUpdate={({ activeDropTarget }) =>
-          calls.push(`update:${activeDropTarget}`)
+        onDragUpdate={({ activeDropTargetId }) =>
+          calls.push(`update:${activeDropTargetId}`)
         }
-        onDragEnd={({ dropTarget }) => calls.push(`end:${dropTarget}`)}
-        onDrop={({ draggableId, dropTarget }) =>
-          calls.push(`drop:${draggableId}:${dropTarget}`)
+        onDragEnd={({ dropTargetId }) => calls.push(`end:${dropTargetId}`)}
+        onDrop={({ draggableId, dropTargetId }) =>
+          calls.push(`drop:${draggableId}:${dropTargetId}`)
         }
       >
         <DraggableWithChild />
-        <DynamicDroppable targetId="target-1" />
+        <DynamicDroppable dropTargetId="target-1" />
       </DragProvider>,
     );
     stubBoundingClientRect(
@@ -432,7 +443,7 @@ describe("React integration flows", () => {
     const { rerender } = render(
       <DragProvider onDrop={onDrop}>
         <DraggableWithChild />
-        <DynamicDroppable targetId="target-1" />
+        <DynamicDroppable dropTargetId="target-1" />
       </DragProvider>,
     );
     const removedTarget = screen.getByTestId("droppable");
@@ -475,7 +486,7 @@ describe("React integration flows", () => {
         onDragEnd={onDragEnd}
       >
         <DraggableWithChild />
-        <DynamicDroppable targetId="target-1" />
+        <DynamicDroppable dropTargetId="target-1" />
       </DragProvider>,
     );
     const source = screen.getByTestId("draggable");
@@ -494,11 +505,11 @@ describe("React integration flows", () => {
     });
 
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ draggableId: "item-1" }),
+      expect.objectContaining({ draggableId: "item-1", source: "keyboard" }),
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", source: "keyboard", dropTargetId: "target-1" },
       expect.any(Object),
     );
 
@@ -513,7 +524,12 @@ describe("React integration flows", () => {
 
     expect(onDragStart).toHaveBeenCalledTimes(1);
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: null },
+      {
+        draggableId: "item-1",
+        source: "keyboard",
+        result: "canceled",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -545,7 +561,8 @@ describe("React integration flows", () => {
     render(
       <DragProvider
         announcements={{
-          onDragStart: ({ draggableId }) => `Started ${draggableId}`,
+          onDragStart: ({ draggableId, source }) =>
+            `Started ${draggableId} by ${source}`,
         }}
       >
         <DraggableWithChild />
@@ -560,7 +577,7 @@ describe("React integration flows", () => {
       dispatchPointerDown(screen.getByTestId("draggable"), { pointerId: 1 });
     });
 
-    expect(screen.getByText("Started item-1")).toBeInTheDocument();
+    expect(screen.getByText("Started item-1 by pointer")).toBeInTheDocument();
   });
 
   it("pointercancel cancels a React drag without dropping", () => {
@@ -582,7 +599,12 @@ describe("React integration flows", () => {
     });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: null },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "canceled",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -719,7 +741,7 @@ function UseDraggableOutside() {
 }
 
 function UseDroppableOutside() {
-  useDroppable({ targetId: "target-1" });
+  useDroppable({ dropTargetId: "target-1" });
   return null;
 }
 
@@ -738,14 +760,42 @@ function UseRemeasureOutside() {
   return null;
 }
 
+function NonDivHookTypes() {
+  const articleSortable = useSortable<HTMLArticleElement>({
+    draggableId: "article",
+  });
+
+  const sectionDroppable = useDroppable<HTMLElement>({
+    dropTargetId: "section-target",
+  });
+
+  const buttonDraggable = useDraggable<HTMLButtonElement>({
+    draggableId: "button",
+  });
+
+  const listContainer = useDropContainer<HTMLUListElement>({
+    containerId: "list",
+  });
+
+  return (
+    <section {...sectionDroppable}>
+      <article {...articleSortable}>Article</article>
+      <button {...buttonDraggable} type="button">
+        Button
+      </button>
+      <ul {...listContainer} />
+    </section>
+  );
+}
+
 function DynamicDroppable({
-  targetId,
+  dropTargetId,
   containerId,
 }: {
-  targetId: string;
+  dropTargetId: string;
   containerId?: string | null;
 }) {
-  const droppable = useDroppable({ targetId, group: "items", containerId });
+  const droppable = useDroppable({ dropTargetId, group: "items", containerId });
 
   return (
     <div {...droppable} data-testid="droppable">
@@ -832,8 +882,8 @@ function KanbanBoard() {
 
   return (
     <DragProvider
-      onDrop={({ draggableId }, { getDropPlacement }) => {
-        const placement = getDropPlacement(draggableId);
+      onDrop={({ draggableId, sortablePlacement }) => {
+        const placement = sortablePlacement;
 
         if (!placement?.containerId) {
           return;
@@ -960,15 +1010,15 @@ function StatefulSortableList() {
 
   return (
     <DragProvider
-      onDrop={({ draggableId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(draggableId);
+      onDrop={({ draggableId, sortablePlacement }) => {
+        const placement = sortablePlacement;
 
         if (!placement) {
           return;
         }
 
         setItems((currentItems) =>
-          moveSortableIdsToPlacement(currentItems, placement),
+          moveSortableIdsToPlacement(currentItems, draggableId, placement),
         );
       }}
     >
@@ -996,9 +1046,10 @@ function StatefulSortableItem({ draggableId }: { draggableId: string }) {
 
 function moveSortableIdsToPlacement(
   items: readonly string[],
-  placement: SortablePlacement,
+  draggableId: string,
+  placement: SortableDropPlacement,
 ): string[] {
-  const withoutItem = items.filter((item) => item !== placement.draggableId);
+  const withoutItem = items.filter((item) => item !== draggableId);
 
   if (placement.previousDraggableId !== null) {
     const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
@@ -1009,7 +1060,7 @@ function moveSortableIdsToPlacement(
 
     return [
       ...withoutItem.slice(0, previousIndex + 1),
-      placement.draggableId,
+      draggableId,
       ...withoutItem.slice(previousIndex + 1),
     ];
   }
@@ -1023,7 +1074,7 @@ function moveSortableIdsToPlacement(
 
     return [
       ...withoutItem.slice(0, nextIndex),
-      placement.draggableId,
+      draggableId,
       ...withoutItem.slice(nextIndex),
     ];
   }
@@ -1036,15 +1087,15 @@ function StatefulSortableListWithIsolatedItem() {
 
   return (
     <DragProvider
-      onDrop={({ draggableId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(draggableId);
+      onDrop={({ draggableId, sortablePlacement }) => {
+        const placement = sortablePlacement;
 
         if (!placement) {
           return;
         }
 
         setItems((currentItems) =>
-          moveSortableIdsToPlacement(currentItems, placement),
+          moveSortableIdsToPlacement(currentItems, draggableId, placement),
         );
       }}
     >

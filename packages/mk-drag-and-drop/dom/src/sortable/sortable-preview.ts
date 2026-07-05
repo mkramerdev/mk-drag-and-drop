@@ -54,11 +54,11 @@ export function snapshotSortableElement(
 
 export function isSortablePreviewTarget(input: {
   draggedDraggableId: string;
-  activeDropTarget: string | null;
+  activeDropTargetId: string | null;
 }): boolean {
   return (
-    input.activeDropTarget !== null &&
-    input.activeDropTarget !== input.draggedDraggableId
+    input.activeDropTargetId !== null &&
+    input.activeDropTargetId !== input.draggedDraggableId
   );
 }
 
@@ -108,14 +108,14 @@ export function moveSortablePreview(input: {
   registry: SortableRegistry;
   runtime: DomSortableRuntime;
   draggedDraggableId: string;
-  activeDropTarget: string | null;
+  activeDropTargetId: string | null;
   pointerPosition: { x: number; y: number };
   placementPosition: { x: number; y: number };
   options: NormalizedSortableOptions;
 }): void {
   if (
-    input.activeDropTarget === null ||
-    input.activeDropTarget === input.draggedDraggableId
+    input.activeDropTargetId === null ||
+    input.activeDropTargetId === input.draggedDraggableId
   ) {
     return;
   }
@@ -131,7 +131,7 @@ export function moveSortablePreview(input: {
   }
 
   const target = input.runtime.getDropTargetRegistration(
-    input.activeDropTarget,
+    input.activeDropTargetId,
     draggedGroup,
   );
 

@@ -28,12 +28,12 @@ const draggableItem = {
 };
 
 const rootContainer = {
-    targetId: "droppable-root",
+    dropTargetId: "droppable-root",
     label: "Drop Back Here",
 };
 
 const droppableContainer = {
-    targetId: "droppable",
+    dropTargetId: "droppable",
     label: "Drop Here",
 };
 // Example targeting: package helpers are configured with this demo's distance limit.
@@ -54,9 +54,9 @@ type DropTargetElementRegistrar = (
 export function BasicDrag(): ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
-  const activeDropTargetRef = useRef<string | null>(null);
+  const activeDropTargetIdRef = useRef<string | null>(null);
   // Example state: the app owns item location, preview state, and release animation geometry.
-  const [itemContainer, setItemContainer] = useState(rootContainer.targetId);
+  const [itemContainer, setItemContainer] = useState(rootContainer.dropTargetId);
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
   const [releaseTargetRect, setReleaseTargetRect] = useState<DragRect | null>(
     null,
@@ -92,7 +92,7 @@ export function BasicDrag(): ReactElement {
 
         elements.set(dropTargetId, element);
 
-        if (activeDropTargetRef.current === dropTargetId) {
+        if (activeDropTargetIdRef.current === dropTargetId) {
             element.dataset.basicActiveDropTarget = "true";
         } else {
             delete element.dataset.basicActiveDropTarget;
@@ -101,7 +101,7 @@ export function BasicDrag(): ReactElement {
     [],
   );
 
-  const setActiveDropTarget = useCallback(
+  const setActiveDropTargetId = useCallback(
     (dropTargetId: string | null, isActive: boolean): void => {
         if (!dropTargetId) {
             return;
@@ -122,29 +122,29 @@ export function BasicDrag(): ReactElement {
     [],
   );
 
-  const updateActiveDropTarget = useCallback(
+  const updateActiveDropTargetId = useCallback(
     ({
-        activeDropTarget,
-        previousDropTarget,
+        activeDropTargetId,
+        previousDropTargetId,
     }: {
-        activeDropTarget: string | null;
-        previousDropTarget: string | null;
+        activeDropTargetId: string | null;
+        previousDropTargetId: string | null;
     }): void => {
-        if (activeDropTarget === previousDropTarget) {
+        if (activeDropTargetId === previousDropTargetId) {
             return;
         }
 
-        setActiveDropTarget(previousDropTarget, false);
-        setActiveDropTarget(activeDropTarget, true);
-        activeDropTargetRef.current = activeDropTarget;
+        setActiveDropTargetId(previousDropTargetId, false);
+        setActiveDropTargetId(activeDropTargetId, true);
+        activeDropTargetIdRef.current = activeDropTargetId;
     },
-    [setActiveDropTarget],
+    [setActiveDropTargetId],
   );
 
-  const clearActiveDropTarget = useCallback((): void => {
-    setActiveDropTarget(activeDropTargetRef.current, false);
-    activeDropTargetRef.current = null;
-  }, [setActiveDropTarget]);
+  const clearActiveDropTargetId = useCallback((): void => {
+    setActiveDropTargetId(activeDropTargetIdRef.current, false);
+    activeDropTargetIdRef.current = null;
+  }, [setActiveDropTargetId]);
 
   return (
     // Package API: DragProvider owns drag lifecycle and runtime configuration.
@@ -163,54 +163,54 @@ export function BasicDrag(): ReactElement {
       )}
       onDragStart={() => {
         setReleaseTargetRect(null);
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
       }}
-      onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-        updateActiveDropTarget({
-            activeDropTarget,
-            previousDropTarget,
+      onDragUpdate={({ activeDropTargetId, previousDropTargetId }) => {
+        updateActiveDropTargetId({
+            activeDropTargetId,
+            previousDropTargetId,
         });
       }}
-      onDragEnd={({ dropTarget }, { getDropTargetRect }) => {
+      onDragEnd={({ dropTargetId }, { getDropTargetRect }) => {
         setReleaseTargetRect(
-            dropTarget ? getDropTargetRect(dropTarget) : null,
+            dropTargetId ? getDropTargetRect(dropTargetId) : null,
         );
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
       }}
-      onDrop={({ draggableId, dropTarget }) => {
+      onDrop={({ draggableId, dropTargetId }) => {
         // Example drop behavior: commit the package drop result into app state.
         if (
             draggableId !== draggableItem.draggableId ||
-            !isKnownDropTarget(dropTarget)
+            !isKnownDropTarget(dropTargetId)
         ) {
             return;
         }
 
-        if (dropTarget === itemContainer || movePreview !== null) {
+        if (dropTargetId === itemContainer || movePreview !== null) {
             return;
         }
 
         setMovePreview({
             fromTargetId: itemContainer,
-            toTargetId: dropTarget,
+            toTargetId: dropTargetId,
         });
       }}
     >
         <div ref={rootRef} className="draggableItemContainer">
             <DroppableContainer
-                targetId={rootContainer.targetId}
+                dropTargetId={rootContainer.dropTargetId}
                 registerDropTargetElement={registerDropTargetElement}
             >
                 <span>{rootContainer.label}</span>
-                {itemContainer === rootContainer.targetId ? (
+                {itemContainer === rootContainer.dropTargetId ? (
                     <DraggableItem
                         item={draggableItem}
                         isFadingOut={
-                            movePreview?.fromTargetId === rootContainer.targetId
+                            movePreview?.fromTargetId === rootContainer.dropTargetId
                         }
                     />
                 ) : null}
-                {movePreview?.toTargetId === rootContainer.targetId ? (
+                {movePreview?.toTargetId === rootContainer.dropTargetId ? (
                     <DraggableItemPreview
                         item={draggableItem}
                         onFadeInEnd={finishMovePreview}
@@ -218,19 +218,19 @@ export function BasicDrag(): ReactElement {
                 ) : null}
             </DroppableContainer>
             <DroppableContainer
-                targetId={droppableContainer.targetId}
+                dropTargetId={droppableContainer.dropTargetId}
                 registerDropTargetElement={registerDropTargetElement}
             >
                 <span>{droppableContainer.label}</span>
-                {itemContainer === droppableContainer.targetId ? (
+                {itemContainer === droppableContainer.dropTargetId ? (
                     <DraggableItem
                         item={draggableItem}
                         isFadingOut={
-                            movePreview?.fromTargetId === droppableContainer.targetId
+                            movePreview?.fromTargetId === droppableContainer.dropTargetId
                         }
                     />
                 ) : null}
-                {movePreview?.toTargetId === droppableContainer.targetId ? (
+                {movePreview?.toTargetId === droppableContainer.dropTargetId ? (
                     <DraggableItemPreview
                         item={draggableItem}
                         onFadeInEnd={finishMovePreview}
@@ -408,34 +408,34 @@ function DraggableItemPreview({
     );
 }
 
-function isKnownDropTarget(targetId: string): boolean {
+function isKnownDropTarget(dropTargetId: string): boolean {
     return (
-        targetId === rootContainer.targetId ||
-        targetId === droppableContainer.targetId
+        dropTargetId === rootContainer.dropTargetId ||
+        dropTargetId === droppableContainer.dropTargetId
     );
 }
 
 function DroppableContainer({
-    targetId,
+    dropTargetId,
     children,
     registerDropTargetElement,
 }: {
-    targetId: string;
+    dropTargetId: string;
     children: ReactNode;
     registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
     // Package API: registers this rendered container as a drop target.
     const droppable = useDroppable({
-        targetId,
+        dropTargetId,
         group: "basic",
     });
     const { ref, ...droppableProps } = droppable;
     const elementRef = useCallback(
         (element: HTMLDivElement | null) => {
             ref(element);
-            registerDropTargetElement(targetId, element);
+            registerDropTargetElement(dropTargetId, element);
         },
-        [ref, registerDropTargetElement, targetId],
+        [ref, registerDropTargetElement, dropTargetId],
     );
     
 
@@ -444,7 +444,7 @@ function DroppableContainer({
             {...droppableProps}
             ref={elementRef}
             className="droppableContainer"
-            data-basic-drop-target-id={targetId}
+            data-basic-drop-target-id={dropTargetId}
         >
             {children}
         </div>

@@ -17,6 +17,7 @@ export type CreateDomSortableInput = SortableOptions & {
   group?: string;
   containerId?: string | null;
   getElement: () => HTMLElement | null;
+  keyboardDragEnabled?: boolean;
 };
 
 export type DomSortableBehavior = {
@@ -39,6 +40,7 @@ export function createDomSortable(
     draggableId: input.draggableId,
     group,
     getElement: input.getElement,
+    keyboardDragEnabled: input.keyboardDragEnabled,
   });
   let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredDraggableId: string | null = null;

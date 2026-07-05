@@ -7,12 +7,13 @@ import { DragContext } from "../drag-context.js";
 export function useRemeasureDropTargets(): (
   input?: RemeasureDropTargetsInput,
 ) => void {
-  const runtime = useContext(DragContext);
+  const context = useContext(DragContext);
 
-  if (!runtime) {
+  if (!context) {
     throw new Error("useRemeasureDropTargets must be used inside DragProvider");
   }
 
+  const { runtime } = context;
   return useCallback(
     (input?: RemeasureDropTargetsInput) => {
       runtime.remeasureDropTargets(input);

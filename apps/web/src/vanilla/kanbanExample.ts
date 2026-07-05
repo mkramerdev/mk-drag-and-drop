@@ -7,7 +7,7 @@ import {
   restrictToContainer,
   type DragController,
   type DragControllerOverlayInput,
-  type DropPlacement,
+  type SortableDropPlacement,
 } from "@mk-drag-and-drop/dom";
 
 type KanbanCard = {
@@ -27,12 +27,7 @@ type KanbanState = {
   cardsById: Record<string, KanbanCard>;
 };
 
-type PlacementInput = {
-  draggableId: DropPlacement["draggableId"];
-  containerId: DropPlacement["containerId"];
-  previousDraggableId: DropPlacement["previousDraggableId"];
-  nextDraggableId: DropPlacement["nextDraggableId"];
-};
+type PlacementInput = SortableDropPlacement & { draggableId: string };
 
 type KanbanActiveDrag =
   | { type: "column"; draggableId: string }
@@ -126,9 +121,11 @@ export function mountKanbanExample(root: HTMLElement): () => void {
       activeDrag = null;
       updateDraggingClasses();
     },
-    onDrop({ draggableId }, { getDropPlacement }) {
+    onDrop({ draggableId, sortablePlacement }) {
       // Example drop behavior: translate package placement into app data.
-      const placement = getDropPlacement(draggableId);
+      const placement = sortablePlacement
+        ? { draggableId, ...sortablePlacement }
+        : null;
 
       if (!placement) {
         return;

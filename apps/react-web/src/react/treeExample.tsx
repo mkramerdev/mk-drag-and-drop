@@ -38,7 +38,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
     ? getRectCenter(overlayRect)
     : pointerPosition;
 
-  if (isInsideTargetId(dropTarget.dropTargetKey)) {
+  if (isInsideDropTargetId(dropTarget.dropTargetId)) {
     return (
       isPointInTargetStartXBand(
         pointerPosition.x,
@@ -50,7 +50,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
     );
   }
 
-  if (isChildrenTargetId(dropTarget.dropTargetKey)) {
+  if (isChildrenDropTargetId(dropTarget.dropTargetId)) {
     const distance = getDistanceToRect(
       {
         x: pointerPosition.x,
@@ -92,7 +92,7 @@ type ProjectedTreeRow = {
 
 type ProjectedDropzoneLine = {
   type: "line";
-  targetId: string;
+  dropTargetId: string;
   depth: number;
 };
 
@@ -137,7 +137,7 @@ const initialExpandedItemIds = ["design", "components"];
 export function TreeExample(): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
   const dropTargetElementsRef = useRef(new Map<string, HTMLElement>());
-  const activeDropTargetRef = useRef<string | null>(null);
+  const activeDropTargetIdRef = useRef<string | null>(null);
   // Example state: tree data and expansion state live outside the package runtime.
   const [treeState, setTreeState] = useState<TreeState>(() =>
     createTreeState(seedItems),
@@ -167,7 +167,7 @@ export function TreeExample(): ReactElement {
 
       elements.set(dropTargetId, element);
 
-      if (activeDropTargetRef.current === dropTargetId) {
+      if (activeDropTargetIdRef.current === dropTargetId) {
         element.dataset.treeActiveDropTarget = "true";
       } else {
         delete element.dataset.treeActiveDropTarget;
@@ -176,7 +176,7 @@ export function TreeExample(): ReactElement {
     [],
   );
 
-  const setActiveDropTarget = useCallback(
+  const setActiveDropTargetId = useCallback(
     (dropTargetId: string | null, isActive: boolean): void => {
       if (!dropTargetId) {
         return;
@@ -197,29 +197,29 @@ export function TreeExample(): ReactElement {
     [],
   );
 
-  const updateActiveDropTarget = useCallback(
+  const updateActiveDropTargetId = useCallback(
     ({
-      activeDropTarget,
-      previousDropTarget,
+      activeDropTargetId,
+      previousDropTargetId,
     }: {
-      activeDropTarget: string | null;
-      previousDropTarget: string | null;
+      activeDropTargetId: string | null;
+      previousDropTargetId: string | null;
     }): void => {
-      if (activeDropTarget === previousDropTarget) {
+      if (activeDropTargetId === previousDropTargetId) {
         return;
       }
 
-      setActiveDropTarget(previousDropTarget, false);
-      setActiveDropTarget(activeDropTarget, true);
-      activeDropTargetRef.current = activeDropTarget;
+      setActiveDropTargetId(previousDropTargetId, false);
+      setActiveDropTargetId(activeDropTargetId, true);
+      activeDropTargetIdRef.current = activeDropTargetId;
     },
-    [setActiveDropTarget],
+    [setActiveDropTargetId],
   );
 
-  const clearActiveDropTarget = useCallback((): void => {
-    setActiveDropTarget(activeDropTargetRef.current, false);
-    activeDropTargetRef.current = null;
-  }, [setActiveDropTarget]);
+  const clearActiveDropTargetId = useCallback((): void => {
+    setActiveDropTargetId(activeDropTargetIdRef.current, false);
+    activeDropTargetIdRef.current = null;
+  }, [setActiveDropTargetId]);
 
   function toggleExpanded(draggableId: string): void {
     setExpandedItemIds((currentExpandedItemIds) => {
@@ -246,21 +246,21 @@ export function TreeExample(): ReactElement {
         />
       )}
       onDragStart={() => {
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
       }}
-      onDragUpdate={({ activeDropTarget, previousDropTarget }) => {
-        updateActiveDropTarget({
-          activeDropTarget,
-          previousDropTarget,
+      onDragUpdate={({ activeDropTargetId, previousDropTargetId }) => {
+        updateActiveDropTargetId({
+          activeDropTargetId,
+          previousDropTargetId,
         });
       }}
       onDragEnd={() => {
-        clearActiveDropTarget();
+        clearActiveDropTargetId();
       }}
-      onDrop={({ draggableId, dropTarget }) => {
+      onDrop={({ draggableId, dropTargetId }) => {
         // Example drop behavior: interpret package drop target ids for tree data.
         setTreeState((currentTreeState) =>
-          moveTreeItem(currentTreeState, draggableId, dropTarget),
+          moveTreeItem(currentTreeState, draggableId, dropTargetId),
         );
       }}
     >
@@ -277,7 +277,7 @@ export function TreeExample(): ReactElement {
               />
             ) : (
               <TreeDropzoneLine
-                key={entry.targetId}
+                key={entry.dropTargetId}
                 line={entry}
                 registerDropTargetElement={registerDropTargetElement}
               />
@@ -299,14 +299,14 @@ function TreeRow({
   onToggleExpanded: (draggableId: string) => void;
   registerDropTargetElement: DropTargetElementRegistrar;
 }): ReactElement {
-  const targetId = getInsideTargetId(row.item.draggableId);
+  const dropTargetId = getInsideDropTargetId(row.item.draggableId);
   // Package API: each tree row is draggable and also an inside drop target.
   const draggable = useDraggable({
     draggableId: row.item.draggableId,
     group: treeGroup,
   });
   const droppable = useDroppable({
-    targetId,
+    dropTargetId,
     group: treeGroup,
   });
   const dragHandle = useDragHandle<HTMLButtonElement>();
@@ -314,9 +314,9 @@ function TreeRow({
   const { ref: droppableRef, ...droppableProps } = droppable;
   const registerRowElement = useCallback(
     (element: HTMLDivElement | null) => {
-      registerDropTargetElement(targetId, element);
+      registerDropTargetElement(dropTargetId, element);
     },
-    [registerDropTargetElement, targetId],
+    [registerDropTargetElement, dropTargetId],
   );
   const rowRef = useMemo(
     () => composeRefs(draggableRef, droppableRef, registerRowElement),
@@ -330,7 +330,7 @@ function TreeRow({
       ref={rowRef}
       className="treeRow"
       style={getTreeDepthStyle(row.depth)}
-      data-tree-drop-target-id={targetId}
+      data-tree-drop-target-id={dropTargetId}
       role="treeitem"
       aria-level={row.depth + 1}
       aria-expanded={row.hasChildren ? row.isExpanded : undefined}
@@ -372,15 +372,15 @@ function TreeDropzoneLine({
 }): ReactElement {
   // Package API: registers this generated insertion line as a drop target.
   const droppable = useDroppable({
-    targetId: line.targetId,
+    dropTargetId: line.dropTargetId,
     group: treeGroup,
   });
   const { ref: droppableRef, ...droppableProps } = droppable;
   const registerLineElement = useCallback(
     (element: HTMLDivElement | null) => {
-      registerDropTargetElement(line.targetId, element);
+      registerDropTargetElement(line.dropTargetId, element);
     },
-    [line.targetId, registerDropTargetElement],
+    [line.dropTargetId, registerDropTargetElement],
   );
   const lineRef = useMemo(
     () => composeRefs(droppableRef, registerLineElement),
@@ -393,7 +393,7 @@ function TreeDropzoneLine({
       ref={lineRef}
       className="treeDropzoneLine"
       style={getTreeDepthStyle(line.depth)}
-      data-tree-drop-target-id={line.targetId}
+      data-tree-drop-target-id={line.dropTargetId}
       aria-hidden="true"
     >
       <div className="treeDropzoneLineIndicator" />
@@ -487,7 +487,7 @@ function createDropzoneLine(
 ): ProjectedDropzoneLine {
   return {
     type: "line",
-    targetId: getChildrenTargetId(parentId, index),
+    dropTargetId: getChildrenDropTargetId(parentId, index),
     depth,
   };
 }
@@ -638,7 +638,7 @@ function parseTreeDropTargetId(
 ): ParsedTreeDropTarget | null {
   const insidePrefix = "tree:inside:";
 
-  if (isInsideTargetId(dropTargetId)) {
+  if (isInsideDropTargetId(dropTargetId)) {
     const draggableId = dropTargetId.slice(insidePrefix.length);
 
     return draggableId ? { type: "inside", draggableId } : null;
@@ -677,19 +677,19 @@ function getTreeItemLabel(treeState: TreeState, draggableId: string): string {
   return treeState.itemsById[draggableId]?.label ?? "";
 }
 
-function getInsideTargetId(draggableId: string): string {
+function getInsideDropTargetId(draggableId: string): string {
   return `tree:inside:${draggableId}`;
 }
 
-function getChildrenTargetId(parentId: string | null, index: number): string {
+function getChildrenDropTargetId(parentId: string | null, index: number): string {
   return `tree:children:${parentId ?? rootToken}:index:${index}`;
 }
 
-function isInsideTargetId(dropTargetId: string): boolean {
+function isInsideDropTargetId(dropTargetId: string): boolean {
   return dropTargetId.startsWith("tree:inside:");
 }
 
-function isChildrenTargetId(dropTargetId: string): boolean {
+function isChildrenDropTargetId(dropTargetId: string): boolean {
   return dropTargetId.startsWith("tree:children:");
 }
 

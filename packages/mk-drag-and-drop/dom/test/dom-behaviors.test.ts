@@ -96,7 +96,7 @@ describe("DOM behaviors", () => {
     const second = document.createElement("div");
     const droppable = createDomDroppable({
       runtime,
-      targetId: "target-1",
+      dropTargetId: "target-1",
       group: "items",
     });
 
@@ -200,12 +200,12 @@ describe("DOM behaviors", () => {
     stubBoundingClientRect(newElement, createRect({ left: 40, width: 10 }));
     const oldDroppable = createDomDroppable({
       runtime,
-      targetId: "target-1",
+      dropTargetId: "target-1",
       group: "items",
     });
     const newDroppable = createDomDroppable({
       runtime,
-      targetId: "target-1",
+      dropTargetId: "target-1",
       group: "items",
     });
 
@@ -239,17 +239,17 @@ describe("DOM behaviors", () => {
     stubBoundingClientRect(newElement, createRect({ left: 40, width: 10 }));
     const oldTarget = createDomDroppable({
       runtime,
-      targetId: "target-1",
+      dropTargetId: "target-1",
       group: "items",
     });
     const newTarget = createDomDroppable({
       runtime,
-      targetId: "target-1",
+      dropTargetId: "target-1",
       group: "items",
     });
     const reusedTarget = createDomDroppable({
       runtime,
-      targetId: "target-2",
+      dropTargetId: "target-2",
       group: "items",
     });
 

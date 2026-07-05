@@ -35,23 +35,23 @@ import type {
 import {
   DropTargetRegistry,
   type DragGroup,
-  type DropPlacement,
   type RegisterDropTargetOptions,
   type RemeasureDropTargetsInput,
   type RemovedDropTarget,
-  type SortablePlacement,
+  type SortableDropPlacement,
+  type SortableItemPlacement,
 } from "./drop-target-registry.js";
 import type {
   DragEndEvent,
   DragLifecycleCallbacks,
   DragLifecycleHelpers,
+  DragSource,
   DragRuntimeSubscription,
   DragStartEvent,
   DragUpdateEvent,
   DropEvent,
 } from "./lifecycle.js";
 import type {
-  ActiveDragInput,
   DragOverlayHostUpdate,
   DragRuntimeConfigureInput,
   DragRuntimeOptions,
@@ -68,17 +68,17 @@ type DragSession =
   | { status: "idle" }
   | {
       status: "dragging";
-      input: ActiveDragInput;
+      source: DragSource;
       draggableId: string;
       group: DragGroup;
       sourceRect: DragRect;
       sourceContainerId: string | null;
-      sourceSortablePlacement: SortablePlacement | null;
+      sourceSortablePlacement: SortableItemPlacement | null;
       overlayMeasurement: DragOverlayMeasurement | null;
       startPointerPosition: Point;
       rawPointerPosition: Point;
       pointerPosition: Point;
-      activeDropTarget: string | null;
+      activeDropTargetId: string | null;
     };
 
 type DraggingSession = Extract<DragSession, { status: "dragging" }>;
@@ -97,7 +97,7 @@ export class DragRuntime {
   draggedId: string | null = null;
   draggedGroup: DragGroup | null = null;
   pointerPosition: Point | null = null;
-  activeDropTarget: string | null = null;
+  activeDropTargetId: string | null = null;
 
   private session: DragSession = { status: "idle" };
   private modifiers: readonly DragModifierInput[] = [];
@@ -111,20 +111,9 @@ export class DragRuntime {
   private bindingCleanupRecords = new Set<BindingCleanupRecord>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private lifecycleHelpers: DragLifecycleHelpers = {
-    getDropPlacement: (draggableId) => this.getDropPlacement(draggableId),
-    getSortablePlacement: (draggableId) =>
-      this.getSortablePlacement(draggableId),
     getDropTargetRect: (dropTargetId) => this.getDropTargetRect(dropTargetId),
   };
   private dropTargetRegistry = new DropTargetRegistry();
-  private lastDropPlacementInput: {
-    draggableId: string;
-    group: DragGroup;
-    dropTarget: string | null;
-    sourceContainerId: string | null;
-    sourceSortablePlacement: SortablePlacement | null;
-  } | null = null;
-  private lastDropPlacement: DropPlacement | null = null;
   private pointerConfiguration: NormalizedPointerConfiguration = {
     activationDelay: null,
     activationDistance: null,
@@ -261,7 +250,7 @@ export class DragRuntime {
   moveKeyboardDrag(direction: KeyboardMoveDirection): void {
     const session = this.getDraggingSession();
 
-    if (!session || session.input !== "keyboard") {
+    if (!session || session.source !== "keyboard") {
       return;
     }
 
@@ -313,7 +302,7 @@ export class DragRuntime {
       return;
     }
 
-    const previousDropTarget = session.activeDropTarget;
+    const previousDropTargetId = session.activeDropTargetId;
     const pointerPosition = applyDragModifiers({
       activeModifiers: this.activeDragModifiers,
       draggableId: session.draggableId,
@@ -327,7 +316,7 @@ export class DragRuntime {
     const overlayRect = this.hasDragOverlay
       ? this.getCurrentDragRectAt(pointerPosition)
       : null;
-    const activeDropTarget = this.getActiveDropTarget({
+    const activeDropTargetId = this.getActiveDropTargetId({
       pointerPosition,
       overlayRect,
     });
@@ -339,7 +328,7 @@ export class DragRuntime {
       ...session,
       rawPointerPosition,
       pointerPosition,
-      activeDropTarget,
+      activeDropTargetId,
     };
     this.setSession(nextSession);
 
@@ -349,9 +338,10 @@ export class DragRuntime {
     });
     const updateEvent: DragUpdateEvent = {
       draggableId: nextSession.draggableId,
+      source: nextSession.source,
       pointerPosition,
-      activeDropTarget: nextSession.activeDropTarget,
-      previousDropTarget,
+      activeDropTargetId: nextSession.activeDropTargetId,
+      previousDropTargetId,
     };
 
     this.notifyDragUpdate(updateEvent, {
@@ -363,7 +353,7 @@ export class DragRuntime {
   endDrag(): void {
     this.flushQueuedPointerUpdate();
     this.finishDrag({
-      dropTarget: this.getDraggingSession()?.activeDropTarget ?? null,
+      reason: "drop",
       keepReleasedOverlay: this.keepOverlayOnDrop,
     });
   }
@@ -371,31 +361,34 @@ export class DragRuntime {
   cancelDrag(): void {
     this.flushQueuedPointerUpdate();
     this.finishDrag({
-      dropTarget: null,
+      reason: "cancel",
       keepReleasedOverlay: false,
     });
   }
 
   registerDropTarget(
-    id: string,
+    dropTargetId: string,
     element: HTMLElement,
     group: DragGroup,
     options?: RegisterDropTargetOptions,
   ): void {
     const removedTargets = this.dropTargetRegistry.register(
-      id,
+      dropTargetId,
       element,
       group,
       options,
     );
 
-    this.clearActiveDropTargetIfRemoved(removedTargets);
+    this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
-  unregisterDropTarget(id: string, element?: HTMLElement): void {
-    const removedTargets = this.dropTargetRegistry.unregister(id, element);
+  unregisterDropTarget(dropTargetId: string, element?: HTMLElement): void {
+    const removedTargets = this.dropTargetRegistry.unregister(
+      dropTargetId,
+      element,
+    );
 
-    this.clearActiveDropTargetIfRemoved(removedTargets);
+    this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
   registerDropContainer(
@@ -413,13 +406,13 @@ export class DragRuntime {
       },
     );
 
-    this.clearActiveDropTargetIfRemoved(removedTargets);
+    this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
   unregisterDropContainer(containerId: string, element?: HTMLElement): void {
     const removedTargets = this.dropTargetRegistry.unregister(containerId, element);
 
-    this.clearActiveDropTargetIfRemoved(removedTargets);
+    this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
   cleanup(): void {
@@ -428,67 +421,6 @@ export class DragRuntime {
     this.cleanupActiveDragResources();
     this.updateOverlayHost({ type: "unmount" });
     this.pruneDisconnectedBindingCleanups();
-  }
-
-  getSortablePlacement(draggableId: string): SortablePlacement | null {
-    const placement = this.getDropPlacement(draggableId);
-
-    if (placement) {
-      if (!hasRelativeSortablePlacement(placement)) {
-        return null;
-      }
-
-      const sortablePlacement = {
-        draggableId: placement.draggableId,
-        previousDraggableId: placement.previousDraggableId,
-        nextDraggableId: placement.nextDraggableId,
-      };
-
-      if (isSameSortablePlacement(sortablePlacement, this.getSourceSortablePlacement())) {
-        return null;
-      }
-
-      return sortablePlacement;
-    }
-
-    return this.dropTargetRegistry.getSortablePlacement(draggableId);
-  }
-
-  getDropPlacement(draggableId?: string): DropPlacement | null {
-    const session = this.getDraggingSession();
-
-    if (
-      !session &&
-      this.lastDropPlacement &&
-      (draggableId === undefined || draggableId === this.lastDropPlacement.draggableId)
-    ) {
-      return this.lastDropPlacement;
-    }
-
-    const placementInput = session
-      ? {
-          draggableId: draggableId ?? session.draggableId,
-          group: session.group,
-          dropTarget: session.activeDropTarget,
-          sourceContainerId: session.sourceContainerId,
-        }
-      : this.lastDropPlacementInput
-        ? {
-            ...this.lastDropPlacementInput,
-            draggableId: draggableId ?? this.lastDropPlacementInput.draggableId,
-          }
-        : null;
-
-    if (!placementInput) {
-      return null;
-    }
-
-    return this.dropTargetRegistry.getDropPlacement({
-      draggableId: placementInput.draggableId,
-      dropTargetId: placementInput.dropTarget,
-      group: placementInput.group,
-      sourceContainerId: placementInput.sourceContainerId,
-    });
   }
 
   getDropTargetRect(dropTargetId: string): DragRect | null {
@@ -638,14 +570,15 @@ export class DragRuntime {
         input.draggableId,
         input.group,
       )?.containerId ?? null;
-    const sourceSortablePlacement = this.dropTargetRegistry.getSortablePlacement(
-      input.draggableId,
-      input.group,
-    );
+    const sourceSortablePlacement =
+      this.dropTargetRegistry.getSortableItemPlacement(
+        input.draggableId,
+        input.group,
+      );
 
     const nextSession: DraggingSession = {
       status: "dragging",
-      input: input.inputType,
+      source: input.inputType,
       draggableId: input.draggableId,
       group: input.group,
       sourceRect: input.sourceRect,
@@ -655,11 +588,9 @@ export class DragRuntime {
       startPointerPosition: rawPointerPosition,
       rawPointerPosition,
       pointerPosition: effectivePointerPosition,
-      activeDropTarget: null,
+      activeDropTargetId: null,
     };
 
-    this.lastDropPlacementInput = null;
-    this.lastDropPlacement = null;
     this.setSession(nextSession);
     this.remeasureDropTargets({ group: input.group });
 
@@ -678,62 +609,63 @@ export class DragRuntime {
     }
     this.notifyDragStart({
       draggableId: input.draggableId,
+      source: input.inputType,
       pointerPosition: effectivePointerPosition,
       sourceRect: input.sourceRect,
     });
   }
 
   private finishDrag(input: {
-    dropTarget: string | null;
+    reason: "drop" | "cancel";
     keepReleasedOverlay: boolean;
   }): void {
     this.pointerActivation.cancel();
 
     const session = this.getDraggingSession();
-    const draggableId = session?.draggableId ?? null;
-    const dropTarget =
-      session && input.dropTarget
-        ? this.dropTargetRegistry.getDropTargetRegistration(
-            input.dropTarget,
-            session.group,
-          )
-          ? input.dropTarget
-          : null
-        : null;
-    this.lastDropPlacementInput = session
-      ? {
-          draggableId: session.draggableId,
-          group: session.group,
-          dropTarget,
-          sourceContainerId: session.sourceContainerId,
-          sourceSortablePlacement: session.sourceSortablePlacement,
-        }
-      : null;
-    this.lastDropPlacement = this.lastDropPlacementInput
-      ? this.dropTargetRegistry.getDropPlacement({
-          draggableId: this.lastDropPlacementInput.draggableId,
-          dropTargetId: this.lastDropPlacementInput.dropTarget,
-          group: this.lastDropPlacementInput.group,
-          sourceContainerId: this.lastDropPlacementInput.sourceContainerId,
-        })
-      : null;
     const releasedDragState = session
       ? this.createDragState(session)
       : null;
+    const activeDropTargetId =
+      input.reason === "drop" ? session?.activeDropTargetId ?? null : null;
+    const validDropTarget =
+      session && activeDropTargetId
+        ? this.dropTargetRegistry.getDropTargetRegistration(
+            activeDropTargetId,
+            session.group,
+          )
+        : null;
+    const dropTargetId = validDropTarget ? activeDropTargetId : null;
+    const result = session
+      ? input.reason === "cancel"
+        ? "canceled"
+        : activeDropTargetId === null
+          ? "no-target"
+          : validDropTarget
+            ? "dropped"
+            : "invalid-target"
+      : null;
+    const sortablePlacement =
+      session && dropTargetId
+        ? this.getDropEventSortablePlacement(session, dropTargetId)
+        : undefined;
 
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
 
-    if (draggableId) {
+    if (session && result) {
       this.notifyDragEnd({
-        draggableId,
-        dropTarget,
+        draggableId: session.draggableId,
+        source: session.source,
+        result,
+        dropTargetId,
       });
 
-      if (dropTarget) {
+      if (result === "dropped" && dropTargetId) {
         this.notifyDrop({
-          draggableId,
-          dropTarget,
+          draggableId: session.draggableId,
+          source: session.source,
+          dropTargetId,
+          ...(sortablePlacement ? { sortablePlacement } : {}),
         });
       }
     }
@@ -861,7 +793,7 @@ export class DragRuntime {
       this.draggedId = null;
       this.draggedGroup = null;
       this.pointerPosition = null;
-      this.activeDropTarget = null;
+      this.activeDropTargetId = null;
       return;
     }
 
@@ -869,23 +801,36 @@ export class DragRuntime {
     this.draggedId = this.session.draggableId;
     this.draggedGroup = this.session.group;
     this.pointerPosition = this.session.pointerPosition;
-    this.activeDropTarget = this.session.activeDropTarget;
+    this.activeDropTargetId = this.session.activeDropTargetId;
   }
 
-  private getActiveInput(): ActiveDragInput | null {
-    return this.session.status === "dragging" ? this.session.input : null;
+  private getActiveInput(): DragSource | null {
+    return this.session.status === "dragging" ? this.session.source : null;
   }
 
   private getDraggingSession(): DraggingSession | null {
     return this.session.status === "dragging" ? this.session : null;
   }
 
-  private getSourceSortablePlacement(): SortablePlacement | null {
-    const session = this.getDraggingSession();
+  private getDropEventSortablePlacement(
+    session: DraggingSession,
+    dropTargetId: string,
+  ): SortableDropPlacement | undefined {
+    const placement = this.dropTargetRegistry.getSortableDropPlacement({
+      draggableId: session.draggableId,
+      dropTargetId,
+      group: session.group,
+      sourceContainerId: session.sourceContainerId,
+    });
 
-    return session
-      ? session.sourceSortablePlacement
-      : this.lastDropPlacementInput?.sourceSortablePlacement ?? null;
+    if (
+      !placement ||
+      isSameSortablePlacement(placement, session.sourceSortablePlacement)
+    ) {
+      return undefined;
+    }
+
+    return placement;
   }
 
   private createDragState(session: DraggingSession): DragState {
@@ -898,7 +843,7 @@ export class DragRuntime {
     };
   }
 
-  private getActiveDropTarget(input: {
+  private getActiveDropTargetId(input: {
     pointerPosition: Point;
     overlayRect: DragRect | null;
   }): string | null {
@@ -920,7 +865,7 @@ export class DragRuntime {
       }),
     });
 
-    return activeTarget?.dropTargetKey ?? null;
+    return activeTarget?.dropTargetId ?? null;
   }
 
   private getSortablePlacementPosition(input: {
@@ -964,7 +909,7 @@ export class DragRuntime {
 
   private removeDisconnectedDropTargets(group?: DragGroup): void {
     const removedTargets = this.dropTargetRegistry.pruneDisconnected(group);
-    this.clearActiveDropTargetIfRemoved(removedTargets);
+    this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
   private pruneDisconnectedBindingCleanupRecords(
@@ -987,7 +932,7 @@ export class DragRuntime {
     }
   }
 
-  private clearActiveDropTargetIfRemoved(
+  private clearActiveDropTargetIdIfRemoved(
     removedTargets: RemovedDropTarget[],
   ): void {
     if (this.session.status !== "dragging") {
@@ -997,7 +942,7 @@ export class DragRuntime {
     const session = this.session;
     const removedActiveTarget = removedTargets.some(
       (removedTarget) =>
-        removedTarget.id === session.activeDropTarget &&
+        removedTarget.id === session.activeDropTargetId &&
         removedTarget.group === session.group,
     );
 
@@ -1007,7 +952,7 @@ export class DragRuntime {
 
     this.setSession({
       ...session,
-      activeDropTarget: null,
+      activeDropTargetId: null,
     });
   }
 
@@ -1093,17 +1038,13 @@ export function createDragRuntime(
   return new DragRuntime(options);
 }
 
-function hasRelativeSortablePlacement(placement: DropPlacement): boolean {
-  return placement.previousDraggableId !== null || placement.nextDraggableId !== null;
-}
-
 function isSameSortablePlacement(
-  placement: SortablePlacement,
-  sourcePlacement: SortablePlacement | null,
+  placement: SortableDropPlacement,
+  sourcePlacement: SortableItemPlacement | null,
 ): boolean {
   return (
     sourcePlacement !== null &&
-    placement.draggableId === sourcePlacement.draggableId &&
+    placement.containerId === sourcePlacement.containerId &&
     placement.previousDraggableId === sourcePlacement.previousDraggableId &&
     placement.nextDraggableId === sourcePlacement.nextDraggableId
   );

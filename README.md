@@ -61,7 +61,8 @@ The DOM root export includes:
 - `createSortable`
 - `createDragHandle`
 - lifecycle event/helper types
-- `DropPlacement`, `SortablePlacement`, `RemeasureDropTargetsInput`
+- `DragSource`, `DragEndResult`, `SortableDropPlacement`,
+  `RemeasureDropTargetsInput`
 - targeting helpers and types
 - modifier helpers and types
 - pointer and keyboard configuration types
@@ -78,29 +79,30 @@ The React root export includes `DragProvider`, `useDraggable`, `useDroppable`,
 `restrictToContainer`, DOM targeting/modifier/type re-exports, and overlay
 types.
 
-## Naming And Placement
+## Naming And Lifecycle Results
 
-The current drag item identifier field is `draggableId`. Sortable and drop
-placement fields use `previousDraggableId` and `nextDraggableId`.
+The current drag item identifier field is `draggableId`. Lifecycle events include
+`source`, which is `"pointer"` or `"keyboard"`.
 
-`DropPlacement` contains:
+`onDragEnd` includes a `result` value:
 
-- `draggableId`
-- `dropTarget`
+- `"dropped"`: a valid target was accepted and `onDrop` also runs.
+- `"no-target"`: the user ended normally without an active target.
+- `"invalid-target"`: an active target candidate became stale before finish.
+- `"canceled"`: the drag was canceled, such as Escape or pointercancel.
+
+`onDrop` only runs for valid successful drops. Plain drops are id-only
+(`draggableId`, `dropTargetId`, and `source`). Sortable behavior may add
+`event.sortablePlacement` with:
+
 - `sourceContainerId`
 - `containerId`
 - `previousDraggableId`
 - `nextDraggableId`
 
-`SortablePlacement` contains:
-
-- `draggableId`
-- `previousDraggableId`
-- `nextDraggableId`
-
 Sortable behavior may move DOM nodes temporarily to preview placement during a
-drag. The app still commits data on `onDrop` by reading lifecycle helpers such
-as `getSortablePlacement` or `getDropPlacement`.
+drag. The app still commits data on `onDrop` by reading the event and updating
+its own data/rendering.
 
 ## Examples
 

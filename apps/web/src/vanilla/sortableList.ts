@@ -7,7 +7,7 @@ import {
   maxDistanceToRect,
   type DragControllerOverlayInput,
   type DragRect,
-  type SortablePlacement,
+  type SortableDropPlacement,
 } from "@mk-drag-and-drop/dom";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
@@ -36,25 +36,27 @@ export function mountSortableList(root: HTMLElement): () => void {
       releaseTargetRect = null;
       updateItemDraggingClasses();
     },
-    onDragEnd({ dropTarget }, { getDropTargetRect }) {
-      releaseTargetRect = dropTarget ? getDropTargetRect(dropTarget) : null;
+    onDragEnd({ dropTargetId }, { getDropTargetRect }) {
+      releaseTargetRect = dropTargetId
+        ? getDropTargetRect(dropTargetId)
+        : null;
 
-      if (dropTarget !== null) {
+      if (dropTargetId !== null) {
         return;
       }
 
       activeItemId = null;
       updateItemDraggingClasses();
     },
-    onDrop({ draggableId }, { getSortablePlacement }) {
-      const placement = getSortablePlacement(draggableId);
+    onDrop({ draggableId, sortablePlacement }) {
+      const placement = sortablePlacement;
 
       if (!placement) {
         return;
       }
 
       // Example drop behavior: translate package sortable placement into app data.
-      items = reorderData(items, placement);
+      items = reorderData(items, draggableId, placement);
       renderItems();
     },
   });
@@ -301,9 +303,10 @@ function getSortableGroup(draggableId: string): string {
 // Example drop behavior: convert sortable placement into user-owned item order.
 function reorderData(
   items: readonly string[],
-  placement: SortablePlacement,
+  draggableId: string,
+  placement: SortableDropPlacement,
 ): string[] {
-  const withoutItem = items.filter((item) => item !== placement.draggableId);
+  const withoutItem = items.filter((item) => item !== draggableId);
 
   if (placement.previousDraggableId !== null) {
     const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
@@ -314,7 +317,7 @@ function reorderData(
 
     return [
       ...withoutItem.slice(0, previousIndex + 1),
-      placement.draggableId,
+      draggableId,
       ...withoutItem.slice(previousIndex + 1),
     ];
   }
@@ -328,7 +331,7 @@ function reorderData(
 
     return [
       ...withoutItem.slice(0, nextIndex),
-      placement.draggableId,
+      draggableId,
       ...withoutItem.slice(nextIndex),
     ];
   }

@@ -34,6 +34,7 @@ describe("createDraggable", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        source: "pointer",
         pointerPosition: { x: 4, y: 5 },
         sourceRect: createRect({ width: 20, height: 20 }),
       },
@@ -54,7 +55,7 @@ describe("createDraggable", () => {
     dispatchKeyDown(element, "Space");
 
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ draggableId: "item" }),
+      expect.objectContaining({ draggableId: "item", source: "keyboard" }),
       expect.any(Object),
     );
 

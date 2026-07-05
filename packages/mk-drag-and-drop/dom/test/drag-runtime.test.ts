@@ -10,6 +10,7 @@ import {
 } from "../src/runtime/drag-runtime.js";
 import {
   createRect,
+  dispatchKeyDown,
   dispatchPointerCancel,
   dispatchPointerMove,
   dispatchPointerUp,
@@ -54,7 +55,31 @@ describe("DragRuntime", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        source: "pointer",
         pointerPosition: { x: 4, y: 5 },
+        sourceRect: createRect({ width: 40, height: 20 }),
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("starts keyboard drags and calls onDragStart with keyboard source", () => {
+    const source = createElementWithRect(createRect({ width: 40, height: 20 }));
+    const onDragStart = vi.fn();
+    configureRuntime(runtime, { onDragStart });
+
+    runtime.requestKeyboardDragStart({
+      draggableId: "item-1",
+      group: "items",
+      element: source,
+    });
+
+    expect(runtime.isDragging).toBe(true);
+    expect(onDragStart).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "keyboard",
+        pointerPosition: { x: 20, y: 10 },
         sourceRect: createRect({ width: 40, height: 20 }),
       },
       expect.any(Object),
@@ -74,13 +99,14 @@ describe("DragRuntime", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("target-1");
+    expect(runtime.activeDropTargetId).toBe("target-1");
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        source: "pointer",
         pointerPosition: { x: 110, y: 10 },
-        activeDropTarget: "target-1",
-        previousDropTarget: null,
+        activeDropTargetId: "target-1",
+        previousDropTargetId: null,
       },
       expect.any(Object),
     );
@@ -166,11 +192,20 @@ describe("DragRuntime", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "dropped",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
 
@@ -180,7 +215,43 @@ describe("DragRuntime", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 0, clientY: 0 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: null },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "no-target",
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("reports invalid-target when the active target is stale on release", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    configureRuntime(runtime, { onDragEnd, onDrop });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.remove();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "invalid-target",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -199,11 +270,11 @@ describe("DragRuntime", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
     raf.flush();
 
-    expect(runtime.activeDropTarget).toBe("container-1");
+    expect(runtime.activeDropTargetId).toBe("container-1");
 
     runtime.unregisterDropContainer("container-1", target);
 
-    expect(runtime.activeDropTarget).toBeNull();
+    expect(runtime.activeDropTargetId).toBeNull();
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
@@ -226,7 +297,12 @@ describe("DragRuntime", () => {
     dispatchPointerCancel(window, { pointerId: 1 });
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: null },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "canceled",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -236,7 +312,37 @@ describe("DragRuntime", () => {
     runtime.cancelDrag();
 
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: null },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "canceled",
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("reports canceled for keyboard Escape", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    configureRuntime(runtime, { onDragEnd, onDrop });
+
+    runtime.requestKeyboardDragStart({
+      draggableId: "item-1",
+      group: "items",
+      element: source,
+    });
+    dispatchKeyDown(window, "Escape");
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "keyboard",
+        result: "canceled",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
@@ -258,7 +364,7 @@ describe("DragRuntime", () => {
     dispatchPointerUp(window, { pointerId: 2, clientX: 110, clientY: 10 });
 
     expect(runtime.isDragging).toBe(true);
-    expect(runtime.activeDropTarget).toBeNull();
+    expect(runtime.activeDropTargetId).toBeNull();
     expect(onDragUpdate).not.toHaveBeenCalled();
     expect(onDrop).not.toHaveBeenCalled();
   });
@@ -280,7 +386,11 @@ describe("DragRuntime", () => {
 
     expect(raf.pendingCount()).toBe(0);
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
   });

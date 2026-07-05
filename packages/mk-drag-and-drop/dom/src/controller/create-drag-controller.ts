@@ -147,7 +147,7 @@ export function createDragController(
       onDragUpdate: (event, helpers) => {
         nextOptions.onDragUpdate?.(event, helpers);
 
-        if (event.activeDropTarget !== event.previousDropTarget) {
+        if (event.activeDropTargetId !== event.previousDropTargetId) {
           announce(nextOptions.announcements?.onDragUpdate?.(event));
         }
       },

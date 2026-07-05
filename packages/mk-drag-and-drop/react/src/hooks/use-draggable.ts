@@ -16,28 +16,32 @@ export type UseDraggableOptions = {
   group?: string;
 };
 
-export type UseDraggableResult = HTMLAttributes<HTMLDivElement> & {
-  ref: RefCallback<HTMLDivElement>;
+export type UseDraggableResult<
+  ElementType extends HTMLElement = HTMLElement,
+> = HTMLAttributes<ElementType> & {
+  ref: RefCallback<ElementType>;
 };
 
 const defaultDraggableGroup = "default";
 
-export function useDraggable({
+export function useDraggable<
+  ElementType extends HTMLElement = HTMLElement,
+>({
   draggableId,
   group = defaultDraggableGroup,
-}: UseDraggableOptions): UseDraggableResult {
-  const runtime = useContext(DragContext);
-  const nodeRef = useRef<HTMLDivElement | null>(null);
+}: UseDraggableOptions): UseDraggableResult<ElementType> {
+  const context = useContext(DragContext);
+  const nodeRef = useRef<ElementType | null>(null);
 
-  if (!runtime) {
+  if (!context) {
     throw new Error("useDraggable must be used inside DragProvider");
   }
 
-  const setNodeRef = useCallback((node: HTMLDivElement | null) => {
+  const { runtime, keyboardDragEnabled } = context;
+  const setNodeRef = useCallback((node: ElementType | null) => {
     nodeRef.current = node;
   }, []);
   const getNode = useCallback(() => nodeRef.current, []);
-  const keyboardDragEnabled = runtime.isKeyboardDragEnabled();
   const behavior = useMemo(
     () =>
       createDomDraggable({
@@ -45,12 +49,13 @@ export function useDraggable({
         group,
         runtime,
         getElement: getNode,
+        keyboardDragEnabled,
       }),
     [getNode, group, draggableId, keyboardDragEnabled, runtime],
   );
 
   return useMemo(() => {
-    const dragProps: UseDraggableResult = {
+    const dragProps: UseDraggableResult<ElementType> = {
       ref: setNodeRef,
       onPointerDown: behavior.onPointerDown,
     };

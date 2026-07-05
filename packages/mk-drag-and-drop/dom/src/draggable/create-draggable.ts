@@ -27,6 +27,7 @@ export type CreateDomDraggableInput = {
   draggableId: string;
   group: string;
   getElement: () => HTMLElement | null;
+  keyboardDragEnabled?: boolean;
 };
 
 export type DomDraggablePointerDownEvent = {
@@ -121,6 +122,9 @@ export function createDomDraggable(
       event.preventDefault();
       event.stopPropagation();
     },
-    tabIndex: input.runtime.isKeyboardDragEnabled() ? 0 : undefined,
+    tabIndex:
+      (input.keyboardDragEnabled ?? input.runtime.isKeyboardDragEnabled())
+        ? 0
+        : undefined,
   };
 }

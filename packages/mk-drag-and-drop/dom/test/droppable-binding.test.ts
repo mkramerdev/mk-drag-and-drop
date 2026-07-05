@@ -36,7 +36,7 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", dropTarget: "target" },
+      { draggableId: "item", source: "pointer", dropTargetId: "target" },
       expect.any(Object),
     );
   });
@@ -61,7 +61,7 @@ describe("createDroppable", () => {
     const targetMeasure = vi.mocked(target.getBoundingClientRect);
 
     createDraggable({ controller, element: source, draggableId: "item" });
-    createDroppable({ controller, element: target, targetId: "target" });
+    createDroppable({ controller, element: target, dropTargetId: "target" });
     targetMeasure.mockClear();
 
     dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
@@ -76,7 +76,7 @@ describe("createDroppable", () => {
     raf.flush();
 
     expect(onDragUpdate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ activeDropTarget: "target" }),
+      expect.objectContaining({ activeDropTargetId: "target" }),
       expect.any(Object),
     );
 
@@ -108,7 +108,7 @@ describe("createDroppable", () => {
     createDroppable({
       controller,
       element: target,
-      targetId: "target",
+      dropTargetId: "target",
       group: "targets",
     });
 
@@ -119,7 +119,11 @@ describe("createDroppable", () => {
     dragToTarget(secondSource, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "target-item", dropTarget: "target" },
+      {
+        draggableId: "target-item",
+        source: "pointer",
+        dropTargetId: "target",
+      },
       expect.any(Object),
     );
   });
@@ -146,7 +150,7 @@ describe("createDroppable", () => {
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
 
-    createDroppable({ controller, element: target, targetId: "target" });
+    createDroppable({ controller, element: target, dropTargetId: "target" });
 
     expect(runtime.getBindingCleanupRecordCount()).toBe(1);
 
@@ -171,9 +175,9 @@ describe("createDroppable", () => {
       createRect({ left: 140, top: 0, width: 20, height: 20 }),
     );
 
-    createDroppable({ controller, element: oldTarget, targetId: "target" });
+    createDroppable({ controller, element: oldTarget, dropTargetId: "target" });
     oldTarget.remove();
-    createDroppable({ controller, element: newTarget, targetId: "target" });
+    createDroppable({ controller, element: newTarget, dropTargetId: "target" });
 
     expect(runtime.getBindingCleanupRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("target")?.element).toBe(newTarget);
@@ -189,7 +193,7 @@ describe("createDroppable", () => {
     );
 
     createDraggable({ controller, element: source, draggableId: "item" });
-    createDroppable({ controller, element: target, targetId: "target" });
+    createDroppable({ controller, element: target, dropTargetId: "target" });
 
     dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
     dispatchPointerMove(window, {
@@ -200,7 +204,7 @@ describe("createDroppable", () => {
     raf.flush();
 
     expect(onDragUpdate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ activeDropTarget: "target" }),
+      expect.objectContaining({ activeDropTargetId: "target" }),
       expect.any(Object),
     );
 
@@ -214,8 +218,8 @@ describe("createDroppable", () => {
 
     expect(onDragUpdate).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        activeDropTarget: null,
-        previousDropTarget: "target",
+        activeDropTargetId: null,
+        previousDropTargetId: "target",
       }),
       expect.any(Object),
     );
@@ -234,7 +238,7 @@ describe("createDroppable", () => {
     );
 
     createDraggable({ controller, element: source, draggableId: "item" });
-    createDroppable({ controller, element: target, targetId: "target" });
+    createDroppable({ controller, element: target, dropTargetId: "target" });
 
     dispatchPointerDown(source, { pointerId: 1, clientX: 0, clientY: 0 });
     dispatchPointerMove(window, {
@@ -251,7 +255,12 @@ describe("createDroppable", () => {
 
     expect(onDrop).not.toHaveBeenCalled();
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item", dropTarget: null },
+      {
+        draggableId: "item",
+        source: "pointer",
+        result: "invalid-target",
+        dropTargetId: null,
+      },
       expect.any(Object),
     );
   });
@@ -281,7 +290,7 @@ describe("createDroppable", () => {
     createDroppable({
       controller,
       element: target,
-      targetId: "target",
+      dropTargetId: "target",
     });
 
     return {

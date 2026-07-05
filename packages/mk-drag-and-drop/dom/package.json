@@ -1,7 +1,29 @@
 {
   "name": "@mk-drag-and-drop/dom",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Headless DOM drag-and-drop primitives for draggable, droppable, sortable, and grouped interactions.",
+  "license": "MIT",
+  "homepage": "https://mkramer.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkramerdev/mk-drag-and-drop.git",
+    "directory": "packages/mk-drag-and-drop/dom"
+  },
+  "bugs": {
+    "url": "https://github.com/mkramerdev/mk-drag-and-drop/issues"
+  },
+  "keywords": [
+    "drag-and-drop",
+    "dnd",
+    "sortable",
+    "dom",
+    "headless",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

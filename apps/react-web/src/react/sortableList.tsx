@@ -17,7 +17,7 @@ import {
     useSortable,
     type DragOverlayPhase,
     type DragRect,
-    type SortablePlacement,
+    type SortableDropPlacement,
 } from "@mk-drag-and-drop/react";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
@@ -52,17 +52,17 @@ export function SortableList(): ReactElement {
         setActiveItemId(draggableId);
         setReleaseTargetRect(null);
       }}
-      onDragEnd={({ dropTarget }, { getDropTargetRect }) => {
+      onDragEnd={({ dropTargetId }, { getDropTargetRect }) => {
         setReleaseTargetRect(
-          dropTarget ? getDropTargetRect(dropTarget) : null,
+          dropTargetId ? getDropTargetRect(dropTargetId) : null,
         );
 
-        if (!dropTarget) {
+        if (!dropTargetId) {
           setActiveItemId(null);
         }
       }}
-      onDrop={({ draggableId }, { getSortablePlacement }) => {
-        const placement = getSortablePlacement(draggableId);
+      onDrop={({ draggableId, sortablePlacement }) => {
+        const placement = sortablePlacement;
 
         if (!placement) {
           return;
@@ -70,7 +70,7 @@ export function SortableList(): ReactElement {
 
         // Example drop behavior: translate package sortable placement into app data.
         setItems((currentItems) =>
-          moveItemToSortablePlacement(currentItems, placement),
+          moveItemToSortablePlacement(currentItems, draggableId, placement),
         );
       }}
       dragOverlay={({ dragState, phase, finish }) => (
@@ -235,9 +235,10 @@ function getSortableGroup(draggableId: string): string {
 // Example drop behavior: convert sortable placement into user-owned item order.
 function moveItemToSortablePlacement(
     items: readonly string[],
-    placement: SortablePlacement,
+    draggableId: string,
+    placement: SortableDropPlacement,
 ): string[] {
-    const withoutItem = items.filter((item) => item !== placement.draggableId);
+    const withoutItem = items.filter((item) => item !== draggableId);
 
     if (placement.previousDraggableId !== null) {
         const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
@@ -248,7 +249,7 @@ function moveItemToSortablePlacement(
 
         return [
             ...withoutItem.slice(0, previousIndex + 1),
-            placement.draggableId,
+            draggableId,
             ...withoutItem.slice(previousIndex + 1),
         ];
     }
@@ -262,7 +263,7 @@ function moveItemToSortablePlacement(
 
         return [
             ...withoutItem.slice(0, nextIndex),
-            placement.draggableId,
+            draggableId,
             ...withoutItem.slice(nextIndex),
         ];
     }

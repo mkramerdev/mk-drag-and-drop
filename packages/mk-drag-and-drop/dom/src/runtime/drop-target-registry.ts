@@ -45,15 +45,13 @@ export type GetAvailableDropTargetsInput = {
   targetingConstraint?: TargetingConstraint;
 };
 
-export type SortablePlacement = {
-  draggableId: string;
+export type SortableItemPlacement = {
+  containerId: string | null;
   previousDraggableId: string | null;
   nextDraggableId: string | null;
 };
 
-export type DropPlacement = {
-  draggableId: string;
-  dropTarget: string;
+export type SortableDropPlacement = {
   sourceContainerId: string | null;
   containerId: string | null;
   previousDraggableId: string | null;
@@ -304,7 +302,7 @@ export class DropTargetRegistry {
       }
 
       const candidateDropTarget = {
-        dropTargetKey: candidate.entry.id,
+        dropTargetId: candidate.entry.id,
         dropTargetRect: candidate.viewportRect,
       };
 
@@ -325,12 +323,12 @@ export class DropTargetRegistry {
     return dropTargets;
   }
 
-  getDropPlacement(input: {
+  getSortableDropPlacement(input: {
     draggableId: string;
     dropTargetId: string | null;
     group: DragGroup | null;
     sourceContainerId: string | null;
-  }): DropPlacement | null {
+  }): SortableDropPlacement | null {
     if (input.dropTargetId === null || input.group === null) {
       return null;
     }
@@ -346,6 +344,18 @@ export class DropTargetRegistry {
     const itemRegistration = this.findRegistration(input.draggableId, {
       group: input.group,
     });
+
+    if (!itemRegistration?.capabilities.sortable) {
+      return null;
+    }
+
+    if (
+      !dropTarget.capabilities.sortable &&
+      !dropTarget.capabilities.container
+    ) {
+      return null;
+    }
+
     const previewContainer =
       dropTarget.id === input.draggableId
         ? this.findContainerRegistrationForElement({
@@ -365,8 +375,6 @@ export class DropTargetRegistry {
     });
 
     return {
-      draggableId: input.draggableId,
-      dropTarget: dropTarget.id,
       sourceContainerId: input.sourceContainerId,
       containerId,
       previousDraggableId: siblingPlacement.previousDraggableId,
@@ -374,10 +382,10 @@ export class DropTargetRegistry {
     };
   }
 
-  getSortablePlacement(
+  getSortableItemPlacement(
     draggableId: string,
     group?: DragGroup,
-  ): SortablePlacement | null {
+  ): SortableItemPlacement | null {
     const registration = this.findRegistration(draggableId, { group });
 
     if (
@@ -401,12 +409,8 @@ export class DropTargetRegistry {
       "next",
     );
 
-    if (previousDraggableId === null && nextDraggableId === null) {
-      return null;
-    }
-
     return {
-      draggableId,
+      containerId: registration.containerId,
       previousDraggableId,
       nextDraggableId,
     };
@@ -570,7 +574,7 @@ export class DropTargetRegistry {
     itemElement: HTMLElement | null;
     dropTarget: ResolvedDropTargetEntry;
     containerElement: HTMLElement | null;
-  }): Pick<DropPlacement, "previousDraggableId" | "nextDraggableId"> {
+  }): Pick<SortableDropPlacement, "previousDraggableId" | "nextDraggableId"> {
     if (
       input.itemElement?.parentElement &&
       input.itemElement.parentElement === input.containerElement

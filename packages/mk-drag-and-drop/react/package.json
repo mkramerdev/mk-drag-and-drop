@@ -1,7 +1,30 @@
 {
   "name": "@mk-drag-and-drop/react",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "React hooks and provider for the mk drag-and-drop DOM runtime.",
+  "license": "MIT",
+  "homepage": "https://mkramer.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkramerdev/mk-drag-and-drop.git",
+    "directory": "packages/mk-drag-and-drop/react"
+  },
+  "bugs": {
+    "url": "https://github.com/mkramerdev/mk-drag-and-drop/issues"
+  },
+  "keywords": [
+    "drag-and-drop",
+    "dnd",
+    "sortable",
+    "react",
+    "hooks",
+    "headless",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

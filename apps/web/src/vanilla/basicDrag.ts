@@ -17,12 +17,12 @@ const draggableItem = {
 };
 
 const rootContainer = {
-  targetId: "droppable-root",
+  dropTargetId: "droppable-root",
   label: "Drop Back Here",
 };
 
 const droppableContainer = {
-  targetId: "droppable",
+  dropTargetId: "droppable",
   label: "Drop Here",
 };
 
@@ -48,7 +48,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   let releaseOverlayState: ReleaseOverlayState | null = null;
   let movePreviewState: MovePreviewState | null = null;
   const dropzoneElements = new Map<string, HTMLElement>();
-  let activeDropTarget: string | null = null;
+  let activeDropTargetId: string | null = null;
 
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
@@ -63,17 +63,20 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       overlayTargetRect = null;
       clearActiveDropzone();
     },
-    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
-      updateActiveDropzone(nextDropTarget, previousDropTarget);
+    onDragUpdate({ activeDropTargetId: nextDropTarget, previousDropTargetId }) {
+      updateActiveDropzone(nextDropTarget, previousDropTargetId);
     },
     onDragEnd() {
       clearActiveDropzone();
     },
-    onDrop({ draggableId: droppedItemId, dropTarget }, { getDropTargetRect }) {
+    onDrop(
+      { draggableId: droppedItemId, dropTargetId },
+      { getDropTargetRect },
+    ) {
       // Example drop behavior: commit valid drops into app-owned DOM state.
       if (
         droppedItemId !== "draggable" ||
-        !isKnownDropTarget(dropTarget)
+        !isKnownDropTarget(dropTargetId)
       ) {
         return;
       }
@@ -87,28 +90,28 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       }
 
       const isSameContainer =
-        (dropTarget === rootContainer.targetId &&
+        (dropTargetId === rootContainer.dropTargetId &&
           itemElement.parentElement === rootDropzoneElement) ||
-        (dropTarget === droppableContainer.targetId &&
+        (dropTargetId === droppableContainer.dropTargetId &&
           itemElement.parentElement === targetDropzoneElement);
 
       if (isSameContainer || movePreviewState) {
         return;
       }
 
-      overlayTargetRect = getDropTargetRect(dropTarget);
-      startMovePreview(dropTarget);
+      overlayTargetRect = getDropTargetRect(dropTargetId);
+      startMovePreview(dropTargetId);
     },
   });
 
   const rootDropzoneElement = createDropzone(
     controller,
-    rootContainer.targetId,
+    rootContainer.dropTargetId,
     rootContainer.label,
   );
   const targetDropzoneElement = createDropzone(
     controller,
-    droppableContainer.targetId,
+    droppableContainer.dropTargetId,
     droppableContainer.label,
   );
   const itemElement = createDraggableItem(controller, "draggable");
@@ -127,7 +130,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   };
 
   // Example drop behavior: create a demo-owned move preview before final DOM commit.
-  function startMovePreview(dropTarget: string): void {
+  function startMovePreview(dropTargetId: string): void {
     const itemElement = root.querySelector<HTMLElement>(
       '[data-basic-item-id="draggable"]',
     );
@@ -137,9 +140,9 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     }
 
     const targetDropzoneElementForDrop =
-      dropTarget === rootContainer.targetId
+      dropTargetId === rootContainer.dropTargetId
         ? rootDropzoneElement
-        : dropTarget === droppableContainer.targetId
+        : dropTargetId === droppableContainer.dropTargetId
           ? targetDropzoneElement
           : null;
 
@@ -379,7 +382,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   ): void {
     dropzoneElements.set(dropTargetId, element);
 
-    if (activeDropTarget === dropTargetId) {
+    if (activeDropTargetId === dropTargetId) {
       element.dataset.basicActiveDropTarget = "true";
     } else {
       delete element.dataset.basicActiveDropTarget;
@@ -387,29 +390,29 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   }
 
   function clearActiveDropzone(): void {
-    setDropzoneActive(activeDropTarget, false);
-    activeDropTarget = null;
+    setDropzoneActive(activeDropTargetId, false);
+    activeDropTargetId = null;
   }
 
   function updateActiveDropzone(
     nextDropTarget: string | null,
-    previousDropTarget: string | null,
+    previousDropTargetId: string | null,
   ): void {
-    if (nextDropTarget === previousDropTarget) {
+    if (nextDropTarget === previousDropTargetId) {
       return;
     }
 
-    setDropzoneActive(previousDropTarget, false);
+    setDropzoneActive(previousDropTargetId, false);
     setDropzoneActive(nextDropTarget, true);
-    activeDropTarget = nextDropTarget;
+    activeDropTargetId = nextDropTarget;
   }
 
-  function setDropzoneActive(targetId: string | null, active: boolean): void {
-    if (!targetId) {
+  function setDropzoneActive(dropTargetId: string | null, active: boolean): void {
+    if (!dropTargetId) {
       return;
     }
 
-    const element = dropzoneElements.get(targetId);
+    const element = dropzoneElements.get(dropTargetId);
 
     if (!element) {
       return;
@@ -424,14 +427,14 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 
   function createDropzone(
     dragController: DragController,
-    targetId: string,
+    dropTargetId: string,
     label: string,
   ): HTMLElement {
     // Example rendering: dropzone markup is app-owned.
     const element = document.createElement("div");
     element.className = "droppableContainer";
-    element.dataset.basicDropTargetId = targetId;
-    registerDropzoneElement(targetId, element);
+    element.dataset.basicDropTargetId = dropTargetId;
+    registerDropzoneElement(dropTargetId, element);
 
     const labelElement = document.createElement("span");
     labelElement.textContent = label;
@@ -441,7 +444,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     createDroppable({
       controller: dragController,
       element,
-      targetId,
+      dropTargetId,
       group: basicGroup,
     });
 
@@ -511,10 +514,10 @@ function getDraggableItemLabel(draggableId: string): string {
   return draggableId === draggableItem.draggableId ? draggableItem.label : "";
 }
 
-function isKnownDropTarget(targetId: string): boolean {
+function isKnownDropTarget(dropTargetId: string): boolean {
   return (
-    targetId === rootContainer.targetId ||
-    targetId === droppableContainer.targetId
+    dropTargetId === rootContainer.dropTargetId ||
+    dropTargetId === droppableContainer.dropTargetId
   );
 }
 

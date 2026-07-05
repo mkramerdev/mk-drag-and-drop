@@ -93,19 +93,22 @@ describe("createDragController", () => {
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
     expect(onDragStart).toHaveBeenCalledWith(
-      expect.objectContaining({ draggableId: "item" }),
+      expect.objectContaining({ draggableId: "item", source: "pointer" }),
       expect.objectContaining({
-        getDropPlacement: expect.any(Function),
-        getSortablePlacement: expect.any(Function),
         getDropTargetRect: expect.any(Function),
       }),
     );
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item", dropTarget: "target" },
+      {
+        draggableId: "item",
+        source: "pointer",
+        result: "dropped",
+        dropTargetId: "target",
+      },
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", dropTarget: "target" },
+      { draggableId: "item", source: "pointer", dropTargetId: "target" },
       expect.any(Object),
     );
 
@@ -163,8 +166,8 @@ describe("createDragController", () => {
     expect(onDragUpdate).toHaveBeenCalledTimes(2);
     expect(onDragUpdate).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        activeDropTarget: "target",
-        previousDropTarget: "target",
+        activeDropTargetId: "target",
+        previousDropTargetId: "target",
       }),
       expect.any(Object),
     );
@@ -175,8 +178,8 @@ describe("createDragController", () => {
 
   it("announces drag updates only when the active drop target changes", () => {
     const raf = installMockRaf();
-    const onDragUpdateAnnouncement = vi.fn(({ activeDropTarget }) =>
-      activeDropTarget ? `Over ${activeDropTarget}` : "No target",
+    const onDragUpdateAnnouncement = vi.fn(({ activeDropTargetId }) =>
+      activeDropTargetId ? `Over ${activeDropTargetId}` : "No target",
     );
     const source = createElementWithRect();
     const firstTarget = createElementWithRect(

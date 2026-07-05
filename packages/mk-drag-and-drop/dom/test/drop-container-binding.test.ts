@@ -5,7 +5,6 @@ import {
   createDraggable,
   createDropContainer,
   type DragController,
-  type DropPlacement,
 } from "../src/index.js";
 import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
@@ -30,21 +29,22 @@ describe("createDropContainer", () => {
     vi.restoreAllMocks();
   });
 
-  it("registers a container target with placement metadata", () => {
-    const { source, container, getPlacement } = setupDragAndContainer({
+  it("registers a container target", () => {
+    const { source, container, onDrop } = setupDragAndContainer({
       containerId: "column-a",
     });
 
     dragToTarget(source, container);
 
-    expect(getPlacement()).toEqual({
-      draggableId: "item",
-      dropTarget: "column-a",
-      sourceContainerId: null,
-      containerId: "column-a",
-      previousDraggableId: null,
-      nextDraggableId: null,
-    });
+    expect(onDrop).toHaveBeenCalledWith(
+      {
+        draggableId: "item",
+        source: "pointer",
+        dropTargetId: "column-a",
+      },
+      expect.any(Object),
+    );
+    expect(onDrop.mock.calls[0]?.[0]).not.toHaveProperty("sortablePlacement");
   });
 
   it("uses the default group", () => {
@@ -93,7 +93,11 @@ describe("createDropContainer", () => {
     dragToTarget(secondSource, container);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "target-item", dropTarget: "column-a" },
+      {
+        draggableId: "target-item",
+        source: "pointer",
+        dropTargetId: "column-a",
+      },
       expect.any(Object),
     );
   });
@@ -183,12 +187,8 @@ describe("createDropContainer", () => {
     source: HTMLElement;
     container: HTMLElement;
     onDrop: ReturnType<typeof vi.fn>;
-    getPlacement: () => DropPlacement | null;
   } {
-    let placement: DropPlacement | null = null;
-    const onDrop = vi.fn(({ draggableId }, helpers) => {
-      placement = helpers.getDropPlacement(draggableId);
-    });
+    const onDrop = vi.fn();
     controller = createDragController({ onDrop });
     raf = installMockRaf();
     const source = createMeasuredElement(createRect({ width: 20, height: 20 }));
@@ -207,7 +207,6 @@ describe("createDropContainer", () => {
       source,
       container,
       onDrop,
-      getPlacement: () => placement,
     };
   }
 

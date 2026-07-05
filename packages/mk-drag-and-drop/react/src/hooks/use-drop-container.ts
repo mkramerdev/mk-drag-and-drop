@@ -10,6 +10,7 @@ import {
 import {
   createDomDropContainer,
   type DomDropContainerBehavior,
+  type DragRuntimeHandle,
 } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
@@ -19,28 +20,34 @@ export type UseDropContainerOptions = {
   group?: string;
 };
 
-export type UseDropContainerResult = {
-  ref: RefCallback<HTMLDivElement>;
+export type UseDropContainerResult<
+  ElementType extends HTMLElement = HTMLElement,
+> = {
+  ref: RefCallback<ElementType>;
 };
 
 const defaultDropContainerGroup = "default";
 
-export function useDropContainer({
+export function useDropContainer<
+  ElementType extends HTMLElement = HTMLElement,
+>({
   containerId,
   group = defaultDropContainerGroup,
-}: UseDropContainerOptions): UseDropContainerResult {
-  const runtime = useContext(DragContext);
-  const nodeRef = useRef<HTMLDivElement | null>(null);
+}: UseDropContainerOptions): UseDropContainerResult<ElementType> {
+  const context = useContext(DragContext);
+  const nodeRef = useRef<ElementType | null>(null);
   const behaviorRef = useRef<{
-    runtime: typeof runtime;
+    runtime: DragRuntimeHandle;
     containerId: string;
     group: string;
     behavior: DomDropContainerBehavior;
   } | null>(null);
 
-  if (!runtime) {
+  if (!context) {
     throw new Error("useDropContainer must be used inside DragProvider");
   }
+
+  const { runtime } = context;
 
   const getElement = useCallback(() => nodeRef.current, []);
   const getBehavior = useCallback((): DomDropContainerBehavior => {
@@ -75,7 +82,7 @@ export function useDropContainer({
   }, [containerId, getElement, group, runtime]);
 
   const setNodeRef = useCallback(
-    (node: HTMLDivElement | null) => {
+    (node: ElementType | null) => {
       nodeRef.current = node;
       getBehavior().setElement(node);
     },

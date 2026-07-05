@@ -7,7 +7,7 @@ import {
   getDistanceToRect,
   type DragController,
   type DragControllerOverlayInput,
-  type SortablePlacement,
+  type SortableDropPlacement,
   type TargetingConstraint,
 } from "@mk-drag-and-drop/dom";
 
@@ -49,9 +49,9 @@ const groupedTargetingConstraint: TargetingConstraint = ({
   pointerPosition,
   dropTarget,
 }) => {
-  const targetId = dropTarget.dropTargetKey;
+  const dropTargetId = dropTarget.dropTargetId;
 
-  if (targetId.startsWith(groupedInsideTargetPrefix)) {
+  if (dropTargetId.startsWith(groupedInsideTargetPrefix)) {
     const distance = getDistanceToRect(
       pointerPosition,
       dropTarget.dropTargetRect,
@@ -60,7 +60,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
     return distance.x === 0 && distance.y <= groupedInsideTargetMaxYDistance;
   }
 
-  const parsedTarget = parseChildDropTargetId(targetId);
+  const parsedTarget = parseChildDropTargetId(dropTargetId);
 
   if (parsedTarget?.type === "index") {
     const distance = getDistanceToRect(
@@ -71,7 +71,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
     return distance.x === 0 && distance.y <= groupedChildLineTargetMaxYDistance;
   }
 
-  if (targetId.startsWith(groupedChildTargetPrefix)) {
+  if (dropTargetId.startsWith(groupedChildTargetPrefix)) {
     return false;
   }
 
@@ -170,7 +170,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
   let expandedParentIds = new Set(["parent-roadmap", "parent-release"]);
   let activeDraggedParentId: string | null = null;
   const dropTargetElements = new Map<string, HTMLElement>();
-  let activeDropTarget: string | null = null;
+  let activeDropTargetId: string | null = null;
   let pendingRemeasureFrameId: number | null = null;
 
   const panel = document.createElement("section");
@@ -200,10 +200,10 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
         remeasureGroupedTargets(controller);
       }
     },
-    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
+    onDragUpdate({ activeDropTargetId: nextDropTarget, previousDropTargetId }) {
       updateActiveGroupedDropTarget({
-        activeDropTarget: nextDropTarget,
-        previousDropTarget,
+        activeDropTargetId: nextDropTarget,
+        previousDropTargetId,
       });
     },
     onDragEnd() {
@@ -211,13 +211,17 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
       activeDraggedParentId = null;
       render();
     },
-    onDrop(event, { getSortablePlacement }) {
+    onDrop(event) {
       // Example drop behavior: interpret package targets and commit app data.
       if (parentsById[event.draggableId]) {
-        const placement = getSortablePlacement(event.draggableId);
+        const placement = event.sortablePlacement;
 
         if (placement) {
-          parentOrder = reorderParentOrder(parentOrder, placement);
+          parentOrder = reorderParentOrder(
+            parentOrder,
+            event.draggableId,
+            placement,
+          );
           render();
         }
 
@@ -230,7 +234,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
         return;
       }
 
-      const parsedTarget = parseChildDropTargetId(event.dropTarget);
+      const parsedTarget = parseChildDropTargetId(event.dropTargetId);
 
       if (!parsedTarget || !parentsById[parsedTarget.parentId]) {
         return;
@@ -310,7 +314,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
       hasChildren &&
       expandedParentIds.has(parent.parentId) &&
       !isActivelyDragged;
-    const insideTargetId = getInsideTargetId(parent.parentId);
+    const insideDropTargetId = getInsideDropTargetId(parent.parentId);
 
     const parentBlock = document.createElement("div");
     parentBlock.className = "groupedParentBlock";
@@ -330,14 +334,14 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
 
     const parentRow = document.createElement("div");
     parentRow.className = "groupedParentRow";
-    parentRow.setAttribute(groupedDropTargetAttribute, insideTargetId);
-    registerDropTargetElement(insideTargetId, parentRow);
+    parentRow.setAttribute(groupedDropTargetAttribute, insideDropTargetId);
+    registerDropTargetElement(insideDropTargetId, parentRow);
 
     // Package API: registers the parent row as an inside drop target.
     createDroppable({
       controller,
       element: parentRow,
-      targetId: insideTargetId,
+      dropTargetId: insideDropTargetId,
       group: groupedChildGroup,
       containerId: parent.parentId,
     });
@@ -405,11 +409,11 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     parentId: string,
     index: number,
   ): HTMLElement {
-    const targetId = getChildIndexTargetId(parentId, index);
+    const dropTargetId = getChildIndexDropTargetId(parentId, index);
     const line = document.createElement("div");
     line.className = "groupedChildDropzoneLine";
-    line.setAttribute(groupedDropTargetAttribute, targetId);
-    registerDropTargetElement(targetId, line);
+    line.setAttribute(groupedDropTargetAttribute, dropTargetId);
+    registerDropTargetElement(dropTargetId, line);
 
     const indicator = document.createElement("div");
     indicator.className = "groupedChildDropzoneIndicator";
@@ -419,7 +423,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     createDroppable({
       controller,
       element: line,
-      targetId,
+      dropTargetId,
       group: groupedChildGroup,
       containerId: parentId,
     });
@@ -537,7 +541,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
   ): void {
     dropTargetElements.set(dropTargetId, element);
 
-    if (activeDropTarget === dropTargetId) {
+    if (activeDropTargetId === dropTargetId) {
       element.dataset.groupedActiveDropTarget = "true";
     } else {
       delete element.dataset.groupedActiveDropTarget;
@@ -545,21 +549,21 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
   }
 
   function updateActiveGroupedDropTarget(input: {
-    activeDropTarget: string | null;
-    previousDropTarget: string | null;
+    activeDropTargetId: string | null;
+    previousDropTargetId: string | null;
   }): void {
-    if (input.previousDropTarget === input.activeDropTarget) {
+    if (input.previousDropTargetId === input.activeDropTargetId) {
       return;
     }
 
-    setActiveGroupedDropTarget(input.previousDropTarget, false);
-    setActiveGroupedDropTarget(input.activeDropTarget, true);
-    activeDropTarget = input.activeDropTarget;
+    setActiveGroupedDropTarget(input.previousDropTargetId, false);
+    setActiveGroupedDropTarget(input.activeDropTargetId, true);
+    activeDropTargetId = input.activeDropTargetId;
   }
 
   function clearActiveGroupedDropTarget(): void {
-    setActiveGroupedDropTarget(activeDropTarget, false);
-    activeDropTarget = null;
+    setActiveGroupedDropTarget(activeDropTargetId, false);
+    activeDropTargetId = null;
   }
 
   function setActiveGroupedDropTarget(
@@ -685,11 +689,11 @@ function getChildrenForParent(input: {
     );
 }
 
-function getInsideTargetId(parentId: string): string {
+function getInsideDropTargetId(parentId: string): string {
   return `${groupedInsideTargetPrefix}${parentId}`;
 }
 
-function getChildIndexTargetId(parentId: string, index: number): string {
+function getChildIndexDropTargetId(parentId: string, index: number): string {
   return `grouped:children:${parentId}:index:${index}`;
 }
 
@@ -721,10 +725,11 @@ function parseChildDropTargetId(
 // Example drop behavior: apply package placement to user-owned parent order.
 function reorderParentOrder(
   parentOrder: string[],
-  placement: SortablePlacement,
+  draggableId: string,
+  placement: SortableDropPlacement,
 ): string[] {
   const withoutDraggedParent = parentOrder.filter(
-    (parentId) => parentId !== placement.draggableId,
+    (parentId) => parentId !== draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
 
@@ -748,7 +753,7 @@ function reorderParentOrder(
     insertIndex = nextIndex;
   }
 
-  return insertIntoArray(withoutDraggedParent, insertIndex, placement.draggableId);
+  return insertIntoArray(withoutDraggedParent, insertIndex, draggableId);
 }
 
 // Example drop behavior: apply parsed child targets to user-owned child order.

@@ -33,7 +33,7 @@ type ProjectedTreeRow = {
 
 type ProjectedDropzoneLine = {
   type: "line";
-  targetId: string;
+  dropTargetId: string;
   depth: number;
 };
 
@@ -73,7 +73,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
     ? getRectCenter(overlayRect)
     : pointerPosition;
 
-  if (isInsideTargetId(dropTarget.dropTargetKey)) {
+  if (isInsideDropTargetId(dropTarget.dropTargetId)) {
     return (
       isPointInTargetStartXBand(
         pointerPosition.x,
@@ -85,7 +85,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
     );
   }
 
-  if (isChildrenTargetId(dropTarget.dropTargetKey)) {
+  if (isChildrenDropTargetId(dropTarget.dropTargetId)) {
     const distance = getDistanceToRect(
       {
         x: pointerPosition.x,
@@ -151,7 +151,7 @@ export function mountTreeExample(root: HTMLElement): () => void {
   let treeState = createTreeState(seedItems);
   let expandedItemIds = new Set(initialExpandedItemIds);
   const dropTargetElements = new Map<string, HTMLElement>();
-  let activeDropTarget: string | null = null;
+  let activeDropTargetId: string | null = null;
 
   // Package API: creates the drag controller and wires tree lifecycle callbacks.
   const controller = createDragController({
@@ -161,18 +161,18 @@ export function mountTreeExample(root: HTMLElement): () => void {
     onDragStart() {
       clearActiveTreeDropTarget();
     },
-    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
+    onDragUpdate({ activeDropTargetId: nextDropTarget, previousDropTargetId }) {
       updateActiveTreeDropTarget({
-        activeDropTarget: nextDropTarget,
-        previousDropTarget,
+        activeDropTargetId: nextDropTarget,
+        previousDropTargetId,
       });
     },
     onDragEnd() {
       clearActiveTreeDropTarget();
     },
-    onDrop({ draggableId, dropTarget }) {
+    onDrop({ draggableId, dropTargetId }) {
       // Example drop behavior: translate the package target into tree data.
-      const nextTreeState = moveTreeItem(treeState, draggableId, dropTarget);
+      const nextTreeState = moveTreeItem(treeState, draggableId, dropTargetId);
 
       if (nextTreeState !== treeState) {
         treeState = nextTreeState;
@@ -257,7 +257,7 @@ export function mountTreeExample(root: HTMLElement): () => void {
   ): void {
     dropTargetElements.set(dropTargetId, element);
 
-    if (activeDropTarget === dropTargetId) {
+    if (activeDropTargetId === dropTargetId) {
       element.dataset.treeActiveDropTarget = "true";
     } else {
       delete element.dataset.treeActiveDropTarget;
@@ -265,24 +265,24 @@ export function mountTreeExample(root: HTMLElement): () => void {
   }
 
   function updateActiveTreeDropTarget({
-    activeDropTarget: nextDropTarget,
-    previousDropTarget,
+    activeDropTargetId: nextDropTarget,
+    previousDropTargetId,
   }: {
-    activeDropTarget: string | null;
-    previousDropTarget: string | null;
+    activeDropTargetId: string | null;
+    previousDropTargetId: string | null;
   }): void {
-    if (nextDropTarget === previousDropTarget) {
+    if (nextDropTarget === previousDropTargetId) {
       return;
     }
 
-    setTreeDropTargetActive(previousDropTarget, false);
+    setTreeDropTargetActive(previousDropTargetId, false);
     setTreeDropTargetActive(nextDropTarget, true);
-    activeDropTarget = nextDropTarget;
+    activeDropTargetId = nextDropTarget;
   }
 
   function clearActiveTreeDropTarget(): void {
-    setTreeDropTargetActive(activeDropTarget, false);
-    activeDropTarget = null;
+    setTreeDropTargetActive(activeDropTargetId, false);
+    activeDropTargetId = null;
   }
 
   function setTreeDropTargetActive(
@@ -317,11 +317,11 @@ function createTreeRow(
     element: HTMLElement,
   ) => void,
 ): HTMLElement {
-  const targetId = getInsideTargetId(row.item.draggableId);
+  const dropTargetId = getInsideDropTargetId(row.item.draggableId);
   const rowElement = document.createElement("div");
   rowElement.className = "treeRow";
-  rowElement.dataset.treeDropTargetId = targetId;
-  registerDropTargetElement(targetId, rowElement);
+  rowElement.dataset.treeDropTargetId = dropTargetId;
+  registerDropTargetElement(dropTargetId, rowElement);
   rowElement.setAttribute("role", "treeitem");
   rowElement.setAttribute("aria-level", String(row.depth + 1));
   applyTreeDepthStyle(rowElement, row.depth);
@@ -340,7 +340,7 @@ function createTreeRow(
   createDroppable({
     controller,
     element: rowElement,
-    targetId,
+    dropTargetId,
     group: treeGroup,
   });
 
@@ -389,8 +389,8 @@ function createTreeDropzoneLine(
 ): HTMLElement {
   const lineElement = document.createElement("div");
   lineElement.className = "treeDropzoneLine";
-  lineElement.dataset.treeDropTargetId = line.targetId;
-  registerDropTargetElement(line.targetId, lineElement);
+  lineElement.dataset.treeDropTargetId = line.dropTargetId;
+  registerDropTargetElement(line.dropTargetId, lineElement);
   lineElement.setAttribute("aria-hidden", "true");
   applyTreeDepthStyle(lineElement, line.depth);
 
@@ -398,7 +398,7 @@ function createTreeDropzoneLine(
   createDroppable({
     controller,
     element: lineElement,
-    targetId: line.targetId,
+    dropTargetId: line.dropTargetId,
     group: treeGroup,
   });
 
@@ -485,12 +485,12 @@ function createDropzoneLine(
 ): ProjectedDropzoneLine {
   return {
     type: "line",
-    targetId: getChildrenTargetId(parentId, index),
+    dropTargetId: getChildrenDropTargetId(parentId, index),
     depth,
   };
 }
 
-// Example drop behavior: interpret package target ids and commit tree data.
+// Example drop behavior: interpret package drop target ids and commit tree data.
 function moveTreeItem(
   treeState: TreeState,
   draggableId: string,
@@ -635,7 +635,7 @@ function parseTreeDropTargetId(
 ): ParsedTreeDropTarget | null {
   const insidePrefix = "tree:inside:";
 
-  if (isInsideTargetId(dropTargetId)) {
+  if (isInsideDropTargetId(dropTargetId)) {
     const draggableId = dropTargetId.slice(insidePrefix.length);
 
     return draggableId ? { type: "inside", draggableId } : null;
@@ -674,19 +674,19 @@ function getTreeItemLabel(treeState: TreeState, draggableId: string): string {
   return treeState.itemsById[draggableId]?.label ?? "";
 }
 
-function getInsideTargetId(draggableId: string): string {
+function getInsideDropTargetId(draggableId: string): string {
   return `tree:inside:${draggableId}`;
 }
 
-function getChildrenTargetId(parentId: string | null, index: number): string {
+function getChildrenDropTargetId(parentId: string | null, index: number): string {
   return `tree:children:${parentId ?? rootToken}:index:${index}`;
 }
 
-function isInsideTargetId(dropTargetId: string): boolean {
+function isInsideDropTargetId(dropTargetId: string): boolean {
   return dropTargetId.startsWith("tree:inside:");
 }
 
-function isChildrenTargetId(dropTargetId: string): boolean {
+function isChildrenDropTargetId(dropTargetId: string): boolean {
   return dropTargetId.startsWith("tree:children:");
 }
 

@@ -1,7 +1,7 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
 
 export type DropTarget = {
-  dropTargetKey: string;
+  dropTargetId: string;
   dropTargetRect: DragRect;
 };
 

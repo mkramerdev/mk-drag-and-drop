@@ -54,9 +54,9 @@ The React root export includes:
 - `useRemeasureDropTargets`
 - `composeRefs`
 - React-friendly `restrictToContainer`, `ReactRestrictToContainerInput`
-- DOM targeting helpers, modifier helpers, lifecycle types, placement types,
-  keyboard/pointer configuration types, and geometry types re-exported from the
-  DOM package
+- DOM targeting helpers, modifier helpers, lifecycle/source/result types,
+  sortable placement types, keyboard/pointer configuration types, and geometry
+  types re-exported from the DOM package
 - `DragState` and `DragOverlayPhase` from the DOM integration layer
 
 ## Core Mental Model
@@ -101,20 +101,20 @@ export function Example() {
 
   return (
     <DragProvider
-      onDrop={({ draggableId, dropTarget }) => {
+      onDrop={({ draggableId, dropTargetId }) => {
         if (
           draggableId === "card" &&
-          (dropTarget === "left" || dropTarget === "right")
+          (dropTargetId === "left" || dropTargetId === "right")
         ) {
-          setLocation(dropTarget);
+          setLocation(dropTargetId);
         }
       }}
     >
       <div>
-        <DropZone targetId="left">
+        <DropZone dropTargetId="left">
           {location === "left" ? <Card /> : null}
         </DropZone>
-        <DropZone targetId="right">
+        <DropZone dropTargetId="right">
           {location === "right" ? <Card /> : null}
         </DropZone>
       </div>
@@ -137,13 +137,13 @@ function Card() {
 }
 
 function DropZone({
-  targetId,
+  dropTargetId,
   children,
 }: {
-  targetId: Location;
+  dropTargetId: Location;
   children: ReactNode;
 }) {
-  const droppable = useDroppable({ targetId, group: "demo" });
+  const droppable = useDroppable({ dropTargetId, group: "demo" });
 
   return <div {...droppable}>{children}</div>;
 }
@@ -177,7 +177,61 @@ Key props:
 Callbacks receive operation information and helper methods from the runtime.
 Use those callbacks to commit app data. Do not mutate package internals.
 
+## Lifecycle Events
+
+`DragProvider` lifecycle callbacks and `announcements` callbacks receive these
+event shapes:
+
+```ts
+type DragSource = "pointer" | "keyboard";
+
+type DragEndResult =
+  | "dropped"
+  | "no-target"
+  | "invalid-target"
+  | "canceled";
+
+type DragStartEvent = {
+  draggableId: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  sourceRect: DragRect;
+};
+
+type DragUpdateEvent = {
+  draggableId: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
+};
+
+type DragEndEvent = {
+  draggableId: string;
+  source: DragSource;
+  result: DragEndResult;
+  dropTargetId: string | null;
+};
+
+type DropEvent = {
+  draggableId: string;
+  source: DragSource;
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
+};
+```
+
+`onDrop` only runs for a valid successful drop. `onDragEnd.result` distinguishes
+successful drops, normal releases with no target, stale/invalid targets, and
+cancellations such as Escape or pointercancel. Plain drops are id-only.
+Sortable drops may include `event.sortablePlacement`; apps still own the data
+commit.
+
 ## Hooks
+
+Hook result types are generic over the host element type and default to
+`HTMLElement`. Specify a narrower element type when you want element-specific
+ref and attribute typing; the hooks are not limited to `div` elements.
 
 ### useDraggable
 
@@ -211,7 +265,7 @@ Use `useDragHandle` when dragging should start only from a specific handle.
 
 ```tsx
 const droppable = useDroppable({
-  targetId: "archive",
+  dropTargetId: "archive",
   group: "cards",
 });
 
@@ -220,7 +274,7 @@ return <div {...droppable} />;
 
 Options:
 
-- `targetId`: stable string identifier for the target.
+- `dropTargetId`: stable string identifier for the target.
 - `group`: optional drag group. Only items in the same group target it.
 - `containerId`: optional container identity for placement-aware behavior.
 
@@ -233,7 +287,7 @@ lines, and other app-defined target geometry.
 items.
 
 ```tsx
-const sortable = useSortable({
+const sortable = useSortable<HTMLArticleElement>({
   draggableId: item.id,
   group: "cards",
   containerId: column.id,
@@ -256,13 +310,8 @@ Return shape:
 
 During drag, the runtime may temporarily move sortable DOM nodes to preview
 placement. That preview is transient. It does not commit application order.
-On drop, read placement data from lifecycle helpers and update your own data:
-
-- `helpers.getSortablePlacement(draggableId)`
-- `helpers.getDropPlacement(draggableId)`
-
-`getSortablePlacement` is useful for simple reorder operations. `getDropPlacement`
-also includes container information for boards and multiple lists.
+On drop, read `event.sortablePlacement` and update your own data. Plain
+droppable drops do not include sortable placement.
 
 ### useDropContainer
 
@@ -331,21 +380,21 @@ compatible. The package does not require React state.
 
 ```tsx
 <DragProvider
-  onDrop={({ draggableId }, helpers) => {
-    const placement = helpers.getDropPlacement(draggableId);
+  onDrop={({ draggableId, sortablePlacement }) => {
+    const placement = sortablePlacement;
 
     if (!placement) {
       return;
     }
 
-    setItems((items) => reorderData(items, placement));
+    setItems((items) => reorderData(items, draggableId, placement));
   }}
 >
   {/* sortable items */}
 </DragProvider>
 ```
 
-`reorderData` is app code. It should translate `placement.draggableId`,
+`reorderData` is app code. It should translate `draggableId`,
 `placement.containerId`, `placement.previousDraggableId`, and
 `placement.nextDraggableId` into your data shape.
 
@@ -422,7 +471,7 @@ const combinedRef = useMemo(
 ```
 
 Custom targeting algorithms receive `pointerPosition`, `overlayRect`, and a
-list of measured `dropTargets`. Each target has `dropTargetKey` and
+list of measured `dropTargets`. Each target has `dropTargetId` and
 `dropTargetRect`. Custom constraints receive one candidate `dropTarget` and
 return whether it should be eligible.
 
@@ -482,7 +531,7 @@ React examples live in `apps/react-web/src/react`:
 - `useDraggable(options)`: registers a drag source. Important options:
   `draggableId`, `group`. Returns ref and input props.
 - `useDroppable(options)`: registers a drop target. Important options:
-  `targetId`, `group`, `containerId`. Returns a ref prop.
+  `dropTargetId`, `group`, `containerId`. Returns a ref prop.
 - `useSortable(options)`: registers a sortable item as both source and target.
   Important options: `draggableId`, `group`, `containerId`. Returns ref and input
   props.
@@ -497,10 +546,10 @@ React examples live in `apps/react-web/src/react`:
 
 Important event/helper types are re-exported from the React package, including
 `DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`, `DropEvent`,
-`DragLifecycleHelpers`, `DragState`, `DragOverlayPhase`, `DropPlacement`,
-`SortablePlacement`, `RemeasureDropTargetsInput`, `PointerConfiguration`,
-`KeyboardConfiguration`, `KeyboardCommand`, `DropTarget`, targeting types,
-geometry types, and modifier types.
+`DragSource`, `DragEndResult`, `DragLifecycleHelpers`, `DragState`,
+`DragOverlayPhase`, `SortableDropPlacement`, `RemeasureDropTargetsInput`,
+`PointerConfiguration`, `KeyboardConfiguration`, `KeyboardCommand`, `DropTarget`,
+targeting types, geometry types, and modifier types.
 
 ## When To Use DOM Directly
 

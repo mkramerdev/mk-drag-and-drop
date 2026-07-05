@@ -23,28 +23,32 @@ export type UseSortableOptions = {
   placementBoundary?: SortablePlacementBoundary;
 };
 
-export type UseSortableResult = HTMLAttributes<HTMLDivElement> & {
-  ref: RefCallback<HTMLDivElement>;
+export type UseSortableResult<
+  ElementType extends HTMLElement = HTMLElement,
+> = HTMLAttributes<ElementType> & {
+  ref: RefCallback<ElementType>;
 };
 
 const defaultSortableGroup = "default";
 
-export function useSortable({
+export function useSortable<
+  ElementType extends HTMLElement = HTMLElement,
+>({
   draggableId,
   group = defaultSortableGroup,
   containerId = null,
   axis,
   placementBoundary,
-}: UseSortableOptions): UseSortableResult {
-  const runtime = useContext(DragContext);
-  const nodeRef = useRef<HTMLDivElement | null>(null);
+}: UseSortableOptions): UseSortableResult<ElementType> {
+  const context = useContext(DragContext);
+  const nodeRef = useRef<ElementType | null>(null);
 
-  if (!runtime) {
+  if (!context) {
     throw new Error("useSortable must be used inside DragProvider");
   }
 
+  const { runtime, keyboardDragEnabled } = context;
   const getElement = useCallback(() => nodeRef.current, []);
-  const keyboardDragEnabled = runtime.isKeyboardDragEnabled();
   const behavior = useMemo(
     () =>
       createDomSortable({
@@ -55,6 +59,7 @@ export function useSortable({
         axis,
         placementBoundary,
         getElement,
+        keyboardDragEnabled,
       }),
     [
       axis,
@@ -69,7 +74,7 @@ export function useSortable({
   );
 
   const setNodeRef = useCallback(
-    (node: HTMLDivElement | null) => {
+    (node: ElementType | null) => {
       nodeRef.current = node;
       behavior.setElement(node);
     },
@@ -77,7 +82,7 @@ export function useSortable({
   );
 
   return useMemo(() => {
-    const sortableProps: UseSortableResult = {
+    const sortableProps: UseSortableResult<ElementType> = {
       ref: setNodeRef,
       onPointerDown: behavior.onPointerDown,
     };

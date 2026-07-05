@@ -21,8 +21,6 @@ import type { DragGroup } from "./drop-target-registry.js";
 
 export type Point = DragPoint;
 
-export type ActiveDragInput = "pointer" | "keyboard";
-
 export type DragState = {
   draggableId: string;
   group: DragGroup;

@@ -30,17 +30,18 @@ export {
   type CreateDragHandleInput,
 } from "./input/create-drag-handle.js";
 export type {
+  DragEndResult,
   DragEndEvent,
   DragLifecycleCallbacks,
   DragLifecycleHelpers,
+  DragSource,
   DragStartEvent,
   DragUpdateEvent,
   DropEvent,
 } from "./runtime/lifecycle.js";
 export type {
-  DropPlacement,
   RemeasureDropTargetsInput,
-  SortablePlacement,
+  SortableDropPlacement,
 } from "./runtime/drop-target-registry.js";
 export {
   centerToCenter,

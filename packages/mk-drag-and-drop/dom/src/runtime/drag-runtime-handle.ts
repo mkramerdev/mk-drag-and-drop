@@ -44,11 +44,11 @@ export function createDragRuntimeHandle(
     isKeyboardDragEnabled: () => runtime.isKeyboardDragEnabled(),
     handleSourceKeyboardKeyDown: (input) =>
       runtime.handleSourceKeyboardKeyDown(input),
-    registerDropTarget: (targetId, element, group, options) => {
-      runtime.registerDropTarget(targetId, element, group, options);
+    registerDropTarget: (dropTargetId, element, group, options) => {
+      runtime.registerDropTarget(dropTargetId, element, group, options);
     },
-    unregisterDropTarget: (targetId, element) => {
-      runtime.unregisterDropTarget(targetId, element);
+    unregisterDropTarget: (dropTargetId, element) => {
+      runtime.unregisterDropTarget(dropTargetId, element);
     },
     registerDropContainer: (containerId, element, group) => {
       runtime.registerDropContainer(containerId, element, group);

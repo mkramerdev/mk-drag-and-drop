@@ -1,6 +1,8 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -127,13 +129,8 @@ export function DragProvider({
   const lifecycleCallbacksRef = useRef<DragLifecycleCallbacks | null>(null);
   const runtimeConfigurationSnapshotRef =
     useRef<RuntimeConfigurationSnapshot | null>(null);
-
-  dragOverlayRef.current = dragOverlay;
-  latestLifecyclePropsRef.current.announcements = announcements;
-  latestLifecyclePropsRef.current.onDragStart = onDragStart;
-  latestLifecyclePropsRef.current.onDragUpdate = onDragUpdate;
-  latestLifecyclePropsRef.current.onDragEnd = onDragEnd;
-  latestLifecyclePropsRef.current.onDrop = onDrop;
+  const keyboardDragEnabled =
+    isKeyboardDragEnabledFromConfiguration(keyboardConfiguration);
 
   const finishOverlay = useCallback((): void => {
     pendingOverlayDragStateRef.current = null;
@@ -158,7 +155,7 @@ export function DragProvider({
 
         onDragUpdate?.(event, helpers);
 
-        if (event.activeDropTarget !== event.previousDropTarget) {
+        if (event.activeDropTargetId !== event.previousDropTargetId) {
           announce(announcements?.onDragUpdate?.(event));
         }
       },
@@ -180,13 +177,17 @@ export function DragProvider({
   if (runtimeRef.current === null) {
     runtimeRef.current = createDragRuntimeHandle({
       updateOverlayHost: handleOverlayHostUpdate,
-      targetingAlgorithm,
-      hasDragOverlay: dragOverlay !== undefined,
-      keepOverlayOnDrop,
-      targetingConstraint,
     });
   }
 
+  const runtime = runtimeRef.current;
+  const contextValue = useMemo(
+    () => ({
+      runtime,
+      keyboardDragEnabled,
+    }),
+    [keyboardDragEnabled, runtime],
+  );
   const nextRuntimeConfiguration: DragRuntimeHandleConfigureInput = {
     targetingAlgorithm,
     targetingConstraint,
@@ -198,24 +199,37 @@ export function DragProvider({
     pointerConfiguration,
   };
 
-  if (
-    !areRuntimeConfigurationSnapshotsEqual(
-      runtimeConfigurationSnapshotRef.current,
-      nextRuntimeConfiguration,
-    )
-  ) {
-    runtimeRef.current.configure(nextRuntimeConfiguration);
+  useLayoutEffect(() => {
+    dragOverlayRef.current = dragOverlay;
+    latestLifecyclePropsRef.current = {
+      announcements,
+      onDragStart,
+      onDragUpdate,
+      onDragEnd,
+      onDrop,
+    };
+  });
+
+  useLayoutEffect(() => {
+    if (
+      areRuntimeConfigurationSnapshotsEqual(
+        runtimeConfigurationSnapshotRef.current,
+        nextRuntimeConfiguration,
+      )
+    ) {
+      return;
+    }
+
+    runtime.configure(nextRuntimeConfiguration);
     runtimeConfigurationSnapshotRef.current =
       createRuntimeConfigurationSnapshot(nextRuntimeConfiguration);
-  }
+  });
 
   useEffect(() => {
-    const runtime = runtimeRef.current;
-
     return () => {
-      runtime?.dispose();
+      runtime.dispose();
     };
-  }, []);
+  }, [runtime]);
 
   useEffect(() => {
     if (!dragOverlay) {
@@ -261,7 +275,7 @@ export function DragProvider({
   const overlaySnapshot = getOverlaySnapshot();
 
   return (
-    <DragContext value={runtimeRef.current}>
+    <DragContext value={contextValue}>
       {children}
       {overlaySnapshot ? (
         <DragOverlayHost
@@ -498,4 +512,10 @@ function areModifierInputsEqual(
   }
 
   return previous.every((modifier, index) => modifier === next[index]);
+}
+
+function isKeyboardDragEnabledFromConfiguration(
+  keyboardConfiguration: KeyboardConfiguration | undefined,
+): boolean {
+  return keyboardConfiguration?.enabled ?? true;
 }

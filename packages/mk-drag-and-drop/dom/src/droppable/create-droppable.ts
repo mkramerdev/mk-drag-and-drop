@@ -1,18 +1,18 @@
 export type DomDroppableRuntime = {
   registerDropTarget: (
-    targetId: string,
+    dropTargetId: string,
     element: HTMLElement,
     group: string,
     options?: {
       containerId?: string | null;
     },
   ) => void;
-  unregisterDropTarget: (targetId: string, element?: HTMLElement) => void;
+  unregisterDropTarget: (dropTargetId: string, element?: HTMLElement) => void;
 };
 
 export type CreateDomDroppableInput = {
   runtime: DomDroppableRuntime;
-  targetId: string;
+  dropTargetId: string;
   containerId?: string | null;
   group: string;
 };
@@ -48,7 +48,7 @@ export function createDomDroppable(
 
       if (
         element === registeredElement &&
-        registeredTargetId === input.targetId
+        registeredTargetId === input.dropTargetId
       ) {
         return;
       }
@@ -59,11 +59,16 @@ export function createDomDroppable(
         return;
       }
 
-      input.runtime.registerDropTarget(input.targetId, element, input.group, {
-        containerId: input.containerId ?? null,
-      });
+      input.runtime.registerDropTarget(
+        input.dropTargetId,
+        element,
+        input.group,
+        {
+          containerId: input.containerId ?? null,
+        },
+      );
       registeredElementRef = new WeakRef(element);
-      registeredTargetId = input.targetId;
+      registeredTargetId = input.dropTargetId;
     },
     cleanup,
   };

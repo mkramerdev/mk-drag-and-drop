@@ -37,9 +37,9 @@ The root export includes:
 - `createSortable`
 - `createDragHandle`
 - lifecycle types: `DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`,
-  `DropEvent`, `DragLifecycleCallbacks`, `DragLifecycleHelpers`
-- placement types: `DropPlacement`, `SortablePlacement`,
-  `RemeasureDropTargetsInput`
+  `DropEvent`, `DragSource`, `DragEndResult`, `DragLifecycleCallbacks`,
+  `DragLifecycleHelpers`
+- placement types: `SortableDropPlacement`, `RemeasureDropTargetsInput`
 - targeting helpers and types: `pointerToCenter`, `centerToCenter`,
   `pointerToRectDistance`, `getDistanceToRect`, `maxDistanceToRect`,
   `DropTarget`, `TargetingAlgorithm`, `TargetingAlgorithmInput`,
@@ -147,36 +147,59 @@ Event shapes:
 ```ts
 type DragStartEvent = {
   draggableId: string;
+  source: DragSource;
   pointerPosition: DragPoint;
   sourceRect: DragRect;
 };
 
 type DragUpdateEvent = {
   draggableId: string;
+  source: DragSource;
   pointerPosition: DragPoint;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
 };
+
+type DragSource = "pointer" | "keyboard";
+
+type DragEndResult =
+  | "dropped"
+  | "no-target"
+  | "invalid-target"
+  | "canceled";
 
 type DragEndEvent = {
   draggableId: string;
-  dropTarget: string | null;
+  source: DragSource;
+  result: DragEndResult;
+  dropTargetId: string | null;
 };
 
 type DropEvent = {
   draggableId: string;
-  dropTarget: string;
+  source: DragSource;
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
+};
+
+type SortableDropPlacement = {
+  sourceContainerId: string | null;
+  containerId: string | null;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
 };
 ```
 
 Helpers:
 
-- `getDropPlacement(draggableId?)`
-- `getSortablePlacement(draggableId)`
 - `getDropTargetRect(dropTargetId)`
 
-`onDrop` only runs for a valid target. `onDragEnd` runs when a drag ends, with
-`dropTarget` set to the valid target id or `null`.
+`onDrop` only runs for a valid successful drop. `onDragEnd` runs whenever a drag
+ends. `result: "dropped"` means a valid target was accepted and `onDrop` also
+runs. `result: "no-target"` means the user ended normally with no active target.
+`result: "invalid-target"` means an active target candidate was stale by finish
+time. `result: "canceled"` means the drag was canceled, such as Escape,
+pointercancel, or runtime cancellation.
 
 ## Bindings
 
@@ -194,7 +217,7 @@ Registrations and listeners are tied to the controller lifetime.
 
 - `controller`
 - `element`
-- `targetId`
+- `dropTargetId`
 - `group`, defaulting to `"default"`
 - `containerId`, defaulting to `null`
 
@@ -219,24 +242,12 @@ dragging are handled from that handle instead of unrelated children.
 
 ## Placement Data
 
-The current draggable item identifier field is `draggableId`.
-
-`SortablePlacement` contains:
-
-```ts
-type SortablePlacement = {
-  draggableId: string;
-  previousDraggableId: string | null;
-  nextDraggableId: string | null;
-};
-```
-
-`DropPlacement` contains:
+Plain droppable drops are id-only: `draggableId`, `dropTargetId`, and `source`.
+Sortable behavior may add sortable-specific placement under
+`event.sortablePlacement`:
 
 ```ts
-type DropPlacement = {
-  draggableId: string;
-  dropTarget: string;
+type SortableDropPlacement = {
   sourceContainerId: string | null;
   containerId: string | null;
   previousDraggableId: string | null;
@@ -244,13 +255,12 @@ type DropPlacement = {
 };
 ```
 
-Use `getSortablePlacement(draggableId)` for simple sortable reorder operations.
-Use `getDropPlacement(draggableId)` when containers or arbitrary droppable
-targets matter.
+No sortable placement is included for plain droppable drops. No-op sortable drops
+may omit `sortablePlacement`.
 
 Sortable behavior owns only a transient DOM preview during the drag. It may move
 DOM nodes to show where an item would land, but it does not commit app data. On
-drop, the app reads placement and updates its own data/rendering.
+drop, the app reads `event.sortablePlacement` and updates its own data/rendering.
 
 ## Targeting
 
@@ -258,7 +268,7 @@ A measured target passed to custom targeting code has:
 
 ```ts
 type DropTarget = {
-  dropTargetKey: string;
+  dropTargetId: string;
   dropTargetRect: DragRect;
 };
 ```
@@ -370,9 +380,9 @@ const state = {
 };
 
 const controller = createDragController({
-  onDrop({ draggableId, dropTarget }) {
-    state.itemLocation = dropTarget;
-    console.log(`${draggableId} moved to ${dropTarget}`);
+  onDrop({ draggableId, dropTargetId }) {
+    state.itemLocation = dropTargetId;
+    console.log(`${draggableId} moved to ${dropTargetId}`);
   },
 });
 
@@ -392,7 +402,7 @@ for (const columnId of ["todo", "done"]) {
   createDroppable({
     controller,
     element: column,
-    targetId: columnId,
+    dropTargetId: columnId,
   });
 
   document.body.append(column);

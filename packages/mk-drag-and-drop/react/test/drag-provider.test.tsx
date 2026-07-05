@@ -1,5 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
-import { useContext, useState } from "react";
+import { Suspense, startTransition, useContext, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
@@ -62,6 +62,68 @@ describe("DragProvider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not configure the runtime during initial render", () => {
+    const renderPhaseKeyboardEnabled: boolean[] = [];
+    let runtime: DragRuntimeHandle | null = null;
+
+    render(
+      <DragProvider keyboardConfiguration={{ enabled: false }}>
+        <RuntimeProbe
+          onRuntime={(nextRuntime) => {
+            runtime = nextRuntime;
+            renderPhaseKeyboardEnabled.push(
+              nextRuntime.isKeyboardDragEnabled(),
+            );
+          }}
+        />
+        <DraggableBox />
+      </DragProvider>,
+    );
+
+    expect(renderPhaseKeyboardEnabled).toEqual([true]);
+    expect(runtime?.isKeyboardDragEnabled()).toBe(false);
+    expect(screen.getByTestId("draggable")).not.toHaveAttribute("tabindex");
+  });
+
+  it("does not call runtime configure during rerender", () => {
+    const configureSpy = vi.fn();
+    const installConfigureSpy = createConfigureSpyInstaller(configureSpy);
+    const renderPhaseConfigureCallCounts: number[] = [];
+
+    const { rerender } = render(
+      <DragProvider>
+        <RuntimeProbe
+          onRuntime={(runtime) => {
+            installConfigureSpy(runtime);
+            renderPhaseConfigureCallCounts.push(configureSpy.mock.calls.length);
+          }}
+        />
+        <DraggableBox />
+      </DragProvider>,
+    );
+
+    expect(renderPhaseConfigureCallCounts).toEqual([0]);
+    expect(configureSpy).toHaveBeenCalledTimes(1);
+
+    configureSpy.mockClear();
+    renderPhaseConfigureCallCounts.length = 0;
+
+    rerender(
+      <DragProvider pointerConfiguration={{ activationDistance: 8 }}>
+        <RuntimeProbe
+          onRuntime={(runtime) => {
+            installConfigureSpy(runtime);
+            renderPhaseConfigureCallCounts.push(configureSpy.mock.calls.length);
+          }}
+        />
+        <DraggableBox />
+      </DragProvider>,
+    );
+
+    expect(renderPhaseConfigureCallCounts).toEqual([0]);
+    expect(configureSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("updates runtime config on rerender", () => {
     const { rerender } = render(
       <DragProvider keyboardConfiguration={{ enabled: false }}>
@@ -114,6 +176,50 @@ describe("DragProvider", () => {
 
     expect(firstOnDragStart).not.toHaveBeenCalled();
     expect(secondOnDragStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps lifecycle refs on the last committed props during a suspended update", () => {
+    const raf = installMockRaf();
+    const firstOnDrop = vi.fn();
+    const secondOnDrop = vi.fn();
+    const suspendedRender = vi.fn();
+
+    render(
+      <SuspendedLifecycleUpdateProbe
+        onCommittedDrop={firstOnDrop}
+        onSuspendedDrop={secondOnDrop}
+        onSuspendedRender={suspendedRender}
+      />,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("droppable"),
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+
+    act(() => {
+      screen.getByRole("button", { name: "Suspend update" }).click();
+    });
+
+    expect(suspendedRender).toHaveBeenCalled();
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+      });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    });
+
+    expect(firstOnDrop).toHaveBeenCalledTimes(1);
+    expect(secondOnDrop).not.toHaveBeenCalled();
+    raf.restore();
   });
 
   it("disposes runtime on unmount", () => {
@@ -427,11 +533,16 @@ describe("DragProvider", () => {
     expect(onDragStart).toHaveBeenCalledTimes(1);
     expect(onDragUpdate).toHaveBeenCalled();
     expect(onDragEnd).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "dropped",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", dropTarget: "target-1" },
+      { draggableId: "item-1", source: "pointer", dropTargetId: "target-1" },
       expect.any(Object),
     );
     raf.restore();
@@ -474,8 +585,9 @@ describe("DragProvider", () => {
     expect(onDragUpdate).toHaveBeenCalledTimes(2);
     expect(onDragUpdate).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        activeDropTarget: "target-1",
-        previousDropTarget: "target-1",
+        source: "pointer",
+        activeDropTargetId: "target-1",
+        previousDropTargetId: "target-1",
       }),
       expect.any(Object),
     );
@@ -488,16 +600,16 @@ describe("DragProvider", () => {
 
   it("announces drag updates only when the active drop target changes", () => {
     const raf = installMockRaf();
-    const onDragUpdateAnnouncement = vi.fn(({ activeDropTarget }) =>
-      activeDropTarget ? `Over ${activeDropTarget}` : "No target",
+    const onDragUpdateAnnouncement = vi.fn(({ activeDropTargetId }) =>
+      activeDropTargetId ? `Over ${activeDropTargetId}` : "No target",
     );
     render(
       <DragProvider
         announcements={{ onDragUpdate: onDragUpdateAnnouncement }}
       >
         <DraggableBox />
-        <DroppableBox targetId="target-1" testId="droppable-1" />
-        <DroppableBox targetId="target-2" testId="droppable-2" />
+        <DroppableBox dropTargetId="target-1" testId="droppable-1" />
+        <DroppableBox dropTargetId="target-2" testId="droppable-2" />
       </DragProvider>,
     );
     stubBoundingClientRect(
@@ -626,9 +738,15 @@ describe("DragProvider", () => {
       dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
     });
 
-    expect(onDragStartAnnouncement).toHaveBeenCalledTimes(1);
-    expect(onDragEndAnnouncement).toHaveBeenCalledTimes(1);
-    expect(onDropAnnouncement).toHaveBeenCalledTimes(1);
+    expect(onDragStartAnnouncement).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "pointer" }),
+    );
+    expect(onDragEndAnnouncement).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "pointer", result: "dropped" }),
+    );
+    expect(onDropAnnouncement).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "pointer" }),
+    );
     expect(screen.getByText("Dropped")).toBeInTheDocument();
     raf.restore();
   });
@@ -665,13 +783,58 @@ function RuntimeProbe({
 }: {
   onRuntime?: (runtime: DragRuntimeHandle) => void;
 }) {
-  const runtime = useContext(DragContext);
+  const context = useContext(DragContext);
 
-  if (runtime) {
-    onRuntime?.(runtime);
+  if (context) {
+    onRuntime?.(context.runtime);
   }
 
-  return <span>{runtime ? "runtime-ready" : "missing-runtime"}</span>;
+  return <span>{context ? "runtime-ready" : "missing-runtime"}</span>;
+}
+
+const neverSettlingPromise = new Promise<never>(() => {});
+
+function SuspendedLifecycleUpdateProbe({
+  onCommittedDrop,
+  onSuspendedDrop,
+  onSuspendedRender,
+}: {
+  onCommittedDrop: NonNullable<Parameters<typeof DragProvider>[0]["onDrop"]>;
+  onSuspendedDrop: NonNullable<Parameters<typeof DragProvider>[0]["onDrop"]>;
+  onSuspendedRender: () => void;
+}) {
+  const [useSuspendedProps, setUseSuspendedProps] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          startTransition(() => {
+            setUseSuspendedProps(true);
+          });
+        }}
+      >
+        Suspend update
+      </button>
+      <Suspense fallback={<span>Pending update</span>}>
+        <DragProvider
+          onDrop={useSuspendedProps ? onSuspendedDrop : onCommittedDrop}
+        >
+          <DraggableBox />
+          <DroppableBox />
+          {useSuspendedProps ? (
+            <SuspendedRender onRender={onSuspendedRender} />
+          ) : null}
+        </DragProvider>
+      </Suspense>
+    </>
+  );
+}
+
+function SuspendedRender({ onRender }: { onRender: () => void }): null {
+  onRender();
+  throw neverSettlingPromise;
 }
 
 function DraggableBox() {
@@ -685,13 +848,13 @@ function DraggableBox() {
 }
 
 function DroppableBox({
-  targetId = "target-1",
+  dropTargetId = "target-1",
   testId = "droppable",
 }: {
-  targetId?: string;
+  dropTargetId?: string;
   testId?: string;
 } = {}) {
-  const droppable = useDroppable({ targetId, group: "items" });
+  const droppable = useDroppable({ dropTargetId, group: "items" });
 
   return (
     <div {...droppable} data-testid={testId}>

@@ -11,41 +11,46 @@ import { createDomDroppable } from "@mk-drag-and-drop/dom/integration";
 import { DragContext } from "../drag-context.js";
 
 export type UseDroppableOptions = {
-  targetId: string;
+  dropTargetId: string;
   group?: string;
   containerId?: string | null;
 };
 
-export type UseDroppableResult = HTMLAttributes<HTMLDivElement> & {
-  ref: RefCallback<HTMLDivElement>;
+export type UseDroppableResult<
+  ElementType extends HTMLElement = HTMLElement,
+> = HTMLAttributes<ElementType> & {
+  ref: RefCallback<ElementType>;
 };
 
 const defaultDroppableGroup = "default";
 
-export function useDroppable({
-  targetId,
+export function useDroppable<
+  ElementType extends HTMLElement = HTMLElement,
+>({
+  dropTargetId,
   group = defaultDroppableGroup,
   containerId = null,
-}: UseDroppableOptions): UseDroppableResult {
-  const runtime = useContext(DragContext);
+}: UseDroppableOptions): UseDroppableResult<ElementType> {
+  const context = useContext(DragContext);
 
-  if (!runtime) {
+  if (!context) {
     throw new Error("useDroppable must be used inside DragProvider");
   }
 
+  const { runtime } = context;
   const behavior = useMemo(
     () =>
       createDomDroppable({
         runtime,
-        targetId,
+        dropTargetId,
         group,
         containerId,
       }),
-    [containerId, group, runtime, targetId],
+    [containerId, dropTargetId, group, runtime],
   );
 
   const setNodeRef = useCallback(
-    (node: HTMLDivElement | null) => {
+    (node: ElementType | null) => {
       behavior.setElement(node);
     },
     [behavior],

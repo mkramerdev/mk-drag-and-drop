@@ -22,11 +22,11 @@ import { createRect, stubBoundingClientRect } from "./test-utils.js";
 describe("targeting", () => {
   const targets: DropTarget[] = [
     {
-      dropTargetKey: "near",
+      dropTargetId: "near",
       dropTargetRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
     },
     {
-      dropTargetKey: "far",
+      dropTargetId: "far",
       dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
     },
   ];
@@ -37,7 +37,7 @@ describe("targeting", () => {
         pointerPosition: { x: 105, y: 10 },
         overlayRect: null,
         dropTargets: targets,
-      })?.dropTargetKey,
+      })?.dropTargetId,
     ).toBe("far");
   });
 
@@ -54,7 +54,7 @@ describe("targeting", () => {
         pointerPosition: { x: 0, y: 0 },
         overlayRect: createRect({ left: 95, top: 0, width: 20, height: 20 }),
         dropTargets: targets,
-      })?.dropTargetKey,
+      })?.dropTargetId,
     ).toBe("far");
   });
 
@@ -64,7 +64,7 @@ describe("targeting", () => {
         pointerPosition: { x: 80, y: 10 },
         overlayRect: null,
         dropTargets: targets,
-      })?.dropTargetKey,
+      })?.dropTargetId,
     ).toBe("far");
   });
 

@@ -144,8 +144,10 @@ export function KanbanExample(): ReactElement {
       onDragEnd={() => {
         setActiveDrag(null);
       }}
-      onDrop={({ draggableId }, { getDropPlacement }) => {
-        const placement = getDropPlacement(draggableId);
+      onDrop={({ draggableId, sortablePlacement }) => {
+        const placement = sortablePlacement
+          ? { draggableId, ...sortablePlacement }
+          : null;
 
         if (!placement) {
           return;
