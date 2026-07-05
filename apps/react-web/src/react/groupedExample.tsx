@@ -18,6 +18,7 @@ import {
   type DragState,
   type SortablePlacement,
   type TargetingConstraint,
+  centerToCenter,
 } from "@mk-drag-and-drop/react";
 
 type ParentItem = {
@@ -321,6 +322,7 @@ export function GroupedExample(): ReactElement {
   return (
     // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
+      targetingAlgorithm={centerToCenter}
       targetingConstraint={groupedTargetingConstraint}
       pointerConfiguration={{ activationDelay: 100 }}
       dragOverlay={({ dragState }) => (

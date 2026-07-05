@@ -83,6 +83,10 @@ type DragSession =
 
 type DraggingSession = Extract<DragSession, { status: "dragging" }>;
 
+type DragUpdateSubscriptionEvent = DragUpdateEvent & {
+  placementPosition: Point;
+};
+
 export class DragRuntime {
   isDragging = false;
   draggedId: string | null = null;
@@ -312,11 +316,22 @@ export class DragRuntime {
       overlayMeasurement: session.overlayMeasurement,
     });
 
+    const overlayRect = this.hasDragOverlay
+      ? this.getCurrentDragRectAt(pointerPosition)
+      : null;
+    const activeDropTarget = this.getActiveDropTarget({
+      pointerPosition,
+      overlayRect,
+    });
+    const placementPosition = this.getSortablePlacementPosition({
+      pointerPosition,
+      overlayRect,
+    });
     const nextSession: DraggingSession = {
       ...session,
       rawPointerPosition,
       pointerPosition,
-      activeDropTarget: this.getActiveDropTarget(pointerPosition),
+      activeDropTarget,
     };
     this.setSession(nextSession);
 
@@ -324,11 +339,16 @@ export class DragRuntime {
       type: "move",
       dragState: this.createDragState(nextSession),
     });
-    this.notifyDragUpdate({
+    const updateEvent: DragUpdateEvent = {
       draggableId: nextSession.draggableId,
       pointerPosition,
       activeDropTarget: nextSession.activeDropTarget,
       previousDropTarget,
+    };
+
+    this.notifyDragUpdate(updateEvent, {
+      ...updateEvent,
+      placementPosition,
     });
   }
 
@@ -842,7 +862,10 @@ export class DragRuntime {
     };
   }
 
-  private getActiveDropTarget(pointerPosition: Point): string | null {
+  private getActiveDropTarget(input: {
+    pointerPosition: Point;
+    overlayRect: DragRect | null;
+  }): string | null {
     const session = this.getDraggingSession();
 
     if (!session) {
@@ -851,20 +874,28 @@ export class DragRuntime {
 
     this.removeDisconnectedDropTargets(session.group);
 
-    const overlayRect = this.hasDragOverlay
-      ? this.getCurrentDragRectAt(pointerPosition)
-      : null;
     const activeTarget = this.targetingAlgorithm({
-      pointerPosition,
-      overlayRect,
+      pointerPosition: input.pointerPosition,
+      overlayRect: input.overlayRect,
       dropTargets: this.getAvailableDropTargets({
         group: session.group,
-        pointerPosition,
-        overlayRect,
+        pointerPosition: input.pointerPosition,
+        overlayRect: input.overlayRect,
       }),
     });
 
     return activeTarget?.dropTargetKey ?? null;
+  }
+
+  private getSortablePlacementPosition(input: {
+    pointerPosition: Point;
+    overlayRect: DragRect | null;
+  }): Point {
+    if (this.targetingAlgorithm.mode === "rect" && input.overlayRect) {
+      return getRectCenter(input.overlayRect);
+    }
+
+    return input.pointerPosition;
   }
 
   private getAvailableDropTargets(input: {
@@ -935,14 +966,17 @@ export class DragRuntime {
     }
   }
 
-  private notifyDragUpdate(event: DragUpdateEvent): void {
+  private notifyDragUpdate(
+    event: DragUpdateEvent,
+    subscriptionEvent: DragUpdateSubscriptionEvent,
+  ): void {
     this.lifecycleCallbacks.onDragUpdate?.(
       event,
       this.lifecycleHelpers,
     );
 
     for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragUpdate?.(event);
+      subscription.onDragUpdate?.(subscriptionEvent);
     }
   }
 
@@ -988,6 +1022,13 @@ function areOverlayMeasurementsEqual(
 
 function areNearlyEqual(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.5;
+}
+
+function getRectCenter(rect: DragRect): Point {
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
 }
 
 export function createDragRuntime(

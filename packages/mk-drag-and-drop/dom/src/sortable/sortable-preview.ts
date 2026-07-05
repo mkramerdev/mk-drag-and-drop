@@ -8,7 +8,20 @@ import {
   restoreSortableDraggedAttribute,
 } from "./sortable-registry.js";
 
-type SortablePlacementSide = "before" | "after";
+export type SortablePlacementSide = "before" | "after";
+export type SortableLayoutAxis = "horizontal" | "vertical";
+export type SortableAxisMovementDirection = "forward" | "backward" | "none";
+export type SortablePointerMovementState = {
+  previousPointerPosition: { x: number; y: number };
+  lastNonNoneDirectionByAxis: Record<
+    SortableLayoutAxis,
+    Exclude<SortableAxisMovementDirection, "none"> | null
+  >;
+};
+
+const forwardPlacementBoundaryRatio = 0.25;
+const backwardPlacementBoundaryRatio = 0.75;
+const neutralPlacementBoundaryRatio = 0.5;
 
 const pendingRemeasureFrames = new WeakMap<
   DomSortableRuntime,
@@ -48,12 +61,55 @@ export function isSortablePreviewTarget(input: {
   );
 }
 
+export function initializeSortablePointerMovement(
+  registry: SortableRegistry,
+  pointerPosition: { x: number; y: number },
+): void {
+  registry.pointerMovement = {
+    previousPointerPosition: { ...pointerPosition },
+    lastNonNoneDirectionByAxis: {
+      horizontal: null,
+      vertical: null,
+    },
+  };
+}
+
+export function updateSortablePointerMovement(
+  registry: SortableRegistry,
+  pointerPosition: { x: number; y: number },
+): void {
+  const movement = registry.pointerMovement;
+
+  if (!movement) {
+    initializeSortablePointerMovement(registry, pointerPosition);
+    return;
+  }
+
+  updateLastNonNoneDirectionForAxis({
+    movement,
+    axis: "horizontal",
+    currentAxisPosition: pointerPosition.x,
+  });
+  updateLastNonNoneDirectionForAxis({
+    movement,
+    axis: "vertical",
+    currentAxisPosition: pointerPosition.y,
+  });
+
+  movement.previousPointerPosition = { ...pointerPosition };
+}
+
+export function clearSortablePointerMovement(registry: SortableRegistry): void {
+  registry.pointerMovement = null;
+}
+
 export function moveSortablePreview(input: {
   registry: SortableRegistry;
   runtime: DomSortableRuntime;
   draggedDraggableId: string;
   activeDropTarget: string | null;
   pointerPosition: { x: number; y: number };
+  placementPosition: { x: number; y: number };
 }): void {
   if (
     input.activeDropTarget === null ||
@@ -115,7 +171,7 @@ export function moveSortablePreview(input: {
     draggedIndex,
     targetIndex,
     targetElement,
-    pointerPosition: input.pointerPosition,
+    placementPosition: input.placementPosition,
   });
 
   if (isBlockedBySkippedSibling) {
@@ -125,6 +181,8 @@ export function moveSortablePreview(input: {
   const placement = getSortablePreviewPlacement({
     targetElement,
     pointerPosition: input.pointerPosition,
+    placementPosition: input.placementPosition,
+    movement: input.registry.pointerMovement,
   });
 
   if (targetIndex === -1) {
@@ -157,11 +215,32 @@ export function moveSortablePreview(input: {
 export function getSortablePreviewPlacement(input: {
   targetElement: HTMLElement;
   pointerPosition: { x: number; y: number };
+  placementPosition: { x: number; y: number };
+  movement: SortablePointerMovementState | null;
 }): SortablePlacementSide {
-  return getPointerPlacementSide({
-    targetElement: input.targetElement,
-    pointerPosition: input.pointerPosition,
+  const axis = getSortableLayoutAxis(input.targetElement);
+  const axisPosition = getAxisPosition(input.placementPosition, axis);
+  const pointerAxisPosition = getAxisPosition(input.pointerPosition, axis);
+  const previousAxisPosition = input.movement
+    ? getAxisPosition(input.movement.previousPointerPosition, axis)
+    : pointerAxisPosition;
+  const currentDirection = getAxisMovementDirection(
+    previousAxisPosition,
+    pointerAxisPosition,
+  );
+  const direction =
+    currentDirection === "none"
+      ? (input.movement?.lastNonNoneDirectionByAxis[axis] ?? "none")
+      : currentDirection;
+  const boundary = getDirectionalPlacementBoundary({
+    targetRect: input.targetElement.getBoundingClientRect(),
+    axis,
+    direction,
+    forwardRatio: forwardPlacementBoundaryRatio,
+    backwardRatio: backwardPlacementBoundaryRatio,
   });
+
+  return getPlacementSideFromBoundary(axisPosition, boundary);
 }
 
 export function isSortablePreviewAlreadyPlaced(input: {
@@ -246,7 +325,7 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
   draggedIndex: number;
   targetIndex: number;
   targetElement: HTMLElement;
-  pointerPosition: { x: number; y: number };
+  placementPosition: { x: number; y: number };
 }): boolean {
   if (input.draggedIndex === -1 || input.targetIndex === -1) {
     return false;
@@ -272,13 +351,13 @@ function isPreviewBlockedBySkippedSortableSibling(input: {
 
     if (targetDistance === null) {
       targetDistance = getPointToRectCenterDistance(
-        input.pointerPosition,
+        input.placementPosition,
         input.targetElement.getBoundingClientRect(),
       );
     }
 
     const siblingDistance = getPointToRectCenterDistance(
-      input.pointerPosition,
+      input.placementPosition,
       sibling.getBoundingClientRect(),
     );
 
@@ -361,27 +440,59 @@ function getSnapshotRestoreReferenceNode(
     : indexedReferenceNode;
 }
 
-function getPointerPlacementSide(input: {
-  targetElement: HTMLElement;
-  pointerPosition: { x: number; y: number };
-}): SortablePlacementSide {
-  const rect = input.targetElement.getBoundingClientRect();
-  const axis = getSortableLayoutAxis(input.targetElement);
+export function getAxisPosition(
+  pointerPosition: { x: number; y: number },
+  axis: SortableLayoutAxis,
+): number {
+  return axis === "horizontal" ? pointerPosition.x : pointerPosition.y;
+}
 
-  if (axis === "horizontal") {
-    return input.pointerPosition.x >= rect.left + rect.width / 2
-      ? "after"
-      : "before";
+export function getAxisMovementDirection(
+  previousAxisPosition: number,
+  currentAxisPosition: number,
+): SortableAxisMovementDirection {
+  if (currentAxisPosition > previousAxisPosition) {
+    return "forward";
   }
 
-  return input.pointerPosition.y >= rect.top + rect.height / 2
-    ? "after"
-    : "before";
+  if (currentAxisPosition < previousAxisPosition) {
+    return "backward";
+  }
+
+  return "none";
+}
+
+export function getDirectionalPlacementBoundary(input: {
+  targetRect: DOMRect;
+  axis: SortableLayoutAxis;
+  direction: SortableAxisMovementDirection;
+  forwardRatio: number;
+  backwardRatio: number;
+}): number {
+  const targetStart =
+    input.axis === "horizontal" ? input.targetRect.left : input.targetRect.top;
+  const targetSize =
+    input.axis === "horizontal" ? input.targetRect.width : input.targetRect.height;
+  const boundaryRatio =
+    input.direction === "forward"
+      ? input.forwardRatio
+      : input.direction === "backward"
+        ? input.backwardRatio
+        : neutralPlacementBoundaryRatio;
+
+  return targetStart + targetSize * boundaryRatio;
+}
+
+export function getPlacementSideFromBoundary(
+  axisPosition: number,
+  boundary: number,
+): SortablePlacementSide {
+  return axisPosition < boundary ? "before" : "after";
 }
 
 function getSortableLayoutAxis(
   targetElement: HTMLElement,
-): "horizontal" | "vertical" {
+): SortableLayoutAxis {
   const parent = targetElement.parentElement;
 
   if (!parent) {
@@ -424,6 +535,25 @@ function getCenterSpread(
   }
 
   return max - min;
+}
+
+function updateLastNonNoneDirectionForAxis(input: {
+  movement: SortablePointerMovementState;
+  axis: SortableLayoutAxis;
+  currentAxisPosition: number;
+}): void {
+  const previousAxisPosition = getAxisPosition(
+    input.movement.previousPointerPosition,
+    input.axis,
+  );
+  const direction = getAxisMovementDirection(
+    previousAxisPosition,
+    input.currentAxisPosition,
+  );
+
+  if (direction !== "none") {
+    input.movement.lastNonNoneDirectionByAxis[input.axis] = direction;
+  }
 }
 
 export function cancelSortableDropTargetGroupRemeasure(

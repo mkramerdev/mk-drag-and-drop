@@ -3,11 +3,15 @@ import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.
 import {
   cancelSortableDropTargetGroupRemeasure,
   clearSortableDraggedState,
+  clearSortablePointerMovement,
+  initializeSortablePointerMovement,
   moveSortablePreview,
   remeasureSortableDropTargetGroup,
   restoreSortableSnapshot,
   snapshotSortableElement,
   isSortablePreviewTarget,
+  type SortablePointerMovementState,
+  updateSortablePointerMovement,
 } from "./sortable-preview.js";
 
 export type DomSortableRuntime = DomDraggableRuntime & {
@@ -35,10 +39,14 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     };
   } | null;
   subscribe: (subscription: {
-    onDragStart?: (event: { draggableId: string }) => void;
+    onDragStart?: (event: {
+      draggableId: string;
+      pointerPosition: { x: number; y: number };
+    }) => void;
     onDragUpdate?: (event: {
       draggableId: string;
       pointerPosition: { x: number; y: number };
+      placementPosition?: { x: number; y: number };
       activeDropTarget: string | null;
       previousDropTarget: string | null;
     }) => void;
@@ -60,6 +68,7 @@ export type SortableRegistry = {
   elementIds: WeakMap<HTMLElement, string>;
   elements: Map<string, WeakRef<HTMLElement>>;
   groups: Map<string, string>;
+  pointerMovement: SortablePointerMovementState | null;
   snapshots: Map<string, SortableSnapshot>;
 };
 
@@ -93,30 +102,33 @@ export function getSortableRegistry(
     elementIds: new WeakMap(),
     elements: new Map(),
     groups: new Map(),
+    pointerMovement: null,
     snapshots: new Map(),
   };
 
   const unsubscribe = runtime.subscribe({
     onDragStart: (event) => {
+      initializeSortablePointerMovement(registry, event.pointerPosition);
       snapshotSortableElement(registry, event.draggableId);
     },
     onDragUpdate: (event) => {
       if (
-        !isSortablePreviewTarget({
+        isSortablePreviewTarget({
           draggedDraggableId: event.draggableId,
           activeDropTarget: event.activeDropTarget,
         })
       ) {
-        return;
+        moveSortablePreview({
+          registry,
+          runtime,
+          draggedDraggableId: event.draggableId,
+          activeDropTarget: event.activeDropTarget,
+          pointerPosition: event.pointerPosition,
+          placementPosition: event.placementPosition ?? event.pointerPosition,
+        });
       }
 
-      moveSortablePreview({
-        registry,
-        runtime,
-        draggedDraggableId: event.draggableId,
-        activeDropTarget: event.activeDropTarget,
-        pointerPosition: event.pointerPosition,
-      });
+      updateSortablePointerMovement(registry, event.pointerPosition);
     },
     onDragEnd: (event) => {
       if (restoreSortableSnapshot(registry, event.draggableId)) {
@@ -128,10 +140,12 @@ export function getSortableRegistry(
       }
 
       clearSortableDraggedState(registry, event.draggableId);
+      clearSortablePointerMovement(registry);
       registry.snapshots.delete(event.draggableId);
     },
     onDrop: (event) => {
       clearSortableDraggedState(registry, event.draggableId);
+      clearSortablePointerMovement(registry);
       registry.snapshots.delete(event.draggableId);
       remeasureSortableDropTargetGroup({
         registry,
@@ -146,6 +160,7 @@ export function getSortableRegistry(
     cancelSortableDropTargetGroupRemeasure(runtime);
     registry.elements.clear();
     registry.groups.clear();
+    registry.pointerMovement = null;
     registry.attributeSnapshots.clear();
     registry.snapshots.clear();
     sortableRegistries.delete(runtime);
