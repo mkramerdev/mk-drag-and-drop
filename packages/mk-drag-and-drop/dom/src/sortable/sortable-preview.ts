@@ -123,13 +123,11 @@ export function moveSortablePreview(input: {
   }
 
   const placement = getSortablePreviewPlacement({
-    draggedIndex,
-    targetIndex,
     targetElement,
     pointerPosition: input.pointerPosition,
   });
 
-  if (targetIndex === -1 || placement === null) {
+  if (targetIndex === -1) {
     return;
   }
 
@@ -157,27 +155,13 @@ export function moveSortablePreview(input: {
 }
 
 export function getSortablePreviewPlacement(input: {
-  draggedIndex: number;
-  targetIndex: number;
   targetElement: HTMLElement;
   pointerPosition: { x: number; y: number };
-}): SortablePlacementSide | null {
-  if (input.draggedIndex === -1) {
-    return getPointerPlacementSide({
-      targetElement: input.targetElement,
-      pointerPosition: input.pointerPosition,
-    });
-  }
-
-  if (input.targetIndex > input.draggedIndex) {
-    return "after";
-  }
-
-  if (input.targetIndex < input.draggedIndex) {
-    return "before";
-  }
-
-  return null;
+}): SortablePlacementSide {
+  return getPointerPlacementSide({
+    targetElement: input.targetElement,
+    pointerPosition: input.pointerPosition,
+  });
 }
 
 export function isSortablePreviewAlreadyPlaced(input: {

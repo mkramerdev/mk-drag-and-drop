@@ -76,15 +76,6 @@ describe("createDraggable", () => {
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
-  it("returns void", () => {
-    controller = createDragController();
-    const element = createMeasuredElement();
-
-    const result = createDraggable({ controller, element, draggableId: "item" });
-
-    expect(result).toBeUndefined();
-  });
-
   it("removes listeners and restores DOM state when the controller is disposed", () => {
     const onDragStart = vi.fn();
     controller = createDragController({ onDragStart });

@@ -142,6 +142,7 @@ describe("React hooks", () => {
         <DynamicDroppable targetId="target-1" />
       </DragProvider>,
     );
+    const element = screen.getByTestId("droppable");
 
     rerender(
       <DragProvider>
@@ -151,25 +152,27 @@ describe("React hooks", () => {
     );
     unmount();
 
+    expect(registerSpy).toHaveBeenCalledTimes(2);
     expect(registerSpy).toHaveBeenCalledWith(
       "target-1",
-      expect.any(HTMLElement),
+      element,
       "items",
       { containerId: null },
     );
     expect(registerSpy).toHaveBeenCalledWith(
       "target-2",
-      expect.any(HTMLElement),
+      element,
       "items",
       { containerId: null },
     );
+    expect(unregisterSpy).toHaveBeenCalledTimes(2);
     expect(unregisterSpy).toHaveBeenCalledWith(
       "target-1",
-      expect.any(HTMLElement),
+      element,
     );
     expect(unregisterSpy).toHaveBeenCalledWith(
       "target-2",
-      expect.any(HTMLElement),
+      element,
     );
   });
 
@@ -185,10 +188,12 @@ describe("React hooks", () => {
         <DynamicDroppable targetId="target-1" containerId="bucket-1" />
       </DragProvider>,
     );
+    const element = screen.getByTestId("droppable");
 
+    expect(registerSpy).toHaveBeenCalledTimes(1);
     expect(registerSpy).toHaveBeenCalledWith(
       "target-1",
-      expect.any(HTMLElement),
+      element,
       "items",
       { containerId: "bucket-1" },
     );
@@ -207,6 +212,7 @@ describe("React hooks", () => {
         <DynamicDropContainer containerId="container-1" />
       </DragProvider>,
     );
+    const element = screen.getByTestId("drop-container");
 
     rerender(
       <DragProvider>
@@ -216,23 +222,25 @@ describe("React hooks", () => {
     );
     unmount();
 
+    expect(registerSpy).toHaveBeenCalledTimes(2);
     expect(registerSpy).toHaveBeenCalledWith(
       "container-1",
-      expect.any(HTMLElement),
+      element,
       "items",
     );
     expect(registerSpy).toHaveBeenCalledWith(
       "container-2",
-      expect.any(HTMLElement),
+      element,
       "items",
     );
+    expect(unregisterSpy).toHaveBeenCalledTimes(2);
     expect(unregisterSpy).toHaveBeenCalledWith(
       "container-1",
-      expect.any(HTMLElement),
+      element,
     );
     expect(unregisterSpy).toHaveBeenCalledWith(
       "container-2",
-      expect.any(HTMLElement),
+      element,
     );
   });
 
@@ -332,18 +340,20 @@ describe("React hooks", () => {
 
     unmount();
 
+    expect(registerSpy).toHaveBeenCalledTimes(1);
     expect(registerSpy).toHaveBeenCalledWith(
       "item-1",
-      expect.any(HTMLElement),
+      row,
       "items",
       {
         containerId: "container-1",
         sortable: true,
       },
     );
+    expect(unregisterSpy).toHaveBeenCalledTimes(1);
     expect(unregisterSpy).toHaveBeenCalledWith(
       "item-1",
-      expect.any(HTMLElement),
+      row,
     );
   });
 });

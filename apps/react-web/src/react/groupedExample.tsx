@@ -49,7 +49,6 @@ type DropTargetElementRegistrar = (
 
 const groupedParentGroup = "grouped-parents";
 const groupedChildGroup = "grouped-children";
-const groupedDropTargetAttribute = "data-grouped-drop-target-id";
 const groupedInsideTargetPrefix = "grouped:children:inside:";
 const groupedChildTargetPrefix = "grouped:children:";
 const groupedInsideTargetMaxYDistance = 0;

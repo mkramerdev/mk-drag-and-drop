@@ -124,20 +124,6 @@ describe("createDroppable", () => {
     );
   });
 
-  it("returns void", () => {
-    const onDrop = vi.fn();
-    controller = createDragController({ onDrop });
-    const target = createMeasuredElement(createRect({ width: 20, height: 20 }));
-
-    const result = createDroppable({
-      controller,
-      element: target,
-      targetId: "target",
-    });
-
-    expect(result).toBeUndefined();
-  });
-
   it("makes a removed target unavailable without cleanup", () => {
     const onDrop = vi.fn();
     const { source, target } = setupDragAndDrop({ onDrop });

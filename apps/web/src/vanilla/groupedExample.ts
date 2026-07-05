@@ -38,7 +38,6 @@ type ParsedChildDropTarget =
 const groupedParentGroup = "grouped-parents";
 const groupedChildGroup = "grouped-children";
 const groupedDropTargetAttribute = "data-grouped-drop-target-id";
-const groupedActiveDropTargetAttribute = "data-grouped-active-drop-target";
 const groupedInsideTargetPrefix = "grouped:children:inside:";
 const groupedChildTargetPrefix = "grouped:children:";
 const groupedInsideTargetMaxYDistance = 0;
@@ -170,6 +169,8 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
   let childOrder = [...initialChildOrder];
   let expandedParentIds = new Set(["parent-roadmap", "parent-release"]);
   let activeDraggedParentId: string | null = null;
+  const dropTargetElements = new Map<string, HTMLElement>();
+  let activeDropTarget: string | null = null;
   let pendingRemeasureFrameId: number | null = null;
 
   const panel = document.createElement("section");
@@ -191,25 +192,24 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     pointerConfiguration: { activationDelay: 100 },
     dragOverlay,
     onDragStart({ draggableId }) {
-      clearActiveGroupedDropTargets(panel);
+      clearActiveGroupedDropTarget();
       activeDraggedParentId = parentsById[draggableId] ? draggableId : null;
-      updateActiveDraggedParentDom();
 
       if (activeDraggedParentId) {
+        collapseActiveDraggedParentDom();
         remeasureGroupedTargets(controller);
       }
     },
-    onDragUpdate({ activeDropTarget, previousDropTarget }) {
+    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
       updateActiveGroupedDropTarget({
-        root: panel,
-        activeDropTarget,
+        activeDropTarget: nextDropTarget,
         previousDropTarget,
       });
     },
     onDragEnd() {
-      clearActiveGroupedDropTargets(panel);
+      clearActiveGroupedDropTarget();
       activeDraggedParentId = null;
-      updateActiveDraggedParentDom();
+      render();
     },
     onDrop(event, { getSortablePlacement }) {
       // Example drop behavior: interpret package targets and commit app data.
@@ -270,7 +270,8 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
 
   return () => {
     controller.dispose();
-    clearActiveGroupedDropTargets(panel);
+    clearActiveGroupedDropTarget();
+    dropTargetElements.clear();
 
     if (pendingRemeasureFrameId !== null) {
       window.cancelAnimationFrame(pendingRemeasureFrameId);
@@ -286,6 +287,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
 
   // Example rendering: rebuild grouped DOM from user-owned data.
   function render(): void {
+    dropTargetElements.clear();
     groupedElement.replaceChildren(
       ...parentOrder.flatMap((parentId) => {
         const parent = parentsById[parentId];
@@ -293,7 +295,6 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
         return parent ? [createGroupedParentBlock(parent)] : [];
       }),
     );
-    updateActiveDraggedParentDom();
   }
 
   // Example rendering: parent row markup and child container are app-owned.
@@ -304,12 +305,20 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
       childrenById,
     });
     const hasChildren = children.length > 0;
-    const isExpanded = hasChildren && expandedParentIds.has(parent.parentId);
+    const isActivelyDragged = activeDraggedParentId === parent.parentId;
+    const isExpanded =
+      hasChildren &&
+      expandedParentIds.has(parent.parentId) &&
+      !isActivelyDragged;
     const insideTargetId = getInsideTargetId(parent.parentId);
 
     const parentBlock = document.createElement("div");
     parentBlock.className = "groupedParentBlock";
     parentBlock.setAttribute(groupedDropTargetAttribute, parent.parentId);
+    if (isActivelyDragged) {
+      parentBlock.dataset.groupedDragged = "true";
+    }
+    registerDropTargetElement(parent.parentId, parentBlock);
 
     // Package API: registers the parent block as a sortable item.
     createSortable({
@@ -322,6 +331,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     const parentRow = document.createElement("div");
     parentRow.className = "groupedParentRow";
     parentRow.setAttribute(groupedDropTargetAttribute, insideTargetId);
+    registerDropTargetElement(insideTargetId, parentRow);
 
     // Package API: registers the parent row as an inside drop target.
     createDroppable({
@@ -399,6 +409,7 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     const line = document.createElement("div");
     line.className = "groupedChildDropzoneLine";
     line.setAttribute(groupedDropTargetAttribute, targetId);
+    registerDropTargetElement(targetId, line);
 
     const indicator = document.createElement("div");
     indicator.className = "groupedChildDropzoneIndicator";
@@ -472,32 +483,39 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
     });
   }
 
-  // Example styling: sync demo DOM attributes from active drag state.
-  function updateActiveDraggedParentDom(): void {
-    groupedElement
-      .querySelectorAll<HTMLElement>(".groupedParentBlock")
-      .forEach((parentBlock) => {
-        const parentId = parentBlock.getAttribute(groupedDropTargetAttribute);
+  // Example styling/rendering: collapse the active parent without replacing it.
+  function collapseActiveDraggedParentDom(): void {
+    if (!activeDraggedParentId) {
+      return;
+    }
 
-        if (!parentId) {
-          return;
-        }
+    const parentBlock = dropTargetElements.get(activeDraggedParentId);
 
-        const isActivelyDragged = activeDraggedParentId === parentId;
-        const childList =
-          parentBlock.querySelector<HTMLElement>(".groupedChildList");
+    if (!parentBlock?.isConnected) {
+      dropTargetElements.delete(activeDraggedParentId);
+      return;
+    }
 
-        if (isActivelyDragged) {
-          parentBlock.dataset.groupedDragged = "true";
-        } else {
-          delete parentBlock.dataset.groupedDragged;
-        }
+    parentBlock.dataset.groupedDragged = "true";
 
-        if (childList) {
-          childList.hidden =
-            !expandedParentIds.has(parentId) || isActivelyDragged;
+    const childList =
+      parentBlock.querySelector<HTMLElement>(".groupedChildList");
+
+    if (!childList) {
+      return;
+    }
+
+    childList
+      .querySelectorAll<HTMLElement>(`[${groupedDropTargetAttribute}]`)
+      .forEach((element) => {
+        const dropTargetId = element.getAttribute(groupedDropTargetAttribute);
+
+        if (dropTargetId) {
+          dropTargetElements.delete(dropTargetId);
         }
       });
+
+    childList.remove();
   }
 
   // Example rendering: overlay markup is app-owned and uses package drag state.
@@ -510,6 +528,60 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
       childrenById,
       childOrder,
     });
+  }
+
+  // Example styling: active target attributes drive demo CSS highlights.
+  function registerDropTargetElement(
+    dropTargetId: string,
+    element: HTMLElement,
+  ): void {
+    dropTargetElements.set(dropTargetId, element);
+
+    if (activeDropTarget === dropTargetId) {
+      element.dataset.groupedActiveDropTarget = "true";
+    } else {
+      delete element.dataset.groupedActiveDropTarget;
+    }
+  }
+
+  function updateActiveGroupedDropTarget(input: {
+    activeDropTarget: string | null;
+    previousDropTarget: string | null;
+  }): void {
+    if (input.previousDropTarget === input.activeDropTarget) {
+      return;
+    }
+
+    setActiveGroupedDropTarget(input.previousDropTarget, false);
+    setActiveGroupedDropTarget(input.activeDropTarget, true);
+    activeDropTarget = input.activeDropTarget;
+  }
+
+  function clearActiveGroupedDropTarget(): void {
+    setActiveGroupedDropTarget(activeDropTarget, false);
+    activeDropTarget = null;
+  }
+
+  function setActiveGroupedDropTarget(
+    dropTargetId: string | null,
+    isActive: boolean,
+  ): void {
+    if (!dropTargetId) {
+      return;
+    }
+
+    const element = dropTargetElements.get(dropTargetId);
+
+    if (!element?.isConnected) {
+      dropTargetElements.delete(dropTargetId);
+      return;
+    }
+
+    if (isActive) {
+      element.dataset.groupedActiveDropTarget = "true";
+    } else {
+      delete element.dataset.groupedActiveDropTarget;
+    }
   }
 }
 
@@ -763,60 +835,6 @@ function insertAfterSibling(input: {
 
 function insertIntoArray<T>(items: T[], index: number, item: T): T[] {
   return [...items.slice(0, index), item, ...items.slice(index)];
-}
-
-// Example styling: toggle DOM attributes consumed by grouped example CSS.
-function clearActiveGroupedDropTargets(root: ParentNode | null): void {
-  for (const element of Array.from(
-    (root ?? document).querySelectorAll<HTMLElement>(
-      `[${groupedDropTargetAttribute}][${groupedActiveDropTargetAttribute}="true"]`,
-    ),
-  )) {
-    delete element.dataset.groupedActiveDropTarget;
-  }
-}
-
-function updateActiveGroupedDropTarget(input: {
-  root: ParentNode | null;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-}): void {
-  if (input.previousDropTarget === input.activeDropTarget) {
-    return;
-  }
-
-  if (input.previousDropTarget) {
-    const previousElement = getGroupedDropTargetElement(
-      input.root,
-      input.previousDropTarget,
-    );
-
-    if (previousElement) {
-      delete previousElement.dataset.groupedActiveDropTarget;
-    }
-  }
-
-  if (!input.activeDropTarget) {
-    return;
-  }
-
-  const activeElement = getGroupedDropTargetElement(
-    input.root,
-    input.activeDropTarget,
-  );
-
-  if (activeElement) {
-    activeElement.dataset.groupedActiveDropTarget = "true";
-  }
-}
-
-function getGroupedDropTargetElement(
-  root: ParentNode | null,
-  dropTargetId: string,
-): HTMLElement | null {
-  return (root ?? document).querySelector<HTMLElement>(
-    `[${groupedDropTargetAttribute}="${CSS.escape(dropTargetId)}"]`,
-  );
 }
 
 // Package API: ask the controller to refresh measured drop target geometry.

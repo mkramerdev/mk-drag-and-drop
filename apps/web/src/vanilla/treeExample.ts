@@ -150,6 +150,8 @@ export function mountTreeExample(root: HTMLElement): () => void {
   // Example state: the app owns tree data and expansion state.
   let treeState = createTreeState(seedItems);
   let expandedItemIds = new Set(initialExpandedItemIds);
+  const dropTargetElements = new Map<string, HTMLElement>();
+  let activeDropTarget: string | null = null;
 
   // Package API: creates the drag controller and wires tree lifecycle callbacks.
   const controller = createDragController({
@@ -157,17 +159,16 @@ export function mountTreeExample(root: HTMLElement): () => void {
     targetingConstraint: treeTargetingConstraint,
     dragOverlay: createTreeDragOverlay,
     onDragStart() {
-      clearActiveTreeDropTargets(panel);
+      clearActiveTreeDropTarget();
     },
-    onDragUpdate({ activeDropTarget, previousDropTarget }) {
+    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
       updateActiveTreeDropTarget({
-        root: panel,
-        activeDropTarget,
+        activeDropTarget: nextDropTarget,
         previousDropTarget,
       });
     },
     onDragEnd() {
-      clearActiveTreeDropTargets(panel);
+      clearActiveTreeDropTarget();
     },
     onDrop({ draggableId, dropTarget }) {
       // Example drop behavior: translate the package target into tree data.
@@ -184,17 +185,29 @@ export function mountTreeExample(root: HTMLElement): () => void {
 
   return () => {
     controller.dispose();
+    clearActiveTreeDropTarget();
+    dropTargetElements.clear();
     root.replaceChildren();
   };
 
   // Example rendering: rebuild projected tree rows and lines from app state.
   function renderTree(): void {
     const projection = createTreeProjection(treeState, expandedItemIds);
+    dropTargetElements.clear();
     treeElement.replaceChildren(
       ...projection.entries.map((entry) =>
         entry.type === "row"
-          ? createTreeRow(controller, entry, toggleExpanded)
-          : createTreeDropzoneLine(controller, entry),
+          ? createTreeRow(
+              controller,
+              entry,
+              toggleExpanded,
+              registerDropTargetElement,
+            )
+          : createTreeDropzoneLine(
+              controller,
+              entry,
+              registerDropTargetElement,
+            ),
       ),
     );
   }
@@ -236,6 +249,62 @@ export function mountTreeExample(root: HTMLElement): () => void {
     overlay.append(handle, labelElement);
     return overlay;
   }
+
+  // Example styling: active target attributes drive demo CSS highlights.
+  function registerDropTargetElement(
+    dropTargetId: string,
+    element: HTMLElement,
+  ): void {
+    dropTargetElements.set(dropTargetId, element);
+
+    if (activeDropTarget === dropTargetId) {
+      element.dataset.treeActiveDropTarget = "true";
+    } else {
+      delete element.dataset.treeActiveDropTarget;
+    }
+  }
+
+  function updateActiveTreeDropTarget({
+    activeDropTarget: nextDropTarget,
+    previousDropTarget,
+  }: {
+    activeDropTarget: string | null;
+    previousDropTarget: string | null;
+  }): void {
+    if (nextDropTarget === previousDropTarget) {
+      return;
+    }
+
+    setTreeDropTargetActive(previousDropTarget, false);
+    setTreeDropTargetActive(nextDropTarget, true);
+    activeDropTarget = nextDropTarget;
+  }
+
+  function clearActiveTreeDropTarget(): void {
+    setTreeDropTargetActive(activeDropTarget, false);
+    activeDropTarget = null;
+  }
+
+  function setTreeDropTargetActive(
+    dropTargetId: string | null,
+    isActive: boolean,
+  ): void {
+    if (!dropTargetId) {
+      return;
+    }
+
+    const element = dropTargetElements.get(dropTargetId);
+
+    if (!element) {
+      return;
+    }
+
+    if (isActive) {
+      element.dataset.treeActiveDropTarget = "true";
+    } else {
+      delete element.dataset.treeActiveDropTarget;
+    }
+  }
 }
 
 // Example rendering: row markup and accessibility attributes are app-owned.
@@ -243,11 +312,16 @@ function createTreeRow(
   controller: DragController,
   row: ProjectedTreeRow,
   onToggleExpanded: (draggableId: string) => void,
+  registerDropTargetElement: (
+    dropTargetId: string,
+    element: HTMLElement,
+  ) => void,
 ): HTMLElement {
   const targetId = getInsideTargetId(row.item.draggableId);
   const rowElement = document.createElement("div");
   rowElement.className = "treeRow";
   rowElement.dataset.treeDropTargetId = targetId;
+  registerDropTargetElement(targetId, rowElement);
   rowElement.setAttribute("role", "treeitem");
   rowElement.setAttribute("aria-level", String(row.depth + 1));
   applyTreeDepthStyle(rowElement, row.depth);
@@ -308,10 +382,15 @@ function createTreeRow(
 function createTreeDropzoneLine(
   controller: DragController,
   line: ProjectedDropzoneLine,
+  registerDropTargetElement: (
+    dropTargetId: string,
+    element: HTMLElement,
+  ) => void,
 ): HTMLElement {
   const lineElement = document.createElement("div");
   lineElement.className = "treeDropzoneLine";
   lineElement.dataset.treeDropTargetId = line.targetId;
+  registerDropTargetElement(line.targetId, lineElement);
   lineElement.setAttribute("aria-hidden", "true");
   applyTreeDepthStyle(lineElement, line.depth);
 
@@ -681,56 +760,4 @@ function getRectCenter(rect: {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   };
-}
-
-// Example styling: toggle DOM attributes consumed by tree example CSS.
-function updateActiveTreeDropTarget({
-  root,
-  activeDropTarget,
-  previousDropTarget,
-}: {
-  root: ParentNode | null;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-}): void {
-  if (activeDropTarget === previousDropTarget) {
-    return;
-  }
-
-  setTreeDropTargetActive(root, previousDropTarget, false);
-  setTreeDropTargetActive(root, activeDropTarget, true);
-}
-
-function clearActiveTreeDropTargets(root: ParentNode | null): void {
-  getTreeDropTargetElements(root).forEach((element) => {
-    delete element.dataset.treeActiveDropTarget;
-  });
-}
-
-function setTreeDropTargetActive(
-  root: ParentNode | null,
-  dropTargetId: string | null,
-  isActive: boolean,
-): void {
-  if (!dropTargetId) {
-    return;
-  }
-
-  getTreeDropTargetElements(root).forEach((element) => {
-    if (element.dataset.treeDropTargetId !== dropTargetId) {
-      return;
-    }
-
-    if (isActive) {
-      element.dataset.treeActiveDropTarget = "true";
-    } else {
-      delete element.dataset.treeActiveDropTarget;
-    }
-  });
-}
-
-function getTreeDropTargetElements(
-  root: ParentNode | null,
-): NodeListOf<HTMLElement> {
-  return (root ?? document).querySelectorAll("[data-tree-drop-target-id]");
 }

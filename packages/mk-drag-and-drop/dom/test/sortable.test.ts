@@ -113,6 +113,38 @@ describe("createDomSortable", () => {
     expect(a.dataset.dndSortableDraggable).toBe("true");
   });
 
+  it("does not oscillate same-container preview over the same target below its midpoint", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+  });
+
+  it("does not oscillate same-container preview over the same target above its midpoint", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.c.onPointerDown(createPointerHandlerEvent({ target: c }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 35 });
+    raf.flush();
+
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 35 });
+    raf.flush();
+
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
+  });
+
   it("restores snapshot position without falling back to end when the original next sibling is removed", () => {
     const { elements, behaviors } = createFourItemSortableList();
     const [a, b, c, d] = elements;
@@ -130,7 +162,7 @@ describe("createDomSortable", () => {
     expect(Array.from(b.parentElement?.children ?? [])).toEqual([a, b, d]);
   });
 
-  it("uses original order for same-container preview placement", () => {
+  it("uses target midpoint for same-container preview placement", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
 
@@ -138,7 +170,25 @@ describe("createDomSortable", () => {
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 35 });
     raf.flush();
 
-    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("does not move below a tall target while the pointer is still in its top half", () => {
+    const { elements, behaviors } = createTallSortableList();
+    const [a, b] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 195 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 370 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a]);
   });
 
   it("returns no sortable placement for an isolated self-target drop", () => {
@@ -204,7 +254,7 @@ describe("createDomSortable", () => {
     const { a, c } = rows;
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 56 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 76 });
     raf.flush();
 
     expect(runtime.activeDropTarget).toBe("c");
@@ -322,6 +372,87 @@ describe("createDomSortable", () => {
 
     expect(onDrop).not.toHaveBeenCalled();
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("restores preview before user drag end rerenders after an invalid drop", () => {
+    const { elements, behaviors } = createSortableList("list");
+    const [a, b, c] = elements;
+    const list = a.parentElement;
+    const onDrop = vi.fn();
+    const rerenderedElements: HTMLElement[] = [];
+
+    if (!list) {
+      throw new Error("Expected sortable list parent");
+    }
+
+    runtime.configure({
+      targetingAlgorithm: pointerToCenter,
+      targetingConstraint: ({ pointerPosition }) => pointerPosition.y < 100,
+      hasDragOverlay: false,
+      keepOverlayOnDrop: false,
+      lifecycleCallbacks: {
+        onDragEnd: () => {
+          const nextA = createSortableElement(
+            "a",
+            createRect({ top: 0, width: 20, height: 20 }),
+          );
+          const nextB = createSortableElement(
+            "b",
+            createRect({ top: 30, width: 20, height: 20 }),
+          );
+          const nextC = createSortableElement(
+            "c",
+            createRect({ top: 60, width: 20, height: 20 }),
+          );
+
+          list.replaceChildren(nextA, nextB, nextC);
+          createDomSortable({
+            runtime,
+            draggableId: "a",
+            group: "rows",
+            containerId: "list",
+            getElement: () => nextA,
+          }).setElement(nextA);
+          createDomSortable({
+            runtime,
+            draggableId: "b",
+            group: "rows",
+            containerId: "list",
+            getElement: () => nextB,
+          }).setElement(nextB);
+          createDomSortable({
+            runtime,
+            draggableId: "c",
+            group: "rows",
+            containerId: "list",
+            getElement: () => nextC,
+          }).setElement(nextC);
+          rerenderedElements.splice(0, rerenderedElements.length, nextA, nextB, nextC);
+        },
+        onDrop,
+      },
+      keyboardConfiguration: undefined,
+      modifiers: [],
+      pointerConfiguration: undefined,
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(list.children)).toEqual([b, a, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 500 });
+    raf.flush();
+
+    expect(runtime.activeDropTarget).toBeNull();
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 500 });
+
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(Array.from(list.children)).toEqual(rerenderedElements);
+    expect(Array.from(list.children)).not.toContain(a);
+    expect(a.dataset.dndDragged).toBeUndefined();
   });
 
   it("returns cross-container drop placement", () => {
@@ -592,6 +723,43 @@ describe("createDomSortable", () => {
         a: behaviorA,
         b: behaviorB,
         c: behaviorC,
+      },
+    };
+  }
+
+  function createTallSortableList() {
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 100 }),
+    );
+    const b = createSortableElement(
+      "b",
+      createRect({ top: 120, width: 20, height: 400 }),
+    );
+    list.append(a, b);
+    const behaviorA = createDomSortable({
+      runtime,
+      draggableId: "a",
+      group: "rows",
+      getElement: () => a,
+    });
+    const behaviorB = createDomSortable({
+      runtime,
+      draggableId: "b",
+      group: "rows",
+      getElement: () => b,
+    });
+
+    behaviorA.setElement(a);
+    behaviorB.setElement(b);
+
+    return {
+      elements: [a, b] as const,
+      behaviors: {
+        a: behaviorA,
+        b: behaviorB,
       },
     };
   }

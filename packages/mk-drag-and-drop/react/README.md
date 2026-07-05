@@ -399,6 +399,28 @@ The React package re-exports targeting helpers such as `pointerToCenter`,
 Use the DOM package directly when you are building non-React integrations or
 imperative DOM behavior.
 
+### Memoize Modifiers And Composed Refs
+
+Modifier factories such as `restrictToContainer(...)` return modifier objects.
+When passing modifiers to `DragProvider`, create the array with `useMemo` so the
+runtime is not reconfigured with a new array every render.
+
+`composeRefs(...)` returns a ref callback. When the composed ref is used on a
+registered draggable, droppable, sortable, or drop container element, memoize it
+with `useMemo` so React does not clear and reassign the ref on every render.
+
+```tsx
+const modifiers = useMemo(
+  () => [restrictToContainer(containerRef)],
+  [],
+);
+
+const combinedRef = useMemo(
+  () => composeRefs(localRef, droppable.ref),
+  [droppable.ref],
+);
+```
+
 Custom targeting algorithms receive `pointerPosition`, `overlayRect`, and a
 list of measured `dropTargets`. Each target has `dropTargetKey` and
 `dropTargetRect`. Custom constraints receive one candidate `dropTarget` and

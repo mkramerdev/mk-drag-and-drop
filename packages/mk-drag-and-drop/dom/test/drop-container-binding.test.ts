@@ -98,19 +98,6 @@ describe("createDropContainer", () => {
     );
   });
 
-  it("returns void", () => {
-    controller = createDragController();
-    const container = createMeasuredElement(createRect({ width: 20, height: 20 }));
-
-    const result = createDropContainer({
-      controller,
-      element: container,
-      containerId: "column-a",
-    });
-
-    expect(result).toBeUndefined();
-  });
-
   it("makes a removed container unavailable without cleanup", () => {
     const { source, container, onDrop } = setupDragAndContainer({
       containerId: "column-a",

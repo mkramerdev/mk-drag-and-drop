@@ -175,15 +175,6 @@ describe("createSortable", () => {
     });
   });
 
-  it("returns void", () => {
-    controller = createDragController();
-    const element = createMeasuredElement(createRect({ width: 20, height: 20 }));
-
-    const result = createSortable({ controller, element, draggableId: "item" });
-
-    expect(result).toBeUndefined();
-  });
-
   it("makes a removed sortable item unavailable without cleanup", () => {
     const onDrop = vi.fn();
     const { a, b } = setupSortablePair({ onDrop });

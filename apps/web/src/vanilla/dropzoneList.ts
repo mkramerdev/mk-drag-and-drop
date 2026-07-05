@@ -33,6 +33,8 @@ const initialItems: DropzoneItem[] = [
 export function mountDropzoneList(root: HTMLElement): () => void {
   // Example state: the app owns item order outside the package runtime.
   let items = [...initialItems];
+  const dropTargetElements = new Map<string, HTMLElement>();
+  let activeDropTarget: string | null = null;
 
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
@@ -40,17 +42,16 @@ export function mountDropzoneList(root: HTMLElement): () => void {
     targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
     onDragStart() {
-      clearActiveDropzoneLines(listElement);
+      clearActiveDropzoneLine();
     },
-    onDragUpdate({ activeDropTarget, previousDropTarget }) {
+    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
       updateActiveDropzoneLine({
-        root: listElement,
-        activeDropTarget,
+        activeDropTarget: nextDropTarget,
         previousDropTarget,
       });
     },
     onDragEnd() {
-      clearActiveDropzoneLines(listElement);
+      clearActiveDropzoneLine();
     },
     onDrop({ draggableId, dropTarget }) {
       // Example drop behavior: translate the package drop target into list order.
@@ -75,13 +76,15 @@ export function mountDropzoneList(root: HTMLElement): () => void {
 
   return () => {
     controller.dispose();
-    clearActiveDropzoneLines(listElement);
+    clearActiveDropzoneLine();
+    dropTargetElements.clear();
     root.replaceChildren();
   };
 
   // Example rendering: list markup is app-owned and rerendered from data.
   function renderItems(): void {
     const children: HTMLElement[] = [];
+    dropTargetElements.clear();
 
     for (const item of items) {
       children.push(
@@ -127,6 +130,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
     const element = document.createElement("div");
     element.className = "dropzoneListLine";
     element.dataset.dropzoneLineTargetId = line.targetId;
+    registerDropTargetElement(line.targetId, element);
 
     const indicator = document.createElement("div");
     indicator.className = "dropzoneListLineIndicator";
@@ -166,6 +170,62 @@ export function mountDropzoneList(root: HTMLElement): () => void {
     overlay.append(handle, labelElement);
 
     return overlay;
+  }
+
+  // Example styling: active target attributes drive demo CSS highlights.
+  function registerDropTargetElement(
+    dropTargetId: string,
+    element: HTMLElement,
+  ): void {
+    dropTargetElements.set(dropTargetId, element);
+
+    if (activeDropTarget === dropTargetId) {
+      element.dataset.dropzoneLineActive = "true";
+    } else {
+      delete element.dataset.dropzoneLineActive;
+    }
+  }
+
+  function updateActiveDropzoneLine({
+    activeDropTarget: nextDropTarget,
+    previousDropTarget,
+  }: {
+    activeDropTarget: string | null;
+    previousDropTarget: string | null;
+  }): void {
+    if (nextDropTarget === previousDropTarget) {
+      return;
+    }
+
+    setDropzoneLineActive(previousDropTarget, false);
+    setDropzoneLineActive(nextDropTarget, true);
+    activeDropTarget = nextDropTarget;
+  }
+
+  function clearActiveDropzoneLine(): void {
+    setDropzoneLineActive(activeDropTarget, false);
+    activeDropTarget = null;
+  }
+
+  function setDropzoneLineActive(
+    dropTarget: string | null,
+    isActive: boolean,
+  ): void {
+    if (!dropTarget) {
+      return;
+    }
+
+    const element = dropTargetElements.get(dropTarget);
+
+    if (!element) {
+      return;
+    }
+
+    if (isActive) {
+      element.dataset.dropzoneLineActive = "true";
+    } else {
+      delete element.dataset.dropzoneLineActive;
+    }
   }
 }
 
@@ -232,56 +292,4 @@ function getEndDropzoneLine(): DropzoneLine {
 
 function getItemLabel(items: readonly DropzoneItem[], draggableId: string): string {
   return items.find((item) => item.draggableId === draggableId)?.label ?? "";
-}
-
-// Example styling: active target attributes drive demo CSS highlights.
-function updateActiveDropzoneLine({
-  root,
-  activeDropTarget,
-  previousDropTarget,
-}: {
-  root: ParentNode | null;
-  activeDropTarget: string | null;
-  previousDropTarget: string | null;
-}): void {
-  if (activeDropTarget === previousDropTarget) {
-    return;
-  }
-
-  setDropzoneLineActive(root, previousDropTarget, false);
-  setDropzoneLineActive(root, activeDropTarget, true);
-}
-
-function clearActiveDropzoneLines(root: ParentNode | null): void {
-  getDropzoneLineElements(root).forEach((element) => {
-    delete element.dataset.dropzoneLineActive;
-  });
-}
-
-function setDropzoneLineActive(
-  root: ParentNode | null,
-  dropTarget: string | null,
-  isActive: boolean,
-): void {
-  if (!dropTarget) {
-    return;
-  }
-
-  getDropzoneLineElements(root).forEach((element) => {
-    if (element.dataset.dropzoneLineTargetId !== dropTarget) {
-      return;
-    }
-
-    if (isActive) {
-      element.dataset.dropzoneLineActive = "true";
-    } else {
-      delete element.dataset.dropzoneLineActive;
-    }
-  });
-}
-
-function getDropzoneLineElements(
-  root: ParentNode | null,
-): NodeListOf<HTMLElement> {
-  return (root ?? document).querySelectorAll("[data-dropzone-line-target-id]");
 }

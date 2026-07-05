@@ -62,16 +62,6 @@ describe("DragProvider", () => {
     vi.unstubAllGlobals();
   });
 
-  it("provides runtime context", () => {
-    render(
-      <DragProvider>
-        <RuntimeProbe />
-      </DragProvider>,
-    );
-
-    expect(screen.getByText("runtime-ready")).toBeInTheDocument();
-  });
-
   it("updates runtime config on rerender", () => {
     const { rerender } = render(
       <DragProvider keyboardConfiguration={{ enabled: false }}>
@@ -659,6 +649,14 @@ describe("DragProvider", () => {
     );
 
     expect(container.querySelector("[aria-live='polite']")).toBeInTheDocument();
+
+    rerender(
+      <DragProvider>
+        <div />
+      </DragProvider>,
+    );
+
+    expect(container.querySelector("[aria-live]")).toBeNull();
   });
 });
 

@@ -47,6 +47,8 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   let overlayTargetRect: DragRect | null = null;
   let releaseOverlayState: ReleaseOverlayState | null = null;
   let movePreviewState: MovePreviewState | null = null;
+  const dropzoneElements = new Map<string, HTMLElement>();
+  let activeDropTarget: string | null = null;
 
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
@@ -59,13 +61,13 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     dragOverlay: createDragOverlay,
     onDragStart() {
       overlayTargetRect = null;
-      clearActiveDropzones();
+      clearActiveDropzone();
     },
-    onDragUpdate({ activeDropTarget, previousDropTarget }) {
-      updateActiveDropzone(activeDropTarget, previousDropTarget);
+    onDragUpdate({ activeDropTarget: nextDropTarget, previousDropTarget }) {
+      updateActiveDropzone(nextDropTarget, previousDropTarget);
     },
     onDragEnd() {
-      clearActiveDropzones();
+      clearActiveDropzone();
     },
     onDrop({ draggableId: droppedItemId, dropTarget }, { getDropTargetRect }) {
       // Example drop behavior: commit valid drops into app-owned DOM state.
@@ -119,7 +121,8 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     cleanupMovePreview();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
-    clearActiveDropzones();
+    clearActiveDropzone();
+    dropzoneElements.clear();
     root.replaceChildren();
   };
 
@@ -370,24 +373,35 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   }
 
   // Example styling: active target attributes drive demo CSS highlights.
-  function clearActiveDropzones(): void {
-    root
-      .querySelectorAll<HTMLElement>("[data-basic-drop-target-id]")
-      .forEach((element) => {
-        delete element.dataset.basicActiveDropTarget;
-      });
+  function registerDropzoneElement(
+    dropTargetId: string,
+    element: HTMLElement,
+  ): void {
+    dropzoneElements.set(dropTargetId, element);
+
+    if (activeDropTarget === dropTargetId) {
+      element.dataset.basicActiveDropTarget = "true";
+    } else {
+      delete element.dataset.basicActiveDropTarget;
+    }
+  }
+
+  function clearActiveDropzone(): void {
+    setDropzoneActive(activeDropTarget, false);
+    activeDropTarget = null;
   }
 
   function updateActiveDropzone(
-    activeDropTarget: string | null,
+    nextDropTarget: string | null,
     previousDropTarget: string | null,
   ): void {
-    if (activeDropTarget === previousDropTarget) {
+    if (nextDropTarget === previousDropTarget) {
       return;
     }
 
     setDropzoneActive(previousDropTarget, false);
-    setDropzoneActive(activeDropTarget, true);
+    setDropzoneActive(nextDropTarget, true);
+    activeDropTarget = nextDropTarget;
   }
 
   function setDropzoneActive(targetId: string | null, active: boolean): void {
@@ -395,19 +409,17 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       return;
     }
 
-    root
-      .querySelectorAll<HTMLElement>("[data-basic-drop-target-id]")
-      .forEach((element) => {
-        if (element.dataset.basicDropTargetId !== targetId) {
-          return;
-        }
+    const element = dropzoneElements.get(targetId);
 
-        if (active) {
-          element.dataset.basicActiveDropTarget = "true";
-        } else {
-          delete element.dataset.basicActiveDropTarget;
-        }
-      });
+    if (!element) {
+      return;
+    }
+
+    if (active) {
+      element.dataset.basicActiveDropTarget = "true";
+    } else {
+      delete element.dataset.basicActiveDropTarget;
+    }
   }
 
   function createDropzone(
@@ -419,6 +431,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     const element = document.createElement("div");
     element.className = "droppableContainer";
     element.dataset.basicDropTargetId = targetId;
+    registerDropzoneElement(targetId, element);
 
     const labelElement = document.createElement("span");
     labelElement.textContent = label;

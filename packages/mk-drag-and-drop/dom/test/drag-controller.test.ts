@@ -535,10 +535,15 @@ describe("createDragController", () => {
 
     startDrag(controller, createElementWithRect());
     expect(getOverlayChild()).not.toBeNull();
+    const setOverlayRect = vi.spyOn(
+      getControllerRuntime(controller),
+      "setOverlayRect",
+    );
 
     dispatchPointerCancel(window, { pointerId: 1 });
 
     expect(getOverlayChild()).toBeNull();
+    expect(setOverlayRect).toHaveBeenCalledWith(null);
   });
 
   it("allows user code to update dynamic overlay content without replacement", () => {

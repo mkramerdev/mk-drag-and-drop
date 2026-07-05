@@ -947,14 +947,14 @@ export class DragRuntime {
   }
 
   private notifyDragEnd(event: DragEndEvent): void {
+    for (const subscription of Array.from(this.subscriptions)) {
+      subscription.onDragEnd?.(event);
+    }
+
     this.lifecycleCallbacks.onDragEnd?.(
       event,
       this.lifecycleHelpers,
     );
-
-    for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragEnd?.(event);
-    }
   }
 
   private notifyDrop(event: DropEvent): void {

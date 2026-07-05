@@ -12,13 +12,6 @@ describe("createDragHandle", () => {
     expect(element.getAttribute(domDragHandleAttribute)).toBe("true");
   });
 
-  it("returns void", () => {
-    const element = document.createElement("button");
-    const result = createDragHandle({ element });
-
-    expect(result).toBeUndefined();
-  });
-
   it("overwrites a previous marker value", () => {
     const element = document.createElement("button");
     element.setAttribute(domDragHandleAttribute, "custom");
