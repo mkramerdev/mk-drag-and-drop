@@ -3,7 +3,7 @@ import {
   createDraggable,
   createDroppable,
   createDragHandle,
-  maxDistanceToRect,
+  maxPointerDistanceToRect,
   pointerToRectDistance,
   restrictToContainer,
   type DragController,
@@ -53,7 +53,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
     targetingAlgorithm: pointerToRectDistance,
-    targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
+    targetingConstraint: maxPointerDistanceToRect({ maxDistance: 96 }),
     modifiers: [
       restrictToContainer(({ group }) => (group === basicGroup ? root : null)),
     ],

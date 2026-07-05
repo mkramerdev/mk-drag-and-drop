@@ -4,7 +4,7 @@ import {
   createDragHandle,
   createSortable,
   lockToYAxis,
-  maxDistanceToRect,
+  maxOverlayCenterDistanceToRect,
   type DragControllerOverlayInput,
   type DragRect,
   type SortableDropPlacement,
@@ -31,7 +31,7 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
     keepOverlayOnDrop: true,
     modifiers: [lockToYAxis()],
     targetingAlgorithm: centerToCenter,
-    targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
+    targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
     onDragStart({ draggableId }) {
       activeItemId = draggableId;

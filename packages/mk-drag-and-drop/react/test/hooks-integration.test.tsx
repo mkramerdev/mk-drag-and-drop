@@ -700,7 +700,7 @@ describe("React integration flows", () => {
     raf.restore();
   });
 
-  it("does not reorder a sortable item while the pointer is closer to a skipped-group item", () => {
+  it("reorders against the active same-group target when a skipped-group item is closer", () => {
     const raf = installMockRaf();
     render(<StatefulSortableListWithIsolatedItem />);
     const list = screen.getByTestId("isolated-sortable-list");
@@ -727,9 +727,9 @@ describe("React integration flows", () => {
         element.getAttribute("data-testid"),
       ),
     ).toEqual([
-      "isolated-sortable-a",
       "isolated-sortable-isolated",
       "isolated-sortable-b",
+      "isolated-sortable-a",
     ]);
     raf.restore();
   });
@@ -1050,6 +1050,23 @@ function moveSortableIdsToPlacement(
   placement: SortableDropPlacement,
 ): string[] {
   const withoutItem = items.filter((item) => item !== draggableId);
+
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutItem.indexOf(placement.targetDraggableId);
+
+    if (targetIndex === -1) {
+      return [...items];
+    }
+
+    const insertIndex =
+      placement.side === "after" ? targetIndex + 1 : targetIndex;
+
+    return [
+      ...withoutItem.slice(0, insertIndex),
+      draggableId,
+      ...withoutItem.slice(insertIndex),
+    ];
+  }
 
   if (placement.previousDraggableId !== null) {
     const previousIndex = withoutItem.indexOf(placement.previousDraggableId);

@@ -4,7 +4,7 @@ import {
   createDragHandle,
   createDraggable,
   createDroppable,
-  maxDistanceToRect,
+  maxOverlayCenterDistanceToRect,
   type DragControllerOverlayInput,
 } from "@mk-drag-and-drop/dom";
 
@@ -39,7 +39,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
     targetingAlgorithm: centerToCenter,
-    targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
+    targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
     onDragStart() {
       clearActiveDropzoneLine();

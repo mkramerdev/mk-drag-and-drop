@@ -41,8 +41,9 @@ The root export includes:
   `DragLifecycleHelpers`
 - placement types: `SortableDropPlacement`, `RemeasureDropTargetsInput`
 - targeting helpers and types: `pointerToCenter`, `centerToCenter`,
-  `pointerToRectDistance`, `getDistanceToRect`, `maxDistanceToRect`,
-  `DropTarget`, `TargetingAlgorithm`, `TargetingAlgorithmInput`,
+  `pointerToRectDistance`, `getDistanceToRect`,
+  `maxPointerDistanceToRect`, `maxOverlayCenterDistanceToRect`, `DropTarget`,
+  `TargetingAlgorithm`, `TargetingAlgorithmInput`,
   `TargetingConstraint`, `TargetingConstraintInput`
 - modifiers and types: `lockToXAxis`, `lockToYAxis`, `restrictToContainer`,
   `RestrictToContainerResolver`, `DragModifier`, `DragModifierInput`,
@@ -187,6 +188,8 @@ type SortableDropPlacement = {
   containerId: string | null;
   previousDraggableId: string | null;
   nextDraggableId: string | null;
+  targetDraggableId: string | null;
+  side: "before" | "after" | null;
 };
 ```
 
@@ -252,11 +255,15 @@ type SortableDropPlacement = {
   containerId: string | null;
   previousDraggableId: string | null;
   nextDraggableId: string | null;
+  targetDraggableId: string | null;
+  side: "before" | "after" | null;
 };
 ```
 
 No sortable placement is included for plain droppable drops. No-op sortable drops
 may omit `sortablePlacement`.
+`targetDraggableId` and `side` preserve the active sortable item anchor when a
+drop lands relative to an item. They are `null` for container-only placements.
 
 Sortable behavior owns only a transient DOM preview during the drag. It may move
 DOM nodes to show where an item would land, but it does not commit app data. On
@@ -282,12 +289,21 @@ Built-in targeting algorithms:
 Built-in targeting helpers/constraints:
 
 - `getDistanceToRect(point, rect)`
-- `maxDistanceToRect({ maxDistance?, maxXDistance?, maxYDistance? })`
+- `maxPointerDistanceToRect({ maxDistance?, maxXDistance?, maxYDistance? })`
+- `maxOverlayCenterDistanceToRect({ maxDistance?, maxXDistance?, maxYDistance? })`
 
 Custom `TargetingAlgorithm` functions receive `pointerPosition`, `overlayRect`,
-and the filtered `dropTargets` list. Custom `TargetingConstraint` functions
-receive `pointerPosition`, `overlayRect`, and one `dropTarget`, and return
-whether that candidate is eligible.
+and the filtered `dropTargets` list. Algorithms decide which geometry to use:
+`pointerToCenter` and `pointerToRectDistance` are pointer based, while
+`centerToCenter` computes the overlay center from `overlayRect` and returns no
+target when no overlay rect is available. Custom `TargetingConstraint`
+functions receive `pointerPosition`, `overlayRect`, and one `dropTarget`, and
+return whether that candidate is eligible. Use the pointer or overlay-center
+distance helper that matches the intended behavior.
+
+Sortable placement is separate from targeting. The configured targeting
+algorithm alone chooses `activeDropTarget`; sortable only decides before/after
+preview placement relative to that active target.
 
 ## Modifiers
 
@@ -311,8 +327,9 @@ modifier state.
 
 ## Measurement
 
-Targets are measured when registered and remeasured at drag start. Call
-`controller.remeasureDropTargets()` when layout changes during a drag.
+Targets are measured when registered and remeasured at drag start. The explicit
+remeasurement entry point is `controller.remeasureDropTargets(input?)`; call it
+when app-owned layout changes during a drag should affect targeting.
 
 `RemeasureDropTargetsInput` accepts:
 
@@ -321,9 +338,12 @@ Targets are measured when registered and remeasured at drag start. Call
 - an array of target id strings
 - `{ group: string }`
 
-Sortable previews may cause internal remeasurement after preview movement. Apps
-should still call the public remeasure API for app-owned layout changes such as
-expanding tree rows or changing grouped sections during a drag.
+Sortable preview movement does not automatically remeasure a group. Targeting
+continues from the runtime's cached target rects until the app explicitly
+remeasures. Final sortable placement is derived from the current preview DOM
+order, so app-owned layout changes such as expanding tree rows or changing
+grouped sections during a drag should call the public remeasure API when those
+changes need to affect targeting.
 
 ## Data Ownership
 

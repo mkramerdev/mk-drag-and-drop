@@ -50,7 +50,8 @@ export {
 } from "./targeting/algorithms.js";
 export {
   getDistanceToRect,
-  maxDistanceToRect,
+  maxOverlayCenterDistanceToRect,
+  maxPointerDistanceToRect,
 } from "./targeting/constraints.js";
 export type {
   DropTarget,

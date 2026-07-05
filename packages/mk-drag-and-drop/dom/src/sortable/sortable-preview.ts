@@ -16,18 +16,18 @@ export type SortablePlacementSide = "before" | "after";
 export type SortableAxisMovementDirection = "forward" | "backward" | "none";
 export type SortablePointerMovementState = {
   previousPointerPosition: { x: number; y: number };
-  lastNonNoneDirectionByAxis: Record<
-    SortableAxis,
-    Exclude<SortableAxisMovementDirection, "none"> | null
-  >;
+};
+export type SortablePreviewPlacementState = {
+  activeDropTargetId: string | null;
+  placement: SortablePlacementSide | null;
+  movementDirection: SortableAxisMovementDirection;
+};
+export type SortablePreviewPlacementDecision = {
+  placement: SortablePlacementSide;
+  movementDirection: SortableAxisMovementDirection;
 };
 
 const neutralPlacementBoundaryRatio = 0.5;
-
-const pendingRemeasureFrames = new WeakMap<
-  DomSortableRuntime,
-  Map<string, number>
->();
 
 export function snapshotSortableElement(
   registry: SortableRegistry,
@@ -53,13 +53,9 @@ export function snapshotSortableElement(
 }
 
 export function isSortablePreviewTarget(input: {
-  draggedDraggableId: string;
   activeDropTargetId: string | null;
 }): boolean {
-  return (
-    input.activeDropTargetId !== null &&
-    input.activeDropTargetId !== input.draggedDraggableId
-  );
+  return input.activeDropTargetId !== null;
 }
 
 export function initializeSortablePointerMovement(
@@ -68,11 +64,8 @@ export function initializeSortablePointerMovement(
 ): void {
   registry.pointerMovement = {
     previousPointerPosition: { ...pointerPosition },
-    lastNonNoneDirectionByAxis: {
-      horizontal: null,
-      vertical: null,
-    },
   };
+  registry.previewPlacement = null;
 }
 
 export function updateSortablePointerMovement(
@@ -86,22 +79,15 @@ export function updateSortablePointerMovement(
     return;
   }
 
-  updateLastNonNoneDirectionForAxis({
-    movement,
-    axis: "horizontal",
-    currentAxisPosition: pointerPosition.x,
-  });
-  updateLastNonNoneDirectionForAxis({
-    movement,
-    axis: "vertical",
-    currentAxisPosition: pointerPosition.y,
-  });
-
   movement.previousPointerPosition = { ...pointerPosition };
 }
 
 export function clearSortablePointerMovement(registry: SortableRegistry): void {
   registry.pointerMovement = null;
+}
+
+export function clearSortablePreviewPlacement(registry: SortableRegistry): void {
+  registry.previewPlacement = null;
 }
 
 export function moveSortablePreview(input: {
@@ -113,10 +99,7 @@ export function moveSortablePreview(input: {
   placementPosition: { x: number; y: number };
   options: NormalizedSortableOptions;
 }): void {
-  if (
-    input.activeDropTargetId === null ||
-    input.activeDropTargetId === input.draggedDraggableId
-  ) {
+  if (input.activeDropTargetId === null) {
     return;
   }
 
@@ -130,8 +113,28 @@ export function moveSortablePreview(input: {
     return;
   }
 
+  const activeDropTargetId =
+    input.activeDropTargetId === input.draggedDraggableId
+      ? input.registry.previewPlacement?.activeDropTargetId
+      : input.activeDropTargetId;
+
+  if (
+    !activeDropTargetId ||
+    activeDropTargetId === input.draggedDraggableId
+  ) {
+    refreshSortableDropTargetMeasurements({
+      runtime: input.runtime,
+      group: draggedGroup,
+      dropTargetIds: getSortablePreviewMeasurementIds({
+        registry: input.registry,
+        draggedElement,
+      }),
+    });
+    return;
+  }
+
   const target = input.runtime.getDropTargetRegistration(
-    input.activeDropTargetId,
+    activeDropTargetId,
     draggedGroup,
   );
 
@@ -139,16 +142,48 @@ export function moveSortablePreview(input: {
     return;
   }
 
+  const measurementIds = getSortablePreviewMeasurementIds({
+    registry: input.registry,
+    draggedElement,
+    targetElement: target.element,
+  });
+  const draggedRegistration = input.runtime.getDropTargetRegistration(
+    input.draggedDraggableId,
+    draggedGroup,
+  );
+
+  addRegistrationContainerId(measurementIds, draggedRegistration);
+  addRegistrationContainerId(measurementIds, target);
+
   if (target.capabilities.container) {
-    moveSortablePreviewIntoContainer({
-      draggedElement,
-      targetElement: target.element,
+    measurementIds.add(target.id);
+    setSortablePreviewPlacementState({
+      registry: input.registry,
+      activeDropTargetId: target.id,
+      placement: null,
+      movementDirection: getCurrentAxisMovementDirection({
+        placementPosition: input.placementPosition,
+        movement: input.registry.pointerMovement,
+        axis: input.options.axis,
+      }),
     });
 
-    remeasureSortableDropTargetGroup({
-      registry: input.registry,
+    if (!moveSortablePreviewIntoContainer({
+      draggedElement,
+      targetElement: target.element,
+    })) {
+      return;
+    }
+
+    addSortableMeasurementIdsAroundElement(
+      measurementIds,
+      input.registry,
+      draggedElement,
+    );
+    refreshSortableDropTargetMeasurements({
       runtime: input.runtime,
-      draggableId: input.draggedDraggableId,
+      group: draggedGroup,
+      dropTargetIds: measurementIds,
     });
     return;
   }
@@ -161,36 +196,27 @@ export function moveSortablePreview(input: {
   }
 
   const sortableElements = getSortableDraggableChildren(listElement);
-  const draggedIndex =
-    draggedElement.parentElement === listElement
-      ? sortableElements.indexOf(draggedElement)
-      : -1;
   const targetIndex = sortableElements.indexOf(targetElement);
-  const isBlockedBySkippedSibling = isPreviewBlockedBySkippedSortableSibling({
-    registry: input.registry,
-    draggedGroup,
-    sortableElements,
-    draggedIndex,
-    targetIndex,
+  const placementDecision = getSortablePreviewPlacement({
+    activeDropTargetId,
     targetElement,
-    placementPosition: input.placementPosition,
-  });
-
-  if (isBlockedBySkippedSibling) {
-    return;
-  }
-
-  const placement = getSortablePreviewPlacement({
-    targetElement,
-    pointerPosition: input.pointerPosition,
     placementPosition: input.placementPosition,
     movement: input.registry.pointerMovement,
+    previewPlacement: input.registry.previewPlacement,
     options: input.options,
   });
+  const placement = placementDecision.placement;
 
   if (targetIndex === -1) {
     return;
   }
+
+  setSortablePreviewPlacementState({
+    registry: input.registry,
+    activeDropTargetId,
+    placement,
+    movementDirection: placementDecision.movementDirection,
+  });
 
   if (
     isSortablePreviewAlreadyPlaced({
@@ -208,43 +234,140 @@ export function moveSortablePreview(input: {
     targetElement.before(draggedElement);
   }
 
-  remeasureSortableDropTargetGroup({
-    registry: input.registry,
+  addSortableMeasurementIdsAroundElement(
+    measurementIds,
+    input.registry,
+    draggedElement,
+  );
+  addSortableMeasurementIdsAroundElement(
+    measurementIds,
+    input.registry,
+    targetElement,
+  );
+  refreshSortableDropTargetMeasurements({
     runtime: input.runtime,
-    draggableId: input.draggedDraggableId,
+    group: draggedGroup,
+    dropTargetIds: measurementIds,
   });
 }
 
 export function getSortablePreviewPlacement(input: {
+  activeDropTargetId: string;
   targetElement: HTMLElement;
-  pointerPosition: { x: number; y: number };
   placementPosition: { x: number; y: number };
   movement: SortablePointerMovementState | null;
+  previewPlacement: SortablePreviewPlacementState | null;
   options: NormalizedSortableOptions;
-}): SortablePlacementSide {
+}): SortablePreviewPlacementDecision {
   const axis = input.options.axis;
   const axisPosition = getAxisPosition(input.placementPosition, axis);
-  const pointerAxisPosition = getAxisPosition(input.pointerPosition, axis);
-  const previousAxisPosition = input.movement
-    ? getAxisPosition(input.movement.previousPointerPosition, axis)
-    : pointerAxisPosition;
-  const currentDirection = getAxisMovementDirection(
-    previousAxisPosition,
-    pointerAxisPosition,
-  );
-  const direction =
-    currentDirection === "none"
-      ? (input.movement?.lastNonNoneDirectionByAxis[axis] ?? "none")
-      : currentDirection;
-  const boundary = getPlacementBoundary({
-    targetRect: input.targetElement.getBoundingClientRect(),
+  const targetRect = input.targetElement.getBoundingClientRect();
+  const currentDirection = getCurrentAxisMovementDirection({
+    placementPosition: input.placementPosition,
+    movement: input.movement,
     axis,
-    direction,
+  });
+  const previousPlacement = input.previewPlacement;
+
+  if (
+    !previousPlacement ||
+    previousPlacement.activeDropTargetId !== input.activeDropTargetId ||
+    previousPlacement.placement === null ||
+    previousPlacement.movementDirection === "none"
+  ) {
+    return {
+      placement: getOptimisticPlacement({
+        axis,
+        axisPosition,
+        currentDirection,
+        targetRect,
+      }),
+      movementDirection: currentDirection,
+    };
+  }
+
+  if (
+    currentDirection === "none" ||
+    currentDirection === previousPlacement.movementDirection
+  ) {
+    return {
+      placement: previousPlacement.placement,
+      movementDirection: previousPlacement.movementDirection,
+    };
+  }
+
+  const boundary = getPlacementBoundary({
+    targetRect,
+    axis,
+    direction: currentDirection,
     startRatio: input.options.placementBoundary.start,
     endRatio: input.options.placementBoundary.end,
   });
+  const reversalPlacement = getPlacementSideFromBoundary(axisPosition, boundary);
 
-  return getPlacementSideFromBoundary(axisPosition, boundary);
+  if (reversalPlacement === previousPlacement.placement) {
+    return {
+      placement: previousPlacement.placement,
+      movementDirection: previousPlacement.movementDirection,
+    };
+  }
+
+  return {
+    placement: reversalPlacement,
+    movementDirection: currentDirection,
+  };
+}
+
+function setSortablePreviewPlacementState(input: {
+  registry: SortableRegistry;
+  activeDropTargetId: string;
+  placement: SortablePlacementSide | null;
+  movementDirection: SortableAxisMovementDirection;
+}): void {
+  input.registry.previewPlacement = {
+    activeDropTargetId: input.activeDropTargetId,
+    placement: input.placement,
+    movementDirection: input.movementDirection,
+  };
+}
+
+function getOptimisticPlacement(input: {
+  axis: SortableAxis;
+  axisPosition: number;
+  currentDirection: SortableAxisMovementDirection;
+  targetRect: DOMRect;
+}): SortablePlacementSide {
+  if (input.currentDirection === "forward") {
+    return "after";
+  }
+
+  if (input.currentDirection === "backward") {
+    return "before";
+  }
+
+  return getPlacementSideFromBoundary(
+    input.axisPosition,
+    getPlacementBoundary({
+      targetRect: input.targetRect,
+      axis: input.axis,
+      direction: "none",
+      startRatio: neutralPlacementBoundaryRatio,
+      endRatio: neutralPlacementBoundaryRatio,
+    }),
+  );
+}
+
+function getCurrentAxisMovementDirection(input: {
+  placementPosition: { x: number; y: number };
+  movement: SortablePointerMovementState | null;
+  axis: SortableAxis;
+}): SortableAxisMovementDirection {
+  const axisPosition = getAxisPosition(input.placementPosition, input.axis);
+  const previousAxisPosition = input.movement
+    ? getAxisPosition(input.movement.previousPointerPosition, input.axis)
+    : axisPosition;
+
+  return getAxisMovementDirection(previousAxisPosition, axisPosition);
 }
 
 export function isSortablePreviewAlreadyPlaced(input: {
@@ -291,20 +414,6 @@ export function clearSortableDraggedState(
   }
 }
 
-export function remeasureSortableDropTargetGroup(input: {
-  registry: SortableRegistry;
-  runtime: DomSortableRuntime;
-  draggableId: string;
-}): void {
-  const group = input.registry.groups.get(input.draggableId);
-
-  if (!group) {
-    return;
-  }
-
-  scheduleSortableDropTargetGroupRemeasure(input.runtime, group);
-}
-
 export function getSortableDraggableChildren(listElement: HTMLElement): HTMLElement[] {
   const sortableChildren: HTMLElement[] = [];
 
@@ -322,57 +431,6 @@ export function getSortableDraggableChildren(listElement: HTMLElement): HTMLElem
   return sortableChildren;
 }
 
-function isPreviewBlockedBySkippedSortableSibling(input: {
-  registry: SortableRegistry;
-  draggedGroup: string;
-  sortableElements: HTMLElement[];
-  draggedIndex: number;
-  targetIndex: number;
-  targetElement: HTMLElement;
-  placementPosition: { x: number; y: number };
-}): boolean {
-  if (input.draggedIndex === -1 || input.targetIndex === -1) {
-    return false;
-  }
-
-  const startIndex = Math.min(input.draggedIndex, input.targetIndex) + 1;
-  const endIndex = Math.max(input.draggedIndex, input.targetIndex);
-  let targetDistance: number | null = null;
-
-  for (let index = startIndex; index < endIndex; index += 1) {
-    const sibling = input.sortableElements[index];
-    const siblingDraggableId = getSortableDraggableId(input.registry, sibling);
-
-    if (!siblingDraggableId) {
-      continue;
-    }
-
-    const siblingGroup = input.registry.groups.get(siblingDraggableId);
-
-    if (siblingGroup === input.draggedGroup) {
-      continue;
-    }
-
-    if (targetDistance === null) {
-      targetDistance = getPointToRectCenterDistance(
-        input.placementPosition,
-        input.targetElement.getBoundingClientRect(),
-      );
-    }
-
-    const siblingDistance = getPointToRectCenterDistance(
-      input.placementPosition,
-      sibling.getBoundingClientRect(),
-    );
-
-    if (siblingDistance <= targetDistance) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function getSortableDraggableId(
   registry: SortableRegistry,
   element: HTMLElement,
@@ -384,33 +442,125 @@ function getSortableDraggableId(
     : null;
 }
 
-function getPointToRectCenterDistance(
-  point: { x: number; y: number },
-  rect: DOMRect,
-): number {
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  const distanceX = point.x - centerX;
-  const distanceY = point.y - centerY;
+function getSortablePreviewMeasurementIds(input: {
+  registry: SortableRegistry;
+  draggedElement: HTMLElement;
+  targetElement?: HTMLElement;
+}): Set<string> {
+  const dropTargetIds = new Set<string>();
 
-  return distanceX * distanceX + distanceY * distanceY;
+  addSortableMeasurementIdsAroundElement(
+    dropTargetIds,
+    input.registry,
+    input.draggedElement,
+  );
+
+  if (input.targetElement) {
+    addSortableMeasurementIdsAroundElement(
+      dropTargetIds,
+      input.registry,
+      input.targetElement,
+    );
+  }
+
+  return dropTargetIds;
+}
+
+function addSortableMeasurementIdsAroundElement(
+  dropTargetIds: Set<string>,
+  registry: SortableRegistry,
+  element: HTMLElement,
+): void {
+  addSortableMeasurementId(dropTargetIds, registry, element);
+  addSortableMeasurementId(
+    dropTargetIds,
+    registry,
+    element.previousElementSibling,
+  );
+  addSortableMeasurementId(
+    dropTargetIds,
+    registry,
+    element.nextElementSibling,
+  );
+}
+
+function addSortableMeasurementId(
+  dropTargetIds: Set<string>,
+  registry: SortableRegistry,
+  element: Element | null,
+): void {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+
+  const draggableId = getSortableDraggableId(registry, element);
+
+  if (draggableId) {
+    dropTargetIds.add(draggableId);
+  }
+}
+
+function addRegistrationContainerId(
+  dropTargetIds: Set<string>,
+  registration: ReturnType<DomSortableRuntime["getDropTargetRegistration"]>,
+): void {
+  if (registration?.containerId) {
+    dropTargetIds.add(registration.containerId);
+  }
+}
+
+function refreshSortableDropTargetMeasurements(input: {
+  runtime: DomSortableRuntime;
+  group: string;
+  dropTargetIds: ReadonlySet<string>;
+}): void {
+  for (const dropTargetId of input.dropTargetIds) {
+    const registration = input.runtime.getDropTargetRegistration(
+      dropTargetId,
+      input.group,
+    );
+
+    if (!registration) {
+      continue;
+    }
+
+    if (registration.capabilities.container) {
+      input.runtime.registerDropContainer?.(
+        registration.id,
+        registration.element,
+        registration.group,
+      );
+      continue;
+    }
+
+    input.runtime.registerDropTarget(
+      registration.id,
+      registration.element,
+      registration.group,
+      {
+        containerId: registration.containerId,
+        sortable: registration.capabilities.sortable,
+      },
+    );
+  }
 }
 
 function moveSortablePreviewIntoContainer(input: {
   draggedElement: HTMLElement;
   targetElement: HTMLElement;
-}): void {
+}): boolean {
   if (
     input.draggedElement.parentElement === input.targetElement &&
     input.draggedElement.previousSibling === null
   ) {
-    return;
+    return false;
   }
 
   input.targetElement.insertBefore(
     input.draggedElement,
     input.targetElement.firstChild,
   );
+  return true;
 }
 
 function getSnapshotRestoreReferenceNode(
@@ -492,67 +642,4 @@ export function getPlacementSideFromBoundary(
   boundary: number,
 ): SortablePlacementSide {
   return axisPosition < boundary ? "before" : "after";
-}
-
-function updateLastNonNoneDirectionForAxis(input: {
-  movement: SortablePointerMovementState;
-  axis: SortableAxis;
-  currentAxisPosition: number;
-}): void {
-  const previousAxisPosition = getAxisPosition(
-    input.movement.previousPointerPosition,
-    input.axis,
-  );
-  const direction = getAxisMovementDirection(
-    previousAxisPosition,
-    input.currentAxisPosition,
-  );
-
-  if (direction !== "none") {
-    input.movement.lastNonNoneDirectionByAxis[input.axis] = direction;
-  }
-}
-
-export function cancelSortableDropTargetGroupRemeasure(
-  runtime: DomSortableRuntime,
-): void {
-  const pendingFrames = pendingRemeasureFrames.get(runtime);
-
-  if (!pendingFrames) {
-    return;
-  }
-
-  for (const frameId of pendingFrames.values()) {
-    window.cancelAnimationFrame(frameId);
-  }
-
-  pendingRemeasureFrames.delete(runtime);
-}
-
-function scheduleSortableDropTargetGroupRemeasure(
-  runtime: DomSortableRuntime,
-  group: string,
-): void {
-  let pendingFrames = pendingRemeasureFrames.get(runtime);
-
-  if (!pendingFrames) {
-    pendingFrames = new Map();
-    pendingRemeasureFrames.set(runtime, pendingFrames);
-  }
-
-  if (pendingFrames.has(group)) {
-    return;
-  }
-
-  const frameId = window.requestAnimationFrame(() => {
-    pendingFrames?.delete(group);
-
-    if (pendingFrames?.size === 0) {
-      pendingRemeasureFrames.delete(runtime);
-    }
-
-    runtime.remeasureDropTargets({ group });
-  });
-
-  pendingFrames.set(group, frameId);
 }

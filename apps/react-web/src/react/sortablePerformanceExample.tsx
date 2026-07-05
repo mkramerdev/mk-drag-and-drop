@@ -12,7 +12,7 @@ import {
     centerToCenter,
     DragProvider,
     lockToYAxis,
-    maxDistanceToRect,
+    maxOverlayCenterDistanceToRect,
     useDragHandle,
     useSortable,
     type DragOverlayPhase,
@@ -27,7 +27,9 @@ const sortableGroup = "sortable-demo";
 const isolatedSortableGroup = "isolated-sortable-demo";
 const dragHandleText = "\u22ee\u22ee";
 // Example targeting: package helpers are configured with this demo's distance limit.
-const sortableTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
+const sortableTargetingConstraint = maxOverlayCenterDistanceToRect({
+    maxDistance: 96,
+});
 const sortableModifiers = [lockToYAxis()] as const;
 
 export function SortablePerformanceExample(): ReactElement {

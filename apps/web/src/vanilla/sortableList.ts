@@ -4,7 +4,7 @@ import {
   createDragHandle,
   createSortable,
   lockToYAxis,
-  maxDistanceToRect,
+  maxOverlayCenterDistanceToRect,
   type DragControllerOverlayInput,
   type DragRect,
   type SortableDropPlacement,
@@ -29,7 +29,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     keepOverlayOnDrop: true,
     modifiers: [lockToYAxis()],
     targetingAlgorithm: centerToCenter,
-    targetingConstraint: maxDistanceToRect({ maxDistance: 96 }),
+    targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 96 }),
     dragOverlay: createDragOverlay,
     onDragStart({ draggableId }) {
       activeItemId = draggableId;
@@ -128,6 +128,10 @@ export function mountSortableList(root: HTMLElement): () => void {
       element,
       draggableId,
       group: getSortableGroup(draggableId),
+      placementBoundary: {
+        start: 0,
+        end: 1,
+      },
     });
     createDragHandle({ element: handle });
 
@@ -307,6 +311,23 @@ function reorderData(
   placement: SortableDropPlacement,
 ): string[] {
   const withoutItem = items.filter((item) => item !== draggableId);
+
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutItem.indexOf(placement.targetDraggableId);
+
+    if (targetIndex === -1) {
+      return [...items];
+    }
+
+    const insertIndex =
+      placement.side === "after" ? targetIndex + 1 : targetIndex;
+
+    return [
+      ...withoutItem.slice(0, insertIndex),
+      draggableId,
+      ...withoutItem.slice(insertIndex),
+    ];
+  }
 
   if (placement.previousDraggableId !== null) {
     const previousIndex = withoutItem.indexOf(placement.previousDraggableId);

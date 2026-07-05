@@ -41,6 +41,38 @@ describe("createDroppable", () => {
     );
   });
 
+  it("keeps detached pre-mount bindings available after the subtree is mounted", () => {
+    const onDrop = vi.fn();
+    controller = createDragController({ onDrop });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const root = document.createElement("div");
+    const source = createDetachedMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
+    const target = createDetachedMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+
+    root.append(source, target);
+    createDroppable({
+      controller,
+      element: target,
+      dropTargetId: "target",
+    });
+    createDraggable({ controller, element: source, draggableId: "item" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+
+    document.body.append(root);
+    dragToTarget(source, target);
+
+    expect(onDrop).toHaveBeenCalledWith(
+      { draggableId: "item", source: "pointer", dropTargetId: "target" },
+      expect.any(Object),
+    );
+  });
+
   it("uses the default group", () => {
     const onDrop = vi.fn();
     const { source, target } = setupDragAndDrop({ onDrop });
@@ -320,6 +352,14 @@ describe("createDroppable", () => {
 function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
+  stubBoundingClientRect(element, rect);
+  return element;
+}
+
+function createDetachedMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
+  const element = document.createElement("div");
   stubBoundingClientRect(element, rect);
   return element;
 }

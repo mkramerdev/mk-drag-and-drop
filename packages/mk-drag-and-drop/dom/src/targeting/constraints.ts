@@ -13,38 +13,65 @@ export type MaxDistanceToRectOptions = {
   maxYDistance?: number;
 };
 
-export function maxDistanceToRect(
+export function maxPointerDistanceToRect(
   options: MaxDistanceToRectOptions,
 ): TargetingConstraint {
-  return ({ pointerPosition, dropTarget }) => {
-    const x = getAxisDistance(
-      pointerPosition.x,
-      dropTarget.dropTargetRect.left,
-      dropTarget.dropTargetRect.right,
-    );
-    const y = getAxisDistance(
-      pointerPosition.y,
-      dropTarget.dropTargetRect.top,
-      dropTarget.dropTargetRect.bottom,
-    );
+  return ({ pointerPosition, dropTarget }) =>
+    isPointWithinMaxDistanceToRect({
+      point: pointerPosition,
+      rect: dropTarget.dropTargetRect,
+      options,
+    });
+}
 
-    if (options.maxXDistance !== undefined && x > options.maxXDistance) {
+export function maxOverlayCenterDistanceToRect(
+  options: MaxDistanceToRectOptions,
+): TargetingConstraint {
+  return ({ overlayRect, dropTarget }) => {
+    if (!overlayRect) {
       return false;
     }
 
-    if (options.maxYDistance !== undefined && y > options.maxYDistance) {
-      return false;
-    }
-
-    if (
-      options.maxDistance !== undefined &&
-      x * x + y * y > options.maxDistance * options.maxDistance
-    ) {
-      return false;
-    }
-
-    return true;
+    return isPointWithinMaxDistanceToRect({
+      point: getRectCenter(overlayRect),
+      rect: dropTarget.dropTargetRect,
+      options,
+    });
   };
+}
+
+function isPointWithinMaxDistanceToRect(input: {
+  point: DragPoint;
+  rect: DragRect;
+  options: MaxDistanceToRectOptions;
+}): boolean {
+  const x = getAxisDistance(
+    input.point.x,
+    input.rect.left,
+    input.rect.right,
+  );
+  const y = getAxisDistance(
+    input.point.y,
+    input.rect.top,
+    input.rect.bottom,
+  );
+
+  if (input.options.maxXDistance !== undefined && x > input.options.maxXDistance) {
+    return false;
+  }
+
+  if (input.options.maxYDistance !== undefined && y > input.options.maxYDistance) {
+    return false;
+  }
+
+  if (
+    input.options.maxDistance !== undefined &&
+    x * x + y * y > input.options.maxDistance * input.options.maxDistance
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 export function getDistanceToRect(
@@ -75,4 +102,11 @@ function getAxisDistance(
   }
 
   return 0;
+}
+
+function getRectCenter(rect: DragRect): DragPoint {
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
 }

@@ -1,7 +1,7 @@
 import {
     centerToCenter,
     DragProvider,
-    maxDistanceToRect,
+    maxOverlayCenterDistanceToRect,
     useDragHandle,
     useDraggable,
     useDroppable,
@@ -12,7 +12,9 @@ const dropzoneListGroup = "dropzone-list";
 const endDropzoneId = "dropzone-list:end";
 const dragHandleText = "\u22ee\u22ee";
 // Example targeting: package helpers are configured with this demo's distance limit.
-const dropzoneListTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
+const dropzoneListTargetingConstraint = maxOverlayCenterDistanceToRect({
+    maxDistance: 96,
+});
 
 // Example state: the app owns list data and commits reorders on drop.
 const initialItems = [

@@ -1,6 +1,6 @@
 import {
     DragProvider,
-    maxDistanceToRect,
+    maxPointerDistanceToRect,
     pointerToRectDistance,
     useDragHandle,
     useDraggable,
@@ -37,7 +37,7 @@ const droppableContainer = {
     label: "Drop Here",
 };
 // Example targeting: package helpers are configured with this demo's distance limit.
-const basicTargetingConstraint = maxDistanceToRect({ maxDistance: 96 });
+const basicTargetingConstraint = maxPointerDistanceToRect({ maxDistance: 96 });
 
 type DraggableItemModel = typeof draggableItem;
 

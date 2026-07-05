@@ -5,7 +5,8 @@ import {
   createDragController,
   lockToXAxis,
   lockToYAxis,
-  maxDistanceToRect,
+  maxOverlayCenterDistanceToRect,
+  maxPointerDistanceToRect,
   pointerToCenter,
   pointerToRectDistance,
   restrictToContainer,
@@ -41,6 +42,16 @@ describe("targeting", () => {
     ).toBe("far");
   });
 
+  it("pointerToCenter uses pointer position even when overlayRect exists", () => {
+    expect(
+      pointerToCenter({
+        pointerPosition: { x: 105, y: 10 },
+        overlayRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
+        dropTargets: targets,
+      })?.dropTargetId,
+    ).toBe("far");
+  });
+
   it("centerToCenter uses overlay center and requires an overlay rect", () => {
     expect(
       centerToCenter({
@@ -68,8 +79,18 @@ describe("targeting", () => {
     ).toBe("far");
   });
 
-  it("maxDistanceToRect filters by pointer distance to rect", () => {
-    const constraint = maxDistanceToRect({ maxDistance: 8 });
+  it("pointerToRectDistance uses pointer position even when overlayRect exists", () => {
+    expect(
+      pointerToRectDistance({
+        pointerPosition: { x: 80, y: 10 },
+        overlayRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
+        dropTargets: targets,
+      })?.dropTargetId,
+    ).toBe("far");
+  });
+
+  it("maxPointerDistanceToRect filters by pointer distance to rect", () => {
+    const constraint = maxPointerDistanceToRect({ maxDistance: 8 });
 
     expect(
       constraint({
@@ -81,6 +102,37 @@ describe("targeting", () => {
     expect(
       constraint({
         pointerPosition: { x: 40, y: 10 },
+        overlayRect: null,
+        dropTarget: targets[0],
+      }),
+    ).toBe(false);
+  });
+
+  it("maxOverlayCenterDistanceToRect filters by overlay center", () => {
+    const constraint = maxOverlayCenterDistanceToRect({ maxDistance: 8 });
+
+    expect(
+      constraint({
+        pointerPosition: { x: 40, y: 10 },
+        overlayRect: createRect({ left: 14, top: 0, width: 20, height: 20 }),
+        dropTarget: targets[0],
+      }),
+    ).toBe(true);
+    expect(
+      constraint({
+        pointerPosition: { x: 24, y: 10 },
+        overlayRect: createRect({ left: 30, top: 0, width: 20, height: 20 }),
+        dropTarget: targets[0],
+      }),
+    ).toBe(false);
+  });
+
+  it("maxOverlayCenterDistanceToRect rejects without overlayRect", () => {
+    const constraint = maxOverlayCenterDistanceToRect({ maxDistance: 8 });
+
+    expect(
+      constraint({
+        pointerPosition: { x: 24, y: 10 },
         overlayRect: null,
         dropTarget: targets[0],
       }),

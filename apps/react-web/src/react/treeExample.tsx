@@ -14,6 +14,8 @@ import {
   useDragHandle,
   useDraggable,
   useDroppable,
+  type DragPoint,
+  type DragRect,
   type DropTarget,
   type TargetingAlgorithm,
   type TargetingAlgorithmInput,
@@ -30,38 +32,36 @@ const treeLineTargetMaxYDistance = 24;
 const dragHandleText = "\u22ee\u22ee";
 // Example targeting: custom tree rules are passed into the package runtime.
 const treeTargetingConstraint: TargetingConstraint = ({
-  pointerPosition,
   overlayRect,
   dropTarget,
 }) => {
-  const targetYPoint = overlayRect
-    ? getRectCenter(overlayRect)
-    : pointerPosition;
+  if (!overlayRect) {
+    return false;
+  }
+
+  const overlayCenter = getRectCenter(overlayRect);
 
   if (isInsideDropTargetId(dropTarget.dropTargetId)) {
     return (
       isPointInTargetStartXBand(
-        pointerPosition.x,
+        overlayCenter.x,
         dropTarget,
         treeInsideTargetMaxXDistance,
       ) &&
-      Math.abs(targetYPoint.y - getTargetVerticalCenter(dropTarget)) <=
+      Math.abs(overlayCenter.y - getTargetVerticalCenter(dropTarget)) <=
       treeInsideTargetMaxYDistance
     );
   }
 
   if (isChildrenDropTargetId(dropTarget.dropTargetId)) {
     const distance = getDistanceToRect(
-      {
-        x: pointerPosition.x,
-        y: targetYPoint.y,
-      },
+      overlayCenter,
       dropTarget.dropTargetRect,
     );
 
     return (
       isPointInTargetStartXBand(
-        pointerPosition.x,
+        overlayCenter.x,
         dropTarget,
         treeLineTargetMaxXDistance,
       ) && distance.y <= treeLineTargetMaxYDistance
@@ -703,11 +703,16 @@ function getTreeDepthStyle(depth: number): CSSProperties {
 }
 
 const treeVerticalTargeting: TargetingAlgorithm = Object.assign(
-  (input: TargetingAlgorithmInput) =>
-    findClosestVerticalTarget(
-      input.overlayRect ? getRectCenter(input.overlayRect) : input.pointerPosition,
+  (input: TargetingAlgorithmInput) => {
+    if (!input.overlayRect) {
+      return null;
+    }
+
+    return findClosestVerticalTarget(
+      getRectCenter(input.overlayRect),
       input.dropTargets,
-    ),
+    );
+  },
   { mode: "rect" as const },
 );
 
@@ -752,6 +757,13 @@ function getTargetVerticalCenter(dropTarget: DropTarget): number {
   return rect.top + rect.height / 2;
 }
 
+function getRectCenter(rect: DragRect): DragPoint {
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
 function isPointInTargetStartXBand(
   pointX: number,
   dropTarget: DropTarget,
@@ -761,14 +773,4 @@ function isPointInTargetStartXBand(
   const maxX = Math.min(rect.right, rect.left + maxDistance);
 
   return pointX >= rect.left && pointX <= maxX;
-}
-
-function getRectCenter(rect: { left: number; top: number; width: number; height: number }): {
-  x: number;
-  y: number;
-} {
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
 }

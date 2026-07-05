@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  centerToCenter,
   pointerToCenter,
   type DragLifecycleCallbacks,
+  type TargetingAlgorithm,
+  type TargetingConstraint,
 } from "../src/index.js";
 import {
   createDragRuntime,
@@ -109,6 +112,96 @@ describe("DragRuntime", () => {
         previousDropTargetId: null,
       },
       expect.any(Object),
+    );
+  });
+
+  it("passes full geometry to targeting algorithms and constraints without targetingPoint", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const targetingAlgorithmMock = vi.fn(
+      (input: Parameters<TargetingAlgorithm>[0]) => input.dropTargets[0] ?? null,
+    );
+    const targetingAlgorithm: TargetingAlgorithm = Object.assign(
+      targetingAlgorithmMock,
+      { mode: "pointer" as const },
+    );
+    const targetingConstraint = vi.fn(
+      (_input: Parameters<TargetingConstraint>[0]) => true,
+    );
+
+    runtime.configure({
+      targetingAlgorithm,
+      targetingConstraint,
+      hasDragOverlay: false,
+      keepOverlayOnDrop: false,
+      lifecycleCallbacks: {},
+      keyboardConfiguration: undefined,
+      modifiers: [],
+      pointerConfiguration: undefined,
+    });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(targetingAlgorithmMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        targetingPoint: expect.anything(),
+      }),
+    );
+    expect(targetingAlgorithmMock.mock.calls[0]?.[0]).toMatchObject({
+      pointerPosition: { x: 110, y: 10 },
+      overlayRect: null,
+      dropTargets: [
+        {
+          dropTargetId: "target-1",
+          dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
+        },
+      ],
+    });
+    expect(targetingConstraint).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        targetingPoint: expect.anything(),
+      }),
+    );
+    expect(targetingConstraint.mock.calls[0]?.[0]).toMatchObject({
+      pointerPosition: { x: 110, y: 10 },
+      overlayRect: null,
+      dropTarget: {
+        dropTargetId: "target-1",
+        dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
+      },
+    });
+  });
+
+  it("keeps placementPosition in drag subscriptions for sortable placement", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+
+    runtime.configure({
+      targetingAlgorithm: centerToCenter,
+      targetingConstraint: undefined,
+      hasDragOverlay: true,
+      keepOverlayOnDrop: false,
+      lifecycleCallbacks: {},
+      keyboardConfiguration: undefined,
+      modifiers: [],
+      pointerConfiguration: undefined,
+    });
+    runtime.subscribe({ onDragUpdate });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 20, clientY: 0 });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pointerPosition: { x: 20, y: 0 },
+        placementPosition: { x: 25, y: 5 },
+      }),
     );
   });
 

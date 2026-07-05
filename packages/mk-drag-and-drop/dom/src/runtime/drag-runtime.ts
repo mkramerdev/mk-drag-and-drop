@@ -87,9 +87,18 @@ type DragUpdateSubscriptionEvent = DragUpdateEvent & {
   placementPosition: Point;
 };
 
+type DragStartSubscriptionEvent = DragStartEvent & {
+  placementPosition: Point;
+};
+
 export type BindingCleanupRecord = {
   cleanup: () => void;
   isConnected: () => boolean;
+};
+
+type StoredBindingCleanupRecord = {
+  record: BindingCleanupRecord;
+  hasBeenConnected: boolean;
 };
 
 export class DragRuntime {
@@ -108,11 +117,14 @@ export class DragRuntime {
   private pointerFrameId: number | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
   private disposeCallbacks = new Set<() => void>();
-  private bindingCleanupRecords = new Set<BindingCleanupRecord>();
+  private bindingCleanupRecords = new Set<StoredBindingCleanupRecord>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private lifecycleHelpers: DragLifecycleHelpers = {
-    getDropTargetRect: (dropTargetId) => this.getDropTargetRect(dropTargetId),
+    getDropTargetRect: (dropTargetId) =>
+      this.getLifecycleDropTargetRect(dropTargetId),
   };
+  private lifecycleDropTargetRectSnapshot: Map<string, DragRect | null> | null =
+    null;
   private dropTargetRegistry = new DropTargetRegistry();
   private pointerConfiguration: NormalizedPointerConfiguration = {
     activationDelay: null,
@@ -316,11 +328,11 @@ export class DragRuntime {
     const overlayRect = this.hasDragOverlay
       ? this.getCurrentDragRectAt(pointerPosition)
       : null;
-    const activeDropTargetId = this.getActiveDropTargetId({
+    const sortablePlacementPosition = this.getSortablePlacementPosition({
       pointerPosition,
       overlayRect,
     });
-    const placementPosition = this.getSortablePlacementPosition({
+    const activeDropTargetId = this.getActiveDropTargetId({
       pointerPosition,
       overlayRect,
     });
@@ -346,7 +358,7 @@ export class DragRuntime {
 
     this.notifyDragUpdate(updateEvent, {
       ...updateEvent,
-      placementPosition,
+      placementPosition: sortablePlacementPosition,
     });
   }
 
@@ -500,12 +512,17 @@ export class DragRuntime {
   }
 
   registerBindingCleanup(record: BindingCleanupRecord): () => void {
+    const storedRecord: StoredBindingCleanupRecord = {
+      record,
+      hasBeenConnected: record.isConnected(),
+    };
+
     this.pruneDisconnectedBindingCleanupRecords();
-    this.bindingCleanupRecords.add(record);
-    this.pruneDisconnectedBindingCleanupRecords(record);
+    this.bindingCleanupRecords.add(storedRecord);
+    this.pruneDisconnectedBindingCleanupRecords(storedRecord);
 
     return () => {
-      if (!this.bindingCleanupRecords.delete(record)) {
+      if (!this.bindingCleanupRecords.delete(storedRecord)) {
         return;
       }
 
@@ -607,11 +624,22 @@ export class DragRuntime {
     } else {
       this.bindKeyboardWindowListeners();
     }
-    this.notifyDragStart({
+    const dragStartEvent: DragStartEvent = {
       draggableId: input.draggableId,
       source: input.inputType,
       pointerPosition: effectivePointerPosition,
       sourceRect: input.sourceRect,
+    };
+    const startOverlayRect = this.hasDragOverlay
+      ? this.getCurrentDragRectAt(effectivePointerPosition)
+      : null;
+
+    this.notifyDragStart(dragStartEvent, {
+      ...dragStartEvent,
+      placementPosition: this.getSortablePlacementPosition({
+        pointerPosition: effectivePointerPosition,
+        overlayRect: startOverlayRect,
+      }),
     });
   }
 
@@ -648,25 +676,37 @@ export class DragRuntime {
       session && dropTargetId
         ? this.getDropEventSortablePlacement(session, dropTargetId)
         : undefined;
+    const lifecycleDropTargetRectSnapshot = session
+      ? this.createLifecycleDropTargetRectSnapshot({
+          session,
+          dropTargetId,
+        })
+      : null;
 
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
 
     if (session && result) {
-      this.notifyDragEnd({
-        draggableId: session.draggableId,
-        source: session.source,
-        result,
-        dropTargetId,
-      });
+      this.lifecycleDropTargetRectSnapshot = lifecycleDropTargetRectSnapshot;
 
-      if (result === "dropped" && dropTargetId) {
-        this.notifyDrop({
+      try {
+        this.notifyDragEnd({
           draggableId: session.draggableId,
           source: session.source,
+          result,
           dropTargetId,
-          ...(sortablePlacement ? { sortablePlacement } : {}),
         });
+
+        if (result === "dropped" && dropTargetId) {
+          this.notifyDrop({
+            draggableId: session.draggableId,
+            source: session.source,
+            dropTargetId,
+            ...(sortablePlacement ? { sortablePlacement } : {}),
+          });
+        }
+      } finally {
+        this.lifecycleDropTargetRectSnapshot = null;
       }
     }
 
@@ -843,6 +883,45 @@ export class DragRuntime {
     };
   }
 
+  private getLifecycleDropTargetRect(dropTargetId: string): DragRect | null {
+    if (this.lifecycleDropTargetRectSnapshot?.has(dropTargetId)) {
+      return this.lifecycleDropTargetRectSnapshot.get(dropTargetId) ?? null;
+    }
+
+    return this.getDropTargetRect(dropTargetId);
+  }
+
+  private createLifecycleDropTargetRectSnapshot(input: {
+    session: DraggingSession;
+    dropTargetId: string | null;
+  }): Map<string, DragRect | null> | null {
+    const dropTargetIds = new Set<string>([input.session.draggableId]);
+
+    if (input.dropTargetId) {
+      dropTargetIds.add(input.dropTargetId);
+    }
+
+    if (dropTargetIds.size === 0) {
+      return null;
+    }
+
+    const snapshot = new Map<string, DragRect | null>();
+
+    for (const dropTargetId of dropTargetIds) {
+      const registration = this.dropTargetRegistry.getDropTargetRegistration(
+        dropTargetId,
+        input.session.group,
+      );
+
+      snapshot.set(
+        dropTargetId,
+        registration ? measureDomElement(registration.element) : null,
+      );
+    }
+
+    return snapshot;
+  }
+
   private getActiveDropTargetId(input: {
     pointerPosition: Point;
     overlayRect: DragRect | null;
@@ -913,22 +992,31 @@ export class DragRuntime {
   }
 
   private pruneDisconnectedBindingCleanupRecords(
-    skipRecord?: BindingCleanupRecord,
+    skipRecord?: StoredBindingCleanupRecord,
   ): void {
-    for (const record of Array.from(this.bindingCleanupRecords)) {
-      if (record === skipRecord || record.isConnected()) {
+    for (const storedRecord of Array.from(this.bindingCleanupRecords)) {
+      if (storedRecord === skipRecord) {
         continue;
       }
 
-      this.bindingCleanupRecords.delete(record);
-      record.cleanup();
+      if (storedRecord.record.isConnected()) {
+        storedRecord.hasBeenConnected = true;
+        continue;
+      }
+
+      if (!storedRecord.hasBeenConnected) {
+        continue;
+      }
+
+      this.bindingCleanupRecords.delete(storedRecord);
+      storedRecord.record.cleanup();
     }
   }
 
   private disposeBindingCleanupRecords(): void {
-    for (const record of Array.from(this.bindingCleanupRecords)) {
-      this.bindingCleanupRecords.delete(record);
-      record.cleanup();
+    for (const storedRecord of Array.from(this.bindingCleanupRecords)) {
+      this.bindingCleanupRecords.delete(storedRecord);
+      storedRecord.record.cleanup();
     }
   }
 
@@ -956,14 +1044,17 @@ export class DragRuntime {
     });
   }
 
-  private notifyDragStart(event: DragStartEvent): void {
+  private notifyDragStart(
+    event: DragStartEvent,
+    subscriptionEvent: DragStartSubscriptionEvent,
+  ): void {
     this.lifecycleCallbacks.onDragStart?.(
       event,
       this.lifecycleHelpers,
     );
 
     for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragStart?.(event);
+      subscription.onDragStart?.(subscriptionEvent);
     }
   }
 
@@ -1042,10 +1133,22 @@ function isSameSortablePlacement(
   placement: SortableDropPlacement,
   sourcePlacement: SortableItemPlacement | null,
 ): boolean {
-  return (
-    sourcePlacement !== null &&
-    placement.containerId === sourcePlacement.containerId &&
-    placement.previousDraggableId === sourcePlacement.previousDraggableId &&
-    placement.nextDraggableId === sourcePlacement.nextDraggableId
+  if (
+    sourcePlacement === null ||
+    placement.containerId !== sourcePlacement.containerId ||
+    placement.previousDraggableId !== sourcePlacement.previousDraggableId ||
+    placement.nextDraggableId !== sourcePlacement.nextDraggableId
+  ) {
+    return false;
+  }
+
+  if (placement.targetDraggableId === null || placement.side === null) {
+    return true;
+  }
+
+  return sourcePlacement.exactAnchors.some(
+    (anchor) =>
+      anchor.targetDraggableId === placement.targetDraggableId &&
+      anchor.side === placement.side,
   );
 }

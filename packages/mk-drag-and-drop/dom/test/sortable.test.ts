@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   centerToCenter,
+  maxOverlayCenterDistanceToRect,
   pointerToCenter,
   type SortableDropPlacement,
 } from "../src/index.js";
@@ -102,8 +103,10 @@ describe("createDomSortable", () => {
   it("defaults to vertical axis and restores snapshot on cancel", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    remeasureSpy.mockClear();
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
     raf.flush();
 
@@ -116,6 +119,7 @@ describe("createDomSortable", () => {
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
     expect(a.dataset.dndDragged).toBeUndefined();
     expect(a.dataset.dndSortableDraggable).toBe("true");
+    expect(remeasureSpy).not.toHaveBeenCalled();
   });
 
   it("does not oscillate on repeated pointer frames over the same active target", () => {
@@ -156,6 +160,70 @@ describe("createDomSortable", () => {
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
   });
 
+  it("returns the release-time drop target rect after sortable cleanup", () => {
+    const list = document.createElement("div");
+    document.body.append(list);
+    let releaseTargetRect: ReturnType<typeof createRect> | null = null;
+    let bRect = createRect({ top: 30, width: 20, height: 20 });
+    const a = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    const b = createMutableSortableElement("b", () => bRect);
+    const c = createSortableElement(
+      "c",
+      createRect({ top: 60, width: 20, height: 20 }),
+    );
+    const behaviorA = createDomSortable({
+      runtime,
+      draggableId: "a",
+      group: "rows",
+      getElement: () => a,
+    });
+    const behaviorB = createDomSortable({
+      runtime,
+      draggableId: "b",
+      group: "rows",
+      getElement: () => b,
+    });
+    const behaviorC = createDomSortable({
+      runtime,
+      draggableId: "c",
+      group: "rows",
+      getElement: () => c,
+    });
+
+    list.append(a, b, c);
+    behaviorA.setElement(a);
+    behaviorB.setElement(b);
+    behaviorC.setElement(c);
+    runtime.subscribe({
+      onDragEnd: () => {
+        bRect = createRect({ top: 30, width: 20, height: 20 });
+      },
+    });
+    configureRuntimeCallbacks({
+      onDragEnd: ({ dropTargetId }, { getDropTargetRect }) => {
+        releaseTargetRect = dropTargetId
+          ? getDropTargetRect(dropTargetId)
+          : null;
+      },
+    });
+
+    behaviorA.onPointerDown(createPointerHandlerEvent({ target: a }));
+    bRect = createRect({ top: 0, width: 20, height: 20 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 36 });
+    raf.flushNext();
+
+    expect(Array.from(list.children)).toEqual([b, a, c]);
+    expect(raf.pendingCount()).toBe(0);
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 36 });
+
+    expect(releaseTargetRect).toEqual(
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+  });
+
   it("restores snapshot position without falling back to end when the original next sibling is removed", () => {
     const { elements, behaviors } = createFourItemSortableList();
     const [a, b, c, d] = elements;
@@ -173,7 +241,7 @@ describe("createDomSortable", () => {
     expect(Array.from(b.parentElement?.children ?? [])).toEqual([a, b, d]);
   });
 
-  it("switches promptly for compact rows at the forward placement boundary", () => {
+  it("places after immediately when moving forward into a newly active target", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
 
@@ -182,16 +250,10 @@ describe("createDomSortable", () => {
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 36 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
-  it("uses an explicit horizontal axis without DOM layout inference", () => {
+  it("places after immediately on horizontal forward entry", () => {
     const { elements, behaviors } = createSortableList(undefined, {
       axis: "horizontal",
     });
@@ -202,51 +264,33 @@ describe("createDomSortable", () => {
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 6, clientY: 40 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
-  it("uses custom placementBoundary.start for movement toward axis end", () => {
+  it("does not use placementBoundary.start as the primary forward placement switch", () => {
     const { elements, behaviors } = createSortableList(undefined, {
-      placementBoundary: { start: 0.5 },
+      placementBoundary: { start: 0.9 },
     });
     const [a, b, c] = elements;
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
-  it("uses custom placementBoundary.end for movement toward axis start", () => {
+  it("does not use placementBoundary.end as the primary backward placement switch", () => {
     const { elements, behaviors } = createSortableList(undefined, {
-      placementBoundary: { end: 0.5 },
+      placementBoundary: { end: 0.1 },
     });
     const [a, b, c] = elements;
 
     behaviors.c.onPointerDown(
       createPointerHandlerEvent({ target: c, clientX: 10, clientY: 70 }),
     );
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 46 });
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
@@ -287,57 +331,71 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(secondA.parentElement?.children ?? [])).toEqual([
-      secondA,
       secondB,
+      secondA,
       secondC,
     ]);
   });
 
-  it("uses the forward boundary for tall targets and can change side on the same active target", () => {
+  it("keeps after placement on upward reversal until the end boundary is crossed", () => {
     const { elements, behaviors } = createTallSortableList();
     const [a, b] = elements;
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 195 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 221 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 500 });
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 430 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 419 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b]);
   });
 
-  it("uses the backward placement boundary when dragging upward", () => {
+  it("keeps before placement on downward reversal until the start boundary is crossed", () => {
+    const { elements, behaviors } = createSortableList(undefined, {
+      placementBoundary: { start: 0.5 },
+    });
+    const [a, b, c] = elements;
+
+    behaviors.c.onPointerDown(
+      createPointerHandlerEvent({ target: c, clientX: 10, clientY: 70 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 39.5 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40.5 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("switches from before to after once the start boundary is crossed on the same active target", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
 
     behaviors.c.onPointerDown(
       createPointerHandlerEvent({ target: c, clientX: 10, clientY: 70 }),
     );
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 46 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
-
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
-    raf.flush();
-
-    expect(runtime.activeDropTargetId).toBe("b");
-    expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, c, b]);
-  });
-
-  it("updates before and after while the active target remains the same", () => {
-    const { elements, behaviors } = createSortableList();
-    const [a, b, c] = elements;
-
-    behaviors.c.onPointerDown(
-      createPointerHandlerEvent({ target: c, clientX: 10, clientY: 70 }),
-    );
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 44 });
     raf.flush();
 
@@ -351,7 +409,7 @@ describe("createDomSortable", () => {
     expect(Array.from(c.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
 
-  it("changes horizontal side when direction reverses over the same active target", () => {
+  it("uses horizontal reversal thresholds over the same active target", () => {
     const { elements, behaviors } = createSortableList(undefined, {
       axis: "horizontal",
     });
@@ -364,7 +422,13 @@ describe("createDomSortable", () => {
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
 
-    dispatchPointerMove(window, { pointerId: 1, clientX: 14, clientY: 40 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 15.5, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 14.5, clientY: 40 });
     raf.flush();
 
     expect(runtime.activeDropTargetId).toBe("b");
@@ -406,6 +470,130 @@ describe("createDomSortable", () => {
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
   });
 
+  it("keeps center-to-center target selection overlay-center based regardless of placement boundaries", () => {
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm: centerToCenter,
+        hasDragOverlay: true,
+      },
+    );
+    const { elements, behaviors } = createSortableList(undefined, {
+      placementBoundary: { start: 1 },
+    });
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 0 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 25 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+  });
+
+  it("uses explicit overlay-center targeting constraints", () => {
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm: centerToCenter,
+        targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 4 }),
+        hasDragOverlay: true,
+      },
+    );
+    const { elements, behaviors } = createSortableList();
+    const [a] = elements;
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 0 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 25 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+  });
+
+  it("keeps center-to-center sortable reversal coherent after preview DOM movement", () => {
+    let placement: SortableDropPlacement | undefined;
+
+    configureRuntimeCallbacks(
+      {
+        onDrop: ({ sortablePlacement }) => {
+          placement = sortablePlacement;
+        },
+      },
+      {
+        targetingAlgorithm: centerToCenter,
+        hasDragOverlay: true,
+      },
+    );
+    const { list, elements, behaviors } = createDynamicFourItemSortableList(
+      "list",
+    );
+    const [a, b, c, d] = elements;
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 10 }),
+    );
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 75 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(list.children)).toEqual([b, c, a, d]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(list.children)).toEqual([b, a, c, d]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(list.children)).toEqual([a, b, c, d]);
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 10 });
+
+    expect(placement).toBeUndefined();
+    expect(Array.from(list.children)).toEqual([a, b, c, d]);
+  });
+
+  it("keeps sortable preview state when center-to-center selects the dragged item", () => {
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm: centerToCenter,
+        hasDragOverlay: true,
+      },
+    );
+    const { list, elements, behaviors } = createDynamicFourItemSortableList();
+    const [a, b, c, d] = elements;
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 75 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(list.children)).toEqual([b, c, a, d]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 70 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("a");
+    expect(Array.from(list.children)).toEqual([b, c, a, d]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(list.children)).toEqual([b, a, c, d]);
+  });
+
   it("returns no sortable placement for an isolated self-target drop", () => {
     const { isolated, behaviors } = createMixedGroupSortableList();
     let placement: SortableDropPlacement | undefined;
@@ -438,7 +626,7 @@ describe("createDomSortable", () => {
     expect(runtime.activeDropTargetId).toBe("c");
   });
 
-  it("does not move past a skipped-group sibling while the pointer is closer to that sibling", () => {
+  it("moves against the active same-group target without treating skipped siblings as blockers", () => {
     const { rows, isolated, behaviors } = createMixedGroupSortableList();
     const { a, c } = rows;
     let placement: SortableDropPlacement | undefined;
@@ -454,14 +642,21 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([
-      a,
       isolated,
       c,
+      a,
     ]);
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
-    expect(placement).toBeUndefined();
+    expect(placement).toEqual({
+      sourceContainerId: null,
+      containerId: null,
+      previousDraggableId: "c",
+      nextDraggableId: null,
+      targetDraggableId: "c",
+      side: "after",
+    });
   });
 
   it("moves past a skipped-group sibling once the pointer is closer to the same-group target", () => {
@@ -480,26 +675,301 @@ describe("createDomSortable", () => {
     ]);
   });
 
-  it("batches sortable group remeasurement while a group remeasure is pending", () => {
+  it("commits item five before item four without crossing an isolated sibling", () => {
+    const { list, rows, isolated, behaviors } = createMixedFiveGroupSortableList();
+    let items = ["one", "two", "isolated-three", "four", "five"];
+    let placement: SortableDropPlacement | undefined;
+    configureRuntimeCallbacks({
+      onDrop: ({ draggableId, sortablePlacement }) => {
+        placement = sortablePlacement;
+
+        if (sortablePlacement) {
+          items = reorderDataWithSortablePlacement(
+            items,
+            draggableId,
+            sortablePlacement,
+          );
+        }
+      },
+    });
+
+    behaviors.five.onPointerDown(
+      createPointerHandlerEvent({ target: rows.five, clientX: 10, clientY: 130 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 95 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("four");
+    expect(Array.from(list.children)).toEqual([
+      rows.one,
+      rows.two,
+      isolated,
+      rows.five,
+      rows.four,
+    ]);
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 95 });
+
+    expect(placement).toEqual({
+      sourceContainerId: null,
+      containerId: null,
+      previousDraggableId: "two",
+      nextDraggableId: "four",
+      targetDraggableId: "four",
+      side: "before",
+    });
+    expect(items).toEqual(["one", "two", "isolated-three", "five", "four"]);
+  });
+
+  it("commits item one after an isolated sibling by anchoring before item four", () => {
+    const { list, rows, isolated, behaviors } = createMixedFiveGroupSortableList();
+    let items = ["one", "two", "isolated-three", "four", "five"];
+    let placement: SortableDropPlacement | undefined;
+    configureRuntimeCallbacks({
+      onDrop: ({ draggableId, sortablePlacement }) => {
+        placement = sortablePlacement;
+
+        if (sortablePlacement) {
+          items = reorderDataWithSortablePlacement(
+            items,
+            draggableId,
+            sortablePlacement,
+          );
+        }
+      },
+    });
+
+    behaviors.one.onPointerDown(
+      createPointerHandlerEvent({ target: rows.one, clientX: 10, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 115 });
+    raf.flush();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 65 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("four");
+    expect(Array.from(list.children)).toEqual([
+      rows.two,
+      isolated,
+      rows.one,
+      rows.four,
+      rows.five,
+    ]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 66 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("one");
+    expect(Array.from(list.children)).toEqual([
+      rows.two,
+      isolated,
+      rows.one,
+      rows.four,
+      rows.five,
+    ]);
+
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 66 });
+
+    expect(placement).toEqual({
+      sourceContainerId: null,
+      containerId: null,
+      previousDraggableId: "two",
+      nextDraggableId: "four",
+      targetDraggableId: "four",
+      side: "before",
+    });
+    expect(items).toEqual(["two", "isolated-three", "one", "four", "five"]);
+  });
+
+  it("keeps distinct target anchors for visual placements in the same same-group interval", () => {
+    const { rows, behaviors } = createMixedFiveGroupSortableList();
+    const placements: SortableDropPlacement[] = [];
+    configureRuntimeCallbacks({
+      onDrop: ({ sortablePlacement }) => {
+        if (sortablePlacement) {
+          placements.push(sortablePlacement);
+        }
+      },
+    });
+
+    behaviors.one.onPointerDown(
+      createPointerHandlerEvent({ target: rows.one, clientX: 10, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+
+    behaviors.one.onPointerDown(
+      createPointerHandlerEvent({ target: rows.one, clientX: 10, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 115 });
+    raf.flush();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 65 });
+    raf.flush();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 66 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 66 });
+
+    expect(placements).toHaveLength(2);
+    expect(placements[0]).toMatchObject({
+      previousDraggableId: "two",
+      nextDraggableId: "four",
+      targetDraggableId: "two",
+      side: "after",
+    });
+    expect(placements[1]).toMatchObject({
+      previousDraggableId: "two",
+      nextDraggableId: "four",
+      targetDraggableId: "four",
+      side: "before",
+    });
+  });
+
+  it("moves sortable preview without auto-remeasuring the group", () => {
     const { elements, behaviors } = createSortableList();
-    const [a] = elements;
+    const [a, b, c] = elements;
     const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
     remeasureSpy.mockClear();
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
-    raf.flushNext();
-    expect(raf.pendingCount()).toBe(1);
+    raf.flush();
 
-    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 65 });
-    raf.flushNext();
-    expect(raf.pendingCount()).toBe(1);
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(remeasureSpy).not.toHaveBeenCalled();
+    expect(raf.pendingCount()).toBe(0);
+  });
 
-    raf.flushNext();
+  it("does not schedule full group remeasurement for repeated preview movement", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
 
-    expect(remeasureSpy).toHaveBeenCalledTimes(1);
-    expect(remeasureSpy).toHaveBeenCalledWith({ group: "rows" });
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    remeasureSpy.mockClear();
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(raf.pendingCount()).toBe(0);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 75 });
+    raf.flush();
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, c, a]);
+    expect(raf.pendingCount()).toBe(0);
+
+    expect(remeasureSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual runtime drop-target remeasurement explicit", () => {
+    const a = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    const b = createSortableElement(
+      "b",
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    const x = createSortableElement(
+      "x",
+      createRect({ top: 60, width: 20, height: 20 }),
+    );
+    const aMeasure = vi.mocked(a.getBoundingClientRect);
+    const bMeasure = vi.mocked(b.getBoundingClientRect);
+    const xMeasure = vi.mocked(x.getBoundingClientRect);
+    const clearMeasures = (): void => {
+      aMeasure.mockClear();
+      bMeasure.mockClear();
+      xMeasure.mockClear();
+    };
+
+    runtime.registerDropTarget("a", a, "rows");
+    runtime.registerDropTarget("b", b, "rows");
+    runtime.registerDropTarget("x", x, "columns");
+
+    clearMeasures();
+    runtime.remeasureDropTargets("a");
+    expect(aMeasure).toHaveBeenCalledTimes(1);
+    expect(bMeasure).not.toHaveBeenCalled();
+    expect(xMeasure).not.toHaveBeenCalled();
+
+    clearMeasures();
+    runtime.remeasureDropTargets(["a", "b"]);
+    expect(aMeasure).toHaveBeenCalledTimes(1);
+    expect(bMeasure).toHaveBeenCalledTimes(1);
+    expect(xMeasure).not.toHaveBeenCalled();
+
+    clearMeasures();
+    runtime.remeasureDropTargets({ group: "rows" });
+    expect(aMeasure).toHaveBeenCalledTimes(1);
+    expect(bMeasure).toHaveBeenCalledTimes(1);
+    expect(xMeasure).not.toHaveBeenCalled();
+
+    clearMeasures();
+    runtime.remeasureDropTargets();
+    expect(aMeasure).toHaveBeenCalledTimes(1);
+    expect(bMeasure).toHaveBeenCalledTimes(1);
+    expect(xMeasure).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not measure every sortable item after one preview move", () => {
+    const itemCount = 100;
+    const list = document.createElement("div");
+    document.body.append(list);
+    const elements = Array.from({ length: itemCount }, (_, index) =>
+      createSortableElement(
+        `item-${index}`,
+        createRect({ top: index * 30, width: 20, height: 20 }),
+      ),
+    );
+    const behaviors = elements.map((element, index) =>
+      createDomSortable({
+        runtime,
+        draggableId: `item-${index}`,
+        group: "rows",
+        getElement: () => element,
+      }),
+    );
+    const rectSpies = elements.map((element) =>
+      vi.mocked(element.getBoundingClientRect),
+    );
+    const draggedElement = elements[0];
+    const secondElement = elements[1];
+    const draggedBehavior = behaviors[0];
+
+    if (!draggedElement || !secondElement || !draggedBehavior) {
+      throw new Error("Expected sortable list items");
+    }
+
+    list.append(...elements);
+    behaviors.forEach((behavior, index) => {
+      const element = elements[index];
+
+      if (!element) {
+        throw new Error("Expected sortable list item");
+      }
+
+      behavior.setElement(element);
+    });
+
+    draggedBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: draggedElement }),
+    );
+    rectSpies.forEach((rectSpy) => {
+      rectSpy.mockClear();
+    });
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(list.children).slice(0, 2)).toEqual([
+      secondElement,
+      draggedElement,
+    ]);
+    expect(
+      rectSpies.filter((rectSpy) => rectSpy.mock.calls.length > 0).length,
+    ).toBeLessThan(itemCount);
   });
 
   it("cleans sortable dataset state on behavior cleanup", () => {
@@ -564,6 +1034,8 @@ describe("createDomSortable", () => {
       containerId: "list",
       previousDraggableId: "b",
       nextDraggableId: "c",
+      targetDraggableId: "b",
+      side: "after",
     });
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
   });
@@ -672,6 +1144,7 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b", "c"],
     });
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
     let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
       onDrop: ({ sortablePlacement }) => {
@@ -680,6 +1153,7 @@ describe("createDomSortable", () => {
     });
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    remeasureSpy.mockClear();
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 18 });
     raf.flush();
 
@@ -688,6 +1162,7 @@ describe("createDomSortable", () => {
       left.a,
       right.c,
     ]);
+    expect(remeasureSpy).not.toHaveBeenCalled();
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 18 });
 
@@ -696,6 +1171,8 @@ describe("createDomSortable", () => {
       containerId: "right",
       previousDraggableId: "b",
       nextDraggableId: "c",
+      targetDraggableId: "b",
+      side: "after",
     });
     expect(Array.from(left.container.children)).toEqual([left.a]);
     expect(Array.from(right.container.children)).toEqual([right.b, right.c]);
@@ -716,8 +1193,8 @@ describe("createDomSortable", () => {
     expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(right.container.children)).toEqual([
       right.b,
-      left.a,
       right.c,
+      left.a,
     ]);
   });
 
@@ -750,6 +1227,8 @@ describe("createDomSortable", () => {
       containerId: "right",
       previousDraggableId: "b",
       nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
     });
   });
 
@@ -787,6 +1266,7 @@ describe("createDomSortable", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: [],
     });
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
     let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
       onDrop: ({ sortablePlacement }) => {
@@ -795,10 +1275,12 @@ describe("createDomSortable", () => {
     });
 
     behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    remeasureSpy.mockClear();
     dispatchPointerMove(window, { pointerId: 1, clientX: 125, clientY: 100 });
     raf.flush();
 
     expect(Array.from(right.container.children)).toEqual([left.a]);
+    expect(remeasureSpy).not.toHaveBeenCalled();
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 125, clientY: 100 });
 
@@ -807,6 +1289,8 @@ describe("createDomSortable", () => {
       containerId: "right",
       previousDraggableId: null,
       nextDraggableId: null,
+      targetDraggableId: null,
+      side: null,
     });
     expect(Array.from(left.container.children)).toEqual([left.a]);
     expect(Array.from(right.container.children)).toEqual([]);
@@ -836,6 +1320,8 @@ describe("createDomSortable", () => {
       containerId: "right",
       previousDraggableId: "b",
       nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
     });
   });
 
@@ -863,13 +1349,13 @@ describe("createDomSortable", () => {
     options: Partial<
       Pick<
         Parameters<DragRuntime["configure"]>[0],
-        "hasDragOverlay" | "targetingAlgorithm"
+        "hasDragOverlay" | "targetingAlgorithm" | "targetingConstraint"
       >
     > = {},
   ): void {
     runtime.configure({
       targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
-      targetingConstraint: undefined,
+      targetingConstraint: options.targetingConstraint,
       hasDragOverlay: options.hasDragOverlay ?? false,
       keepOverlayOnDrop: false,
       lifecycleCallbacks,
@@ -1090,6 +1576,60 @@ describe("createDomSortable", () => {
     };
   }
 
+  function createDynamicFourItemSortableList(containerId?: string) {
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createDynamicSortableElement("a", list);
+    const b = createDynamicSortableElement("b", list);
+    const c = createDynamicSortableElement("c", list);
+    const d = createDynamicSortableElement("d", list);
+    list.append(a, b, c, d);
+    const behaviorA = createDomSortable({
+      runtime,
+      draggableId: "a",
+      group: "rows",
+      containerId,
+      getElement: () => a,
+    });
+    const behaviorB = createDomSortable({
+      runtime,
+      draggableId: "b",
+      group: "rows",
+      containerId,
+      getElement: () => b,
+    });
+    const behaviorC = createDomSortable({
+      runtime,
+      draggableId: "c",
+      group: "rows",
+      containerId,
+      getElement: () => c,
+    });
+    const behaviorD = createDomSortable({
+      runtime,
+      draggableId: "d",
+      group: "rows",
+      containerId,
+      getElement: () => d,
+    });
+
+    behaviorA.setElement(a);
+    behaviorB.setElement(b);
+    behaviorC.setElement(c);
+    behaviorD.setElement(d);
+
+    return {
+      list,
+      elements: [a, b, c, d] as const,
+      behaviors: {
+        a: behaviorA,
+        b: behaviorB,
+        c: behaviorC,
+        d: behaviorD,
+      },
+    };
+  }
+
   function createMixedGroupSortableList() {
     const list = document.createElement("div");
     document.body.append(list);
@@ -1139,6 +1679,71 @@ describe("createDomSortable", () => {
         a: behaviorA,
         isolated: behaviorIsolated,
         c: behaviorC,
+      },
+    };
+  }
+
+  function createMixedFiveGroupSortableList() {
+    const list = document.createElement("div");
+    document.body.append(list);
+    const one = createDynamicSortableElement("one", list);
+    const two = createDynamicSortableElement("two", list);
+    const isolated = createDynamicSortableElement("isolated-three", list);
+    const four = createDynamicSortableElement("four", list);
+    const five = createDynamicSortableElement("five", list);
+    list.append(one, two, isolated, four, five);
+    const behaviorOne = createDomSortable({
+      runtime,
+      draggableId: "one",
+      group: "rows",
+      getElement: () => one,
+    });
+    const behaviorTwo = createDomSortable({
+      runtime,
+      draggableId: "two",
+      group: "rows",
+      getElement: () => two,
+    });
+    const behaviorIsolated = createDomSortable({
+      runtime,
+      draggableId: "isolated-three",
+      group: "isolated-rows",
+      getElement: () => isolated,
+    });
+    const behaviorFour = createDomSortable({
+      runtime,
+      draggableId: "four",
+      group: "rows",
+      getElement: () => four,
+    });
+    const behaviorFive = createDomSortable({
+      runtime,
+      draggableId: "five",
+      group: "rows",
+      getElement: () => five,
+    });
+
+    behaviorOne.setElement(one);
+    behaviorTwo.setElement(two);
+    behaviorIsolated.setElement(isolated);
+    behaviorFour.setElement(four);
+    behaviorFive.setElement(five);
+
+    return {
+      list,
+      rows: {
+        one,
+        two,
+        four,
+        five,
+      },
+      isolated,
+      behaviors: {
+        one: behaviorOne,
+        two: behaviorTwo,
+        isolated: behaviorIsolated,
+        four: behaviorFour,
+        five: behaviorFive,
       },
     };
   }
@@ -1247,6 +1852,36 @@ function createSortableElement(draggableId: string, rect: ReturnType<typeof crea
   return element;
 }
 
+function createMutableSortableElement(
+  draggableId: string,
+  getRect: () => ReturnType<typeof createRect>,
+): HTMLElement {
+  const element = document.createElement("div");
+  element.dataset.draggableId = draggableId;
+  document.body.append(element);
+  vi.spyOn(element, "getBoundingClientRect").mockImplementation(
+    () => getRect() as DOMRect,
+  );
+  return element;
+}
+
+function createDynamicSortableElement(
+  draggableId: string,
+  list: HTMLElement,
+): HTMLElement {
+  const element = document.createElement("div");
+  element.dataset.draggableId = draggableId;
+  vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => {
+    const childIndex = Array.prototype.indexOf.call(list.children, element) as
+      | number
+      | undefined;
+    const index = childIndex === undefined || childIndex < 0 ? 0 : childIndex;
+
+    return createRect({ top: index * 30, width: 20, height: 20 }) as DOMRect;
+  });
+  return element;
+}
+
 function createContainer(
   containerId: string,
   rect: ReturnType<typeof createRect>,
@@ -1256,4 +1891,59 @@ function createContainer(
   stubBoundingClientRect(element, rect);
   document.body.append(element);
   return element;
+}
+
+function reorderDataWithSortablePlacement(
+  items: readonly string[],
+  draggableId: string,
+  placement: SortableDropPlacement,
+): string[] {
+  const withoutItem = items.filter((item) => item !== draggableId);
+
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutItem.indexOf(placement.targetDraggableId);
+
+    if (targetIndex === -1) {
+      return [...items];
+    }
+
+    const insertIndex =
+      placement.side === "after" ? targetIndex + 1 : targetIndex;
+
+    return [
+      ...withoutItem.slice(0, insertIndex),
+      draggableId,
+      ...withoutItem.slice(insertIndex),
+    ];
+  }
+
+  if (placement.previousDraggableId !== null) {
+    const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
+
+    if (previousIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, previousIndex + 1),
+      draggableId,
+      ...withoutItem.slice(previousIndex + 1),
+    ];
+  }
+
+  if (placement.nextDraggableId !== null) {
+    const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
+
+    if (nextIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, nextIndex),
+      draggableId,
+      ...withoutItem.slice(nextIndex),
+    ];
+  }
+
+  return [...items];
 }

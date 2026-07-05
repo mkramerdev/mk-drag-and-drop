@@ -16,6 +16,8 @@ import {
   useDroppable,
   useSortable,
   type DropEvent,
+  type DragPoint,
+  type DragRect,
   type DragState,
   type SortableDropPlacement,
   type TargetingConstraint,
@@ -59,14 +61,19 @@ const dragHandleText = "\u22ee\u22ee";
 
 // Example targeting: custom rules decide which grouped drop targets are eligible.
 const groupedTargetingConstraint: TargetingConstraint = ({
-  pointerPosition,
+  overlayRect,
   dropTarget,
 }) => {
+  if (!overlayRect) {
+    return false;
+  }
+
+  const overlayCenter = getRectCenter(overlayRect);
   const dropTargetId = dropTarget.dropTargetId;
 
   if (dropTargetId.startsWith(groupedInsideTargetPrefix)) {
     const distance = getDistanceToRect(
-      pointerPosition,
+      overlayCenter,
       dropTarget.dropTargetRect,
     );
 
@@ -77,7 +84,7 @@ const groupedTargetingConstraint: TargetingConstraint = ({
 
   if (parsedTarget?.type === "index") {
     const distance = getDistanceToRect(
-      pointerPosition,
+      overlayCenter,
       dropTarget.dropTargetRect,
     );
 
@@ -769,6 +776,13 @@ function insertAfterSibling(input: {
 
 function insertIntoArray<T>(items: T[], index: number, item: T): T[] {
   return [...items.slice(0, index), item, ...items.slice(index)];
+}
+
+function getRectCenter(rect: DragRect): DragPoint {
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
 }
 
 function parseChildDropTargetId(

@@ -59,6 +59,44 @@ describe("createSortable", () => {
       containerId: null,
       previousDraggableId: "b",
       nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
+    });
+  });
+
+  it("keeps detached pre-mount sortable bindings available after the subtree is mounted", () => {
+    let placement: SortableDropPlacement | null = null;
+    controller = createDragController({
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement ?? null;
+      },
+    });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const list = document.createElement("div");
+    const a = createDetachedMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const b = createDetachedMeasuredElement(
+      createRect({ left: 0, top: 30, width: 20, height: 20 }),
+    );
+
+    list.append(a, b);
+    createSortable({ controller, element: a, draggableId: "a" });
+    createSortable({ controller, element: b, draggableId: "b" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+
+    document.body.append(list);
+    dragToTarget(a, b);
+
+    expect(placement).toEqual({
+      sourceContainerId: null,
+      containerId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
     });
   });
 
@@ -169,6 +207,8 @@ describe("createSortable", () => {
       containerId: "column-a",
       previousDraggableId: "b",
       nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
     });
   });
 
@@ -263,6 +303,8 @@ describe("createSortable", () => {
       containerId: null,
       previousDraggableId: "b",
       nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
     });
 
     function render(draggableIds: string[]): void {
@@ -352,6 +394,14 @@ describe("createSortable", () => {
 function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
+  stubBoundingClientRect(element, rect);
+  return element;
+}
+
+function createDetachedMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
+  const element = document.createElement("div");
   stubBoundingClientRect(element, rect);
   return element;
 }

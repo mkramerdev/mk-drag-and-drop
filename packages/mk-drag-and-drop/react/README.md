@@ -366,13 +366,16 @@ requestAnimationFrame(() => {
 It accepts no argument, a target id, an array of target ids, or `{ group }`.
 Use it intentionally for expand/collapse, grouped trees, or drag-state layout
 changes. It is not needed for normal cleanup and should not run on every render.
+Sortable preview movement does not automatically remeasure a group; call this
+function when an app-owned layout change needs to affect targeting.
 
 ## Sortable Behavior
 
 Sortable preview is transient. The runtime may move DOM temporarily to show
 where an item would land, then restore or clear that preview as the drag ends.
-The app still commits data on drop. React rendering should then reflect the
-final data.
+Preview movement does not trigger full target remeasurement. The app still
+commits data on drop, using placement derived from the current preview DOM
+order. React rendering should then reflect the final data.
 
 Examples may rerender a full list for simplicity, but granular state management,
 external stores, server commits, and imperative rendering strategies are
@@ -395,8 +398,9 @@ compatible. The package does not require React state.
 ```
 
 `reorderData` is app code. It should translate `draggableId`,
-`placement.containerId`, `placement.previousDraggableId`, and
-`placement.nextDraggableId` into your data shape.
+`placement.containerId`, `placement.targetDraggableId`, `placement.side`,
+`placement.previousDraggableId`, and `placement.nextDraggableId` into your data
+shape.
 
 ## Drag Overlays
 
@@ -436,9 +440,18 @@ Targeting algorithms choose among measured drop targets. Targeting constraints
 filter targets before an algorithm runs. Modifiers transform movement during a
 drag.
 
+Custom targeting algorithms receive `pointerPosition`, `overlayRect`, and
+measured targets. Constraints receive `pointerPosition`, `overlayRect`, and one
+candidate target. Algorithms and constraints choose their own geometry:
+pointer helpers use the pointer position, while `centerToCenter` computes the
+overlay center from `overlayRect`.
+
 The React package re-exports targeting helpers such as `pointerToCenter`,
 `centerToCenter`, `pointerToRectDistance`, `getDistanceToRect`, and
-`maxDistanceToRect`, plus modifier helpers:
+`maxPointerDistanceToRect` / `maxOverlayCenterDistanceToRect`, plus modifier
+helpers. Sortable placement remains separate from targeting: the configured
+targeting algorithm chooses the active target, and sortable only chooses
+before/after placement relative to that target.
 
 - `lockToXAxis()`
 - `lockToYAxis()`

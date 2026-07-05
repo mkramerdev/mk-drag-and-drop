@@ -1,17 +1,17 @@
 import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
 import {
-  cancelSortableDropTargetGroupRemeasure,
   clearSortableDraggedState,
   clearSortablePointerMovement,
   initializeSortablePointerMovement,
   moveSortablePreview,
-  remeasureSortableDropTargetGroup,
   restoreSortableSnapshot,
   snapshotSortableElement,
   isSortablePreviewTarget,
+  type SortablePreviewPlacementState,
   type SortablePointerMovementState,
   updateSortablePointerMovement,
+  clearSortablePreviewPlacement,
 } from "./sortable-preview.js";
 import {
   normalizeSortableOptions,
@@ -28,6 +28,11 @@ export type DomSortableRuntime = DomDraggableRuntime & {
       containerId?: string | null;
       sortable?: boolean;
     },
+  ) => void;
+  registerDropContainer?: (
+    containerId: string,
+    element: HTMLElement,
+    group: string,
   ) => void;
   unregisterDropTarget: (draggableId: string, element?: HTMLElement) => void;
   getDropTargetRegistration: (
@@ -48,6 +53,7 @@ export type DomSortableRuntime = DomDraggableRuntime & {
       draggableId: string;
       source: "pointer" | "keyboard";
       pointerPosition: { x: number; y: number };
+      placementPosition?: { x: number; y: number };
     }) => void;
     onDragUpdate?: (event: {
       draggableId: string;
@@ -78,6 +84,7 @@ export type SortableRegistry = {
   elementIds: WeakMap<HTMLElement, string>;
   elements: Map<string, WeakRef<HTMLElement>>;
   groups: Map<string, string>;
+  previewPlacement: SortablePreviewPlacementState | null;
   pointerMovement: SortablePointerMovementState | null;
   snapshots: Map<string, SortableSnapshot>;
   sortableOptions: Map<string, NormalizedSortableOptions>;
@@ -113,6 +120,7 @@ export function getSortableRegistry(
     elementIds: new WeakMap(),
     elements: new Map(),
     groups: new Map(),
+    previewPlacement: null,
     pointerMovement: null,
     snapshots: new Map(),
     sortableOptions: new Map(),
@@ -120,13 +128,15 @@ export function getSortableRegistry(
 
   const unsubscribe = runtime.subscribe({
     onDragStart: (event) => {
-      initializeSortablePointerMovement(registry, event.pointerPosition);
+      initializeSortablePointerMovement(
+        registry,
+        event.placementPosition ?? event.pointerPosition,
+      );
       snapshotSortableElement(registry, event.draggableId);
     },
     onDragUpdate: (event) => {
       if (
         isSortablePreviewTarget({
-          draggedDraggableId: event.draggableId,
           activeDropTargetId: event.activeDropTargetId,
         })
       ) {
@@ -139,41 +149,37 @@ export function getSortableRegistry(
           placementPosition: event.placementPosition ?? event.pointerPosition,
           options: getSortableOptions(registry, event.draggableId),
         });
+      } else {
+        clearSortablePreviewPlacement(registry);
       }
 
-      updateSortablePointerMovement(registry, event.pointerPosition);
+      updateSortablePointerMovement(
+        registry,
+        event.placementPosition ?? event.pointerPosition,
+      );
     },
     onDragEnd: (event) => {
-      if (restoreSortableSnapshot(registry, event.draggableId)) {
-        remeasureSortableDropTargetGroup({
-          registry,
-          runtime,
-          draggableId: event.draggableId,
-        });
-      }
+      restoreSortableSnapshot(registry, event.draggableId);
 
       clearSortableDraggedState(registry, event.draggableId);
       clearSortablePointerMovement(registry);
+      clearSortablePreviewPlacement(registry);
       registry.snapshots.delete(event.draggableId);
     },
     onDrop: (event) => {
       clearSortableDraggedState(registry, event.draggableId);
       clearSortablePointerMovement(registry);
+      clearSortablePreviewPlacement(registry);
       registry.snapshots.delete(event.draggableId);
-      remeasureSortableDropTargetGroup({
-        registry,
-        runtime,
-        draggableId: event.draggableId,
-      });
     },
   });
   const cleanupRegistry = (): void => {
     unsubscribe();
     unsubscribeDispose?.();
-    cancelSortableDropTargetGroupRemeasure(runtime);
     registry.elements.clear();
     registry.groups.clear();
     registry.pointerMovement = null;
+    registry.previewPlacement = null;
     registry.attributeSnapshots.clear();
     registry.snapshots.clear();
     registry.sortableOptions.clear();

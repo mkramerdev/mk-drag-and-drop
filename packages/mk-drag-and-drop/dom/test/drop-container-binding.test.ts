@@ -47,6 +47,42 @@ describe("createDropContainer", () => {
     expect(onDrop.mock.calls[0]?.[0]).not.toHaveProperty("sortablePlacement");
   });
 
+  it("keeps detached pre-mount container bindings available after the subtree is mounted", () => {
+    const onDrop = vi.fn();
+    controller = createDragController({ onDrop });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const root = document.createElement("div");
+    const source = createDetachedMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
+    const container = createDetachedMeasuredElement(
+      createRect({ left: 100, top: 0, width: 80, height: 80 }),
+    );
+
+    root.append(source, container);
+    createDropContainer({
+      controller,
+      element: container,
+      containerId: "column-a",
+    });
+    createDraggable({ controller, element: source, draggableId: "item" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+
+    document.body.append(root);
+    dragToTarget(source, container);
+
+    expect(onDrop).toHaveBeenCalledWith(
+      {
+        draggableId: "item",
+        source: "pointer",
+        dropTargetId: "column-a",
+      },
+      expect.any(Object),
+    );
+  });
+
   it("uses the default group", () => {
     const { source, container, onDrop } = setupDragAndContainer({
       containerId: "column-a",
@@ -231,6 +267,14 @@ describe("createDropContainer", () => {
 function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
+  stubBoundingClientRect(element, rect);
+  return element;
+}
+
+function createDetachedMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
+  const element = document.createElement("div");
   stubBoundingClientRect(element, rect);
   return element;
 }
