@@ -7,8 +7,9 @@ import {
   maxOverlayCenterDistanceToRect,
   type DragControllerOverlayInput,
   type DragRect,
-  type SortableDropPlacement,
 } from "@mk-drag-and-drop/dom";
+
+import { moveItemToSortablePlacement } from "./sortablePlacement";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
@@ -56,7 +57,7 @@ export function mountSortableList(root: HTMLElement): () => void {
       }
 
       // Example drop behavior: translate package sortable placement into app data.
-      items = reorderData(items, draggableId, placement);
+      items = moveItemToSortablePlacement(items, draggableId, placement);
       renderItems();
     },
   });
@@ -302,60 +303,4 @@ function appendOverlayContents(element: HTMLElement, draggableId: string): void 
 
 function getSortableGroup(draggableId: string): string {
   return draggableId === "3" ? isolatedSortableGroup : sortableGroup;
-}
-
-// Example drop behavior: convert sortable placement into user-owned item order.
-function reorderData(
-  items: readonly string[],
-  draggableId: string,
-  placement: SortableDropPlacement,
-): string[] {
-  const withoutItem = items.filter((item) => item !== draggableId);
-
-  if (placement.targetDraggableId !== null && placement.side !== null) {
-    const targetIndex = withoutItem.indexOf(placement.targetDraggableId);
-
-    if (targetIndex === -1) {
-      return [...items];
-    }
-
-    const insertIndex =
-      placement.side === "after" ? targetIndex + 1 : targetIndex;
-
-    return [
-      ...withoutItem.slice(0, insertIndex),
-      draggableId,
-      ...withoutItem.slice(insertIndex),
-    ];
-  }
-
-  if (placement.previousDraggableId !== null) {
-    const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
-
-    if (previousIndex === -1) {
-      return [...items];
-    }
-
-    return [
-      ...withoutItem.slice(0, previousIndex + 1),
-      draggableId,
-      ...withoutItem.slice(previousIndex + 1),
-    ];
-  }
-
-  if (placement.nextDraggableId !== null) {
-    const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
-
-    if (nextIndex === -1) {
-      return [...items];
-    }
-
-    return [
-      ...withoutItem.slice(0, nextIndex),
-      draggableId,
-      ...withoutItem.slice(nextIndex),
-    ];
-  }
-
-  return [...items];
 }

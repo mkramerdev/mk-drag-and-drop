@@ -26,7 +26,10 @@ import {
   type ActiveDragModifier,
   type DragModifierInput,
 } from "../modifiers/types.js";
-import { pointerToCenter } from "../targeting/algorithms.js";
+import {
+  getBuiltInTargetingAlgorithmKind,
+  pointerToCenter,
+} from "../targeting/algorithms.js";
 import type {
   DropTarget,
   TargetingAlgorithm,
@@ -932,13 +935,14 @@ export class DragRuntime {
       return null;
     }
 
-    this.removeDisconnectedDropTargets(session.group);
-
     const activeTarget = this.targetingAlgorithm({
       pointerPosition: input.pointerPosition,
       overlayRect: input.overlayRect,
       dropTargets: this.getAvailableDropTargets({
         group: session.group,
+        draggingDraggableId: session.draggableId,
+        activeDropTargetId: session.activeDropTargetId,
+        sourceContainerId: session.sourceContainerId,
         pointerPosition: input.pointerPosition,
         overlayRect: input.overlayRect,
       }),
@@ -960,13 +964,22 @@ export class DragRuntime {
 
   private getAvailableDropTargets(input: {
     group: DragGroup;
+    draggingDraggableId: string;
+    activeDropTargetId: string | null;
+    sourceContainerId: string | null;
     pointerPosition: Point;
     overlayRect: DragRect | null;
   }): DropTarget[] {
     return this.dropTargetRegistry.getAvailableDropTargets({
       group: input.group,
+      draggingDraggableId: input.draggingDraggableId,
+      activeDropTargetId: input.activeDropTargetId,
+      sourceContainerId: input.sourceContainerId,
       pointerPosition: input.pointerPosition,
       overlayRect: input.overlayRect,
+      targetingAlgorithmKind: getBuiltInTargetingAlgorithmKind(
+        this.targetingAlgorithm,
+      ),
       targetingConstraint: this.targetingConstraint,
     });
   }

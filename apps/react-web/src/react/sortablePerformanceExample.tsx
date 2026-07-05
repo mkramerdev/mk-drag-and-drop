@@ -17,8 +17,9 @@ import {
     useSortable,
     type DragOverlayPhase,
     type DragRect,
-    type SortableDropPlacement,
 } from "@mk-drag-and-drop/react";
+
+import { moveItemToSortablePlacement } from "./sortablePlacement";
 
 const defaultItems = Array.from({ length: 10_000 }, (_, index) =>
     String(index + 1),
@@ -234,43 +235,4 @@ function SortableItem({
 
 function getSortableGroup(draggableId: string): string {
     return draggableId === "3" ? isolatedSortableGroup : sortableGroup;
-}
-
-// Example drop behavior: convert sortable placement into user-owned item order.
-function moveItemToSortablePlacement(
-    items: readonly string[],
-    draggableId: string,
-    placement: SortableDropPlacement,
-): string[] {
-    const withoutItem = items.filter((item) => item !== draggableId);
-
-    if (placement.previousDraggableId !== null) {
-        const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
-
-        if (previousIndex === -1) {
-            return [...items];
-        }
-
-        return [
-            ...withoutItem.slice(0, previousIndex + 1),
-            draggableId,
-            ...withoutItem.slice(previousIndex + 1),
-        ];
-    }
-
-    if (placement.nextDraggableId !== null) {
-        const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
-
-        if (nextIndex === -1) {
-            return [...items];
-        }
-
-        return [
-            ...withoutItem.slice(0, nextIndex),
-            draggableId,
-            ...withoutItem.slice(nextIndex),
-        ];
-    }
-
-    return [...items];
 }

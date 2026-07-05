@@ -4,7 +4,9 @@ import {
   centerToCenter,
   maxOverlayCenterDistanceToRect,
   pointerToCenter,
+  type SortableAxis,
   type SortableDropPlacement,
+  type TargetingAlgorithm,
 } from "../src/index.js";
 import {
   createDomDropContainer,
@@ -825,6 +827,32 @@ describe("createDomSortable", () => {
     });
   });
 
+  it("uses exact target anchors before same-group sibling anchors when reordering app data", () => {
+    const items = ["1", "2", "3", "4", "5"];
+
+    expect(
+      reorderDataWithSortablePlacement(items, "1", {
+        sourceContainerId: null,
+        containerId: null,
+        previousDraggableId: "2",
+        nextDraggableId: "4",
+        targetDraggableId: "4",
+        side: "before",
+      }),
+    ).toEqual(["2", "3", "1", "4", "5"]);
+
+    expect(
+      reorderDataWithSortablePlacement(items, "1", {
+        sourceContainerId: null,
+        containerId: null,
+        previousDraggableId: "2",
+        nextDraggableId: "4",
+        targetDraggableId: "2",
+        side: "after",
+      }),
+    ).toEqual(["2", "1", "3", "4", "5"]);
+  });
+
   it("moves sortable preview without auto-remeasuring the group", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
@@ -970,6 +998,191 @@ describe("createDomSortable", () => {
     expect(
       rectSpies.filter((rectSpy) => rectSpy.mock.calls.length > 0).length,
     ).toBeLessThan(itemCount);
+  });
+
+  it("narrows large vertical sortable candidates before built-in targeting", () => {
+    const candidateIds: string[] = [];
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingConstraint: ({ dropTarget }) => {
+          candidateIds.push(dropTarget.dropTargetId);
+          return true;
+        },
+      },
+    );
+    const { elements, sourceBehavior } = createLargeSortableTargetList({
+      itemCount: 10_000,
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected source element");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    candidateIds.splice(0, candidateIds.length);
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 5_000 * 30 + 10,
+    });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("item-5000");
+    expect(candidateIds).toContain("item-5000");
+    expect(candidateIds.length).toBeLessThan(20);
+  });
+
+  it("uses y-axis sortable narrowing for vertical lists", () => {
+    const candidateIds: string[] = [];
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingConstraint: ({ dropTarget }) => {
+          candidateIds.push(dropTarget.dropTargetId);
+          return true;
+        },
+      },
+    );
+    const { elements, sourceBehavior } = createLargeSortableTargetList({
+      itemCount: 200,
+      axis: "vertical",
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected source element");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    candidateIds.splice(0, candidateIds.length);
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 120 * 30 + 10,
+    });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("item-120");
+    expect(candidateIds).toContain("item-120");
+    expect(candidateIds.length).toBeLessThan(20);
+  });
+
+  it("uses x-axis sortable narrowing for horizontal lists", () => {
+    const candidateIds: string[] = [];
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingConstraint: ({ dropTarget }) => {
+          candidateIds.push(dropTarget.dropTargetId);
+          return true;
+        },
+      },
+    );
+    const { elements, sourceBehavior } = createLargeSortableTargetList({
+      itemCount: 200,
+      axis: "horizontal",
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected source element");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    candidateIds.splice(0, candidateIds.length);
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 120 * 30 + 10,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("item-120");
+    expect(candidateIds).toContain("item-120");
+    expect(candidateIds.length).toBeLessThan(20);
+  });
+
+  it("keeps custom targeting algorithms on the full candidate scan", () => {
+    let candidateIds: string[] = [];
+    const targetingAlgorithm: TargetingAlgorithm = Object.assign(
+      ({ dropTargets }) => {
+        candidateIds = dropTargets.map((dropTarget) => dropTarget.dropTargetId);
+
+        return dropTargets.at(-1) ?? null;
+      },
+      { mode: "pointer" as const },
+    );
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm,
+      },
+    );
+    const { elements, sourceBehavior } = createLargeSortableTargetList({
+      itemCount: 50,
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected source element");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+    raf.flush();
+
+    expect(candidateIds).toHaveLength(50);
+    expect(runtime.activeDropTargetId).toBe("item-49");
+  });
+
+  it("falls back to the full scan when constraints reject narrowed candidates", () => {
+    const candidateIds: string[] = [];
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingConstraint: ({ dropTarget }) => {
+          candidateIds.push(dropTarget.dropTargetId);
+          return dropTarget.dropTargetId === "item-70";
+        },
+      },
+    );
+    const { elements, sourceBehavior } = createLargeSortableTargetList({
+      itemCount: 100,
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected source element");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    candidateIds.splice(0, candidateIds.length);
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20 * 30 + 10,
+    });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("item-70");
+    expect(candidateIds).toContain("item-70");
+    expect(candidateIds.length).toBeGreaterThan(20);
   });
 
   it("cleans sortable dataset state on behavior cleanup", () => {
@@ -1363,6 +1576,60 @@ describe("createDomSortable", () => {
       modifiers: [],
       pointerConfiguration: undefined,
     });
+  }
+
+  function createLargeSortableTargetList(input: {
+    itemCount: number;
+    axis?: SortableAxis;
+  }) {
+    const axis = input.axis ?? "vertical";
+    const list = document.createElement("div");
+    document.body.append(list);
+    const elements = Array.from({ length: input.itemCount }, (_, index) => {
+      const element = createUnattachedSortableElement(
+        `item-${index}`,
+        axis === "horizontal"
+          ? createRect({ left: index * 30, width: 20, height: 20 })
+          : createRect({ top: index * 30, width: 20, height: 20 }),
+      );
+
+      return element;
+    });
+    const sourceElement = elements[0];
+
+    if (!sourceElement) {
+      throw new Error("Expected sortable source element");
+    }
+
+    list.append(...elements);
+    const sourceBehavior = createDomSortable({
+      runtime,
+      draggableId: "item-0",
+      group: "rows",
+      axis,
+      getElement: () => sourceElement,
+    });
+
+    sourceBehavior.setElement(sourceElement);
+
+    for (let index = 1; index < elements.length; index += 1) {
+      const element = elements[index];
+
+      if (!element) {
+        throw new Error("Expected sortable target element");
+      }
+
+      runtime.registerDropTarget(`item-${index}`, element, "rows", {
+        sortable: true,
+        sortableAxis: axis,
+      });
+    }
+
+    return {
+      list,
+      elements,
+      sourceBehavior,
+    };
   }
 
   function createSortableList(
@@ -1845,9 +2112,17 @@ describe("createDomSortable", () => {
 });
 
 function createSortableElement(draggableId: string, rect: ReturnType<typeof createRect>) {
+  const element = createUnattachedSortableElement(draggableId, rect);
+  document.body.append(element);
+  return element;
+}
+
+function createUnattachedSortableElement(
+  draggableId: string,
+  rect: ReturnType<typeof createRect>,
+) {
   const element = document.createElement("div");
   element.dataset.draggableId = draggableId;
-  document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;
 }

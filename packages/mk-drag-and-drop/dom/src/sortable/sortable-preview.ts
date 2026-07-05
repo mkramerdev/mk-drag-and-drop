@@ -123,6 +123,7 @@ export function moveSortablePreview(input: {
     activeDropTargetId === input.draggedDraggableId
   ) {
     refreshSortableDropTargetMeasurements({
+      registry: input.registry,
       runtime: input.runtime,
       group: draggedGroup,
       dropTargetIds: getSortablePreviewMeasurementIds({
@@ -181,6 +182,7 @@ export function moveSortablePreview(input: {
       draggedElement,
     );
     refreshSortableDropTargetMeasurements({
+      registry: input.registry,
       runtime: input.runtime,
       group: draggedGroup,
       dropTargetIds: measurementIds,
@@ -245,6 +247,7 @@ export function moveSortablePreview(input: {
     targetElement,
   );
   refreshSortableDropTargetMeasurements({
+    registry: input.registry,
     runtime: input.runtime,
     group: draggedGroup,
     dropTargetIds: measurementIds,
@@ -510,6 +513,7 @@ function addRegistrationContainerId(
 }
 
 function refreshSortableDropTargetMeasurements(input: {
+  registry: SortableRegistry;
   runtime: DomSortableRuntime;
   group: string;
   dropTargetIds: ReadonlySet<string>;
@@ -540,6 +544,8 @@ function refreshSortableDropTargetMeasurements(input: {
       {
         containerId: registration.containerId,
         sortable: registration.capabilities.sortable,
+        sortableAxis:
+          input.registry.sortableOptions.get(registration.id)?.axis ?? "vertical",
       },
     );
   }

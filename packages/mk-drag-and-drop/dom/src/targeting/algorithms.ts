@@ -6,28 +6,62 @@ import type {
   TargetingAlgorithmInput,
 } from "./types.js";
 
-export const pointerToCenter: TargetingAlgorithm = Object.assign(
-  ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
-    findClosestTarget(pointerPosition, dropTargets),
-  { mode: "pointer" as const },
+export type BuiltInTargetingAlgorithmKind =
+  | "pointer-to-center"
+  | "center-to-center"
+  | "pointer-to-rect-distance";
+
+const builtInTargetingAlgorithmKinds = new WeakMap<
+  TargetingAlgorithm,
+  BuiltInTargetingAlgorithmKind
+>();
+
+export const pointerToCenter: TargetingAlgorithm = registerBuiltInTargetingAlgorithm(
+  Object.assign(
+    ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
+      findClosestTarget(pointerPosition, dropTargets),
+    { mode: "pointer" as const },
+  ),
+  "pointer-to-center",
 );
 
-export const centerToCenter: TargetingAlgorithm = Object.assign(
-  ({ overlayRect, dropTargets }: TargetingAlgorithmInput) => {
-    if (!overlayRect) {
-      return null;
-    }
+export const centerToCenter: TargetingAlgorithm = registerBuiltInTargetingAlgorithm(
+  Object.assign(
+    ({ overlayRect, dropTargets }: TargetingAlgorithmInput) => {
+      if (!overlayRect) {
+        return null;
+      }
 
-    return findClosestTarget(getRectCenter(overlayRect), dropTargets);
-  },
-  { mode: "rect" as const },
+      return findClosestTarget(getRectCenter(overlayRect), dropTargets);
+    },
+    { mode: "rect" as const },
+  ),
+  "center-to-center",
 );
 
-export const pointerToRectDistance: TargetingAlgorithm = Object.assign(
-  ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
-    findClosestTargetByRectDistance(pointerPosition, dropTargets),
-  { mode: "pointer" as const },
-);
+export const pointerToRectDistance: TargetingAlgorithm =
+  registerBuiltInTargetingAlgorithm(
+    Object.assign(
+      ({ pointerPosition, dropTargets }: TargetingAlgorithmInput) =>
+        findClosestTargetByRectDistance(pointerPosition, dropTargets),
+      { mode: "pointer" as const },
+    ),
+    "pointer-to-rect-distance",
+  );
+
+export function getBuiltInTargetingAlgorithmKind(
+  targetingAlgorithm: TargetingAlgorithm,
+): BuiltInTargetingAlgorithmKind | null {
+  return builtInTargetingAlgorithmKinds.get(targetingAlgorithm) ?? null;
+}
+
+function registerBuiltInTargetingAlgorithm(
+  targetingAlgorithm: TargetingAlgorithm,
+  kind: BuiltInTargetingAlgorithmKind,
+): TargetingAlgorithm {
+  builtInTargetingAlgorithmKinds.set(targetingAlgorithm, kind);
+  return targetingAlgorithm;
+}
 
 function findClosestTarget(
   point: DragPoint,

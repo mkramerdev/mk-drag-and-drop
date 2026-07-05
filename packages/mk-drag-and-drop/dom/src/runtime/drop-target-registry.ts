@@ -1,4 +1,6 @@
 import type { DragPoint, DragRect } from "../geometry/rects.js";
+import type { SortableAxis } from "../sortable/sortable-options.js";
+import type { BuiltInTargetingAlgorithmKind } from "../targeting/algorithms.js";
 import type { DropTarget, TargetingConstraint } from "../targeting/types.js";
 
 import {
@@ -36,12 +38,17 @@ export type RegisterDropTargetOptions = {
   container?: boolean;
   containerId?: string | null;
   sortable?: boolean;
+  sortableAxis?: SortableAxis;
 };
 
 export type GetAvailableDropTargetsInput = {
+  activeDropTargetId?: string | null;
+  draggingDraggableId?: string | null;
   group: DragGroup | null;
   pointerPosition: DragPoint;
   overlayRect: DragRect | null;
+  sourceContainerId?: string | null;
+  targetingAlgorithmKind?: BuiltInTargetingAlgorithmKind | null;
   targetingConstraint?: TargetingConstraint;
 };
 
@@ -74,6 +81,7 @@ type DropTargetEntry = {
   group: DragGroup;
   containerId: string | null;
   capabilities: DropTargetCapabilities;
+  sortableAxis: SortableAxis | null;
   documentRect: DragRect;
 };
 
@@ -87,12 +95,34 @@ type AvailableDropTargetCandidate = {
   viewportRect: DragRect;
 };
 
+type SortableAxisCandidate = {
+  id: string;
+  entry: DropTargetEntry;
+  element: HTMLElement;
+  containerId: string | null;
+  axisStart: number;
+  axisEnd: number;
+  axisCenter: number;
+};
+
+type SortableAxisIndex = {
+  axis: SortableAxis;
+  containerId: string | null;
+  candidatesByCenter: SortableAxisCandidate[];
+  candidatesByStart: SortableAxisCandidate[];
+  candidatesById: Map<string, SortableAxisCandidate>;
+  unsupported: boolean;
+};
+
+const sortableCandidateWindowRadius = 3;
+
 export class DropTargetRegistry {
   private targetsByGroup = new Map<DragGroup, Map<string, DropTargetEntry>>();
   private targetElements = new WeakMap<
     HTMLElement,
     { group: DragGroup; id: string }
   >();
+  private sortableAxisIndexes = new Map<DragGroup, SortableAxisIndex>();
 
   register(
     id: string,
@@ -147,12 +177,14 @@ export class DropTargetRegistry {
         container: options.container ?? false,
         sortable: options.sortable ?? false,
       },
+      sortableAxis: options.sortable ? options.sortableAxis ?? null : null,
       documentRect: emptyDragRect,
     };
 
     groupTargets.set(id, entry);
     this.targetElements.set(element, { group, id });
     this.remeasureEntry(entry);
+    this.syncSortableAxisIndexAfterRegister(group, entry, element);
 
     return removedTargets;
   }
@@ -208,6 +240,7 @@ export class DropTargetRegistry {
   clear(): void {
     this.targetsByGroup.clear();
     this.targetElements = new WeakMap();
+    this.sortableAxisIndexes.clear();
   }
 
   remeasure(input?: RemeasureDropTargetsInput): void {
@@ -218,17 +251,28 @@ export class DropTargetRegistry {
         }
       }
 
+      this.sortableAxisIndexes.clear();
       return;
     }
 
     if (typeof input === "string") {
-      this.remeasureTarget(input);
+      for (const group of this.remeasureTarget(input)) {
+        this.sortableAxisIndexes.delete(group);
+      }
       return;
     }
 
     if (Array.isArray(input)) {
+      const remeasuredGroups = new Set<DragGroup>();
+
       for (const dropTargetId of input) {
-        this.remeasureTarget(dropTargetId);
+        for (const group of this.remeasureTarget(dropTargetId)) {
+          remeasuredGroups.add(group);
+        }
+      }
+
+      for (const group of remeasuredGroups) {
+        this.sortableAxisIndexes.delete(group);
       }
 
       return;
@@ -243,6 +287,7 @@ export class DropTargetRegistry {
     for (const dropTarget of groupTargets.values()) {
       this.remeasureEntry(dropTarget);
     }
+    this.sortableAxisIndexes.delete(input.group);
   }
 
   getViewportRect(id: string, group?: DragGroup): DragRect | null {
@@ -273,10 +318,33 @@ export class DropTargetRegistry {
       return [];
     }
 
+    const sortableCandidates = this.getNarrowedSortableDropTargetEntries(
+      input,
+      groupTargets,
+    );
+
+    if (sortableCandidates) {
+      const dropTargets = this.getAvailableDropTargetsFromEntries(
+        sortableCandidates,
+        input,
+      );
+
+      if (!input.targetingConstraint || dropTargets.length > 0) {
+        return dropTargets;
+      }
+    }
+
+    return this.getAvailableDropTargetsFromEntries(groupTargets.values(), input);
+  }
+
+  private getAvailableDropTargetsFromEntries(
+    entries: Iterable<DropTargetEntry>,
+    input: GetAvailableDropTargetsInput,
+  ): DropTarget[] {
     const candidates: AvailableDropTargetCandidate[] = [];
     let hasContainerCandidate = false;
 
-    for (const target of groupTargets.values()) {
+    for (const target of entries) {
       const element = this.resolveEntry(target);
 
       if (!element) {
@@ -455,6 +523,8 @@ export class DropTargetRegistry {
       return [];
     }
 
+    this.sortableAxisIndexes.delete(group);
+
     if (groupTargets.size === 0) {
       this.targetsByGroup.delete(group);
     }
@@ -477,6 +547,10 @@ export class DropTargetRegistry {
       removedTargets.push({ id, group });
     }
 
+    if (removedTargets.length > 0) {
+      this.sortableAxisIndexes.delete(group);
+    }
+
     if (groupTargets.size === 0) {
       this.targetsByGroup.delete(group);
     }
@@ -484,14 +558,19 @@ export class DropTargetRegistry {
     return removedTargets;
   }
 
-  private remeasureTarget(dropTargetId: string): void {
+  private remeasureTarget(dropTargetId: string): DragGroup[] {
+    const remeasuredGroups: DragGroup[] = [];
+
     for (const groupTargets of this.targetsByGroup.values()) {
       const dropTarget = groupTargets.get(dropTargetId);
 
       if (dropTarget) {
         this.remeasureEntry(dropTarget);
+        remeasuredGroups.push(dropTarget.group);
       }
     }
+
+    return remeasuredGroups;
   }
 
   private remeasureEntry(registration: DropTargetEntry): void {
@@ -557,6 +636,261 @@ export class DropTargetRegistry {
     const element = entry.elementRef.deref();
 
     return element?.isConnected ? element : null;
+  }
+
+  private getNarrowedSortableDropTargetEntries(
+    input: GetAvailableDropTargetsInput,
+    groupTargets: Map<string, DropTargetEntry>,
+  ): DropTargetEntry[] | null {
+    if (
+      input.group === null ||
+      !input.targetingAlgorithmKind ||
+      !input.draggingDraggableId
+    ) {
+      return null;
+    }
+
+    const index = this.getSortableAxisIndex(input.group, groupTargets);
+
+    if (!index || index.unsupported) {
+      return null;
+    }
+
+    if (!index.candidatesById.has(input.draggingDraggableId)) {
+      return null;
+    }
+
+    const axisCoordinate = getSortableQueryAxisCoordinate({
+      axis: index.axis,
+      overlayRect: input.overlayRect,
+      pointerPosition: input.pointerPosition,
+      targetingAlgorithmKind: input.targetingAlgorithmKind,
+    });
+
+    if (axisCoordinate === null) {
+      return null;
+    }
+
+    const candidates = new Map<string, SortableAxisCandidate>();
+    const addCandidate = (candidate: SortableAxisCandidate | undefined): void => {
+      if (candidate) {
+        candidates.set(candidate.id, candidate);
+      }
+    };
+    const nearestIndex = getNearestSortableAxisIndex(
+      index.candidatesByCenter,
+      axisCoordinate,
+    );
+
+    if (nearestIndex !== null) {
+      for (
+        let candidateIndex = Math.max(0, nearestIndex - sortableCandidateWindowRadius);
+        candidateIndex <=
+        Math.min(
+          index.candidatesByCenter.length - 1,
+          nearestIndex + sortableCandidateWindowRadius,
+        );
+        candidateIndex += 1
+      ) {
+        addCandidate(index.candidatesByCenter[candidateIndex]);
+      }
+    }
+
+    addCandidate(
+      findSortableAxisCandidateContainingCoordinate(
+        index.candidatesByStart,
+        axisCoordinate,
+      ),
+    );
+    addCandidate(index.candidatesById.get(input.draggingDraggableId));
+    addCandidate(
+      input.activeDropTargetId
+        ? index.candidatesById.get(input.activeDropTargetId)
+        : undefined,
+    );
+    addCandidate(
+      input.sourceContainerId
+        ? index.candidatesById.get(input.sourceContainerId)
+        : undefined,
+    );
+
+    this.addSortableDomNeighborCandidates({
+      candidates,
+      group: input.group,
+      index,
+      targetId: input.draggingDraggableId,
+    });
+    if (input.activeDropTargetId) {
+      this.addSortableDomNeighborCandidates({
+        candidates,
+        group: input.group,
+        index,
+        targetId: input.activeDropTargetId,
+      });
+    }
+
+    return Array.from(candidates.values(), (candidate) => candidate.entry);
+  }
+
+  private getSortableAxisIndex(
+    group: DragGroup,
+    groupTargets: Map<string, DropTargetEntry>,
+  ): SortableAxisIndex | null {
+    const existingIndex = this.sortableAxisIndexes.get(group);
+
+    if (existingIndex) {
+      return existingIndex;
+    }
+
+    const index = this.createSortableAxisIndex(groupTargets);
+
+    if (index) {
+      this.sortableAxisIndexes.set(group, index);
+    }
+
+    return index;
+  }
+
+  private createSortableAxisIndex(
+    groupTargets: Map<string, DropTargetEntry>,
+  ): SortableAxisIndex | null {
+    let axis: SortableAxis | null = null;
+    let containerId: string | null | undefined;
+    const candidates: SortableAxisCandidate[] = [];
+
+    for (const entry of groupTargets.values()) {
+      const element = this.resolveEntry(entry);
+
+      if (!element) {
+        continue;
+      }
+
+      if (
+        entry.capabilities.container ||
+        !entry.capabilities.sortable ||
+        entry.sortableAxis === null
+      ) {
+        return createUnsupportedSortableAxisIndex();
+      }
+
+      if (axis === null) {
+        axis = entry.sortableAxis;
+      } else if (axis !== entry.sortableAxis) {
+        return createUnsupportedSortableAxisIndex();
+      }
+
+      if (containerId === undefined) {
+        containerId = entry.containerId;
+      } else if (containerId !== entry.containerId) {
+        return createUnsupportedSortableAxisIndex();
+      }
+
+      candidates.push(createSortableAxisCandidate(entry, element, entry.sortableAxis));
+    }
+
+    if (axis === null || candidates.length === 0) {
+      return null;
+    }
+
+    const candidatesByCenter = [...candidates].sort(compareAxisCenter);
+    const candidatesByStart = [...candidates].sort(compareAxisStart);
+    const index: SortableAxisIndex = {
+      axis,
+      containerId: containerId ?? null,
+      candidatesByCenter,
+      candidatesByStart,
+      candidatesById: new Map(
+        candidates.map((candidate) => [candidate.id, candidate]),
+      ),
+      unsupported: hasOverlappingSortableAxisRanges(candidatesByStart),
+    };
+
+    return index;
+  }
+
+  private syncSortableAxisIndexAfterRegister(
+    group: DragGroup,
+    entry: DropTargetEntry,
+    element: HTMLElement,
+  ): void {
+    const index = this.sortableAxisIndexes.get(group);
+
+    if (!index) {
+      return;
+    }
+
+    if (
+      index.unsupported ||
+      entry.capabilities.container ||
+      !entry.capabilities.sortable ||
+      entry.sortableAxis !== index.axis ||
+      entry.containerId !== index.containerId
+    ) {
+      this.sortableAxisIndexes.delete(group);
+      return;
+    }
+
+    const candidate = index.candidatesById.get(entry.id);
+
+    if (!candidate) {
+      this.sortableAxisIndexes.delete(group);
+      return;
+    }
+
+    const updatedCandidate = createSortableAxisCandidate(
+      entry,
+      element,
+      index.axis,
+    );
+
+    candidate.entry = updatedCandidate.entry;
+    candidate.element = updatedCandidate.element;
+    candidate.containerId = updatedCandidate.containerId;
+    candidate.axisStart = updatedCandidate.axisStart;
+    candidate.axisEnd = updatedCandidate.axisEnd;
+    candidate.axisCenter = updatedCandidate.axisCenter;
+  }
+
+  private addSortableDomNeighborCandidates(input: {
+    candidates: Map<string, SortableAxisCandidate>;
+    group: DragGroup;
+    index: SortableAxisIndex;
+    targetId: string;
+  }): void {
+    const registration = this.findRegistration(input.targetId, {
+      group: input.group,
+    });
+
+    if (!registration) {
+      return;
+    }
+
+    const previousDraggableId = this.getNearestSortableSiblingDraggableId(
+      registration.element.previousElementSibling,
+      input.group,
+      "previous",
+    );
+    const nextDraggableId = this.getNearestSortableSiblingDraggableId(
+      registration.element.nextElementSibling,
+      input.group,
+      "next",
+    );
+
+    if (previousDraggableId) {
+      const previousCandidate = input.index.candidatesById.get(previousDraggableId);
+
+      if (previousCandidate) {
+        input.candidates.set(previousDraggableId, previousCandidate);
+      }
+    }
+
+    if (nextDraggableId) {
+      const nextCandidate = input.index.candidatesById.get(nextDraggableId);
+
+      if (nextCandidate) {
+        input.candidates.set(nextDraggableId, nextCandidate);
+      }
+    }
   }
 
   private findContainerRegistrationForElement(input: {
@@ -916,6 +1250,193 @@ function getCandidateParentElements(
   }
 
   return parentElements;
+}
+
+function createUnsupportedSortableAxisIndex(): SortableAxisIndex {
+  return {
+    axis: "vertical",
+    containerId: null,
+    candidatesByCenter: [],
+    candidatesByStart: [],
+    candidatesById: new Map(),
+    unsupported: true,
+  };
+}
+
+function createSortableAxisCandidate(
+  entry: DropTargetEntry,
+  element: HTMLElement,
+  axis: SortableAxis,
+): SortableAxisCandidate {
+  const coordinates = getSortableAxisCoordinates(entry.documentRect, axis);
+
+  return {
+    id: entry.id,
+    entry,
+    element,
+    containerId: entry.containerId,
+    axisStart: coordinates.start,
+    axisEnd: coordinates.end,
+    axisCenter: coordinates.center,
+  };
+}
+
+function getSortableAxisCoordinates(
+  rect: DragRect,
+  axis: SortableAxis,
+): { start: number; end: number; center: number } {
+  if (axis === "horizontal") {
+    return {
+      start: rect.left,
+      end: rect.right,
+      center: rect.left + rect.width / 2,
+    };
+  }
+
+  return {
+    start: rect.top,
+    end: rect.bottom,
+    center: rect.top + rect.height / 2,
+  };
+}
+
+function getSortableQueryAxisCoordinate(input: {
+  axis: SortableAxis;
+  overlayRect: DragRect | null;
+  pointerPosition: DragPoint;
+  targetingAlgorithmKind: BuiltInTargetingAlgorithmKind;
+}): number | null {
+  if (input.targetingAlgorithmKind === "center-to-center") {
+    if (!input.overlayRect) {
+      return null;
+    }
+
+    const coordinates = getSortableAxisCoordinates(
+      input.overlayRect,
+      input.axis,
+    );
+
+    return coordinates.center + getDocumentScrollOffset(input.axis);
+  }
+
+  return (
+    (input.axis === "horizontal"
+      ? input.pointerPosition.x
+      : input.pointerPosition.y) + getDocumentScrollOffset(input.axis)
+  );
+}
+
+function getDocumentScrollOffset(axis: SortableAxis): number {
+  return axis === "horizontal" ? window.scrollX : window.scrollY;
+}
+
+function getNearestSortableAxisIndex(
+  candidates: readonly SortableAxisCandidate[],
+  axisCoordinate: number,
+): number | null {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  let low = 0;
+  let high = candidates.length - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = candidates[mid];
+
+    if (!candidate) {
+      return null;
+    }
+
+    if (candidate.axisCenter < axisCoordinate) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (low <= 0) {
+    return 0;
+  }
+
+  if (low >= candidates.length) {
+    return candidates.length - 1;
+  }
+
+  const previous = candidates[low - 1];
+  const next = candidates[low];
+
+  if (!previous || !next) {
+    return low;
+  }
+
+  return axisCoordinate - previous.axisCenter <= next.axisCenter - axisCoordinate
+    ? low - 1
+    : low;
+}
+
+function findSortableAxisCandidateContainingCoordinate(
+  candidatesByStart: readonly SortableAxisCandidate[],
+  axisCoordinate: number,
+): SortableAxisCandidate | undefined {
+  let low = 0;
+  let high = candidatesByStart.length - 1;
+  let lastStartBeforeCoordinate = -1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = candidatesByStart[mid];
+
+    if (!candidate) {
+      return undefined;
+    }
+
+    if (candidate.axisStart <= axisCoordinate) {
+      lastStartBeforeCoordinate = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (lastStartBeforeCoordinate === -1) {
+    return undefined;
+  }
+
+  const candidate = candidatesByStart[lastStartBeforeCoordinate];
+
+  return candidate && candidate.axisEnd >= axisCoordinate ? candidate : undefined;
+}
+
+function hasOverlappingSortableAxisRanges(
+  candidatesByStart: readonly SortableAxisCandidate[],
+): boolean {
+  let previousAxisEnd = Number.NEGATIVE_INFINITY;
+
+  for (const candidate of candidatesByStart) {
+    if (candidate.axisStart < previousAxisEnd) {
+      return true;
+    }
+
+    previousAxisEnd = Math.max(previousAxisEnd, candidate.axisEnd);
+  }
+
+  return false;
+}
+
+function compareAxisCenter(
+  a: SortableAxisCandidate,
+  b: SortableAxisCandidate,
+): number {
+  return a.axisCenter - b.axisCenter;
+}
+
+function compareAxisStart(
+  a: SortableAxisCandidate,
+  b: SortableAxisCandidate,
+): number {
+  return a.axisStart - b.axisStart;
 }
 
 function isPointInsideRect(point: DragPoint, rect: DragRect): boolean {

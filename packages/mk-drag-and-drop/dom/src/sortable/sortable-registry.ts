@@ -27,6 +27,7 @@ export type DomSortableRuntime = DomDraggableRuntime & {
     options?: {
       containerId?: string | null;
       sortable?: boolean;
+      sortableAxis?: NormalizedSortableOptions["axis"];
     },
   ) => void;
   registerDropContainer?: (
@@ -213,16 +214,15 @@ export function registerSortableElement(input: {
   }
 
   input.element.setAttribute("data-dnd-sortable-draggable", "true");
+  const normalizedOptions = normalizeSortableOptions(input.options);
   input.registry.elementIds.set(input.element, input.draggableId);
   input.registry.elements.set(input.draggableId, new WeakRef(input.element));
   input.registry.groups.set(input.draggableId, input.group);
-  input.registry.sortableOptions.set(
-    input.draggableId,
-    normalizeSortableOptions(input.options),
-  );
+  input.registry.sortableOptions.set(input.draggableId, normalizedOptions);
   input.runtime.registerDropTarget(input.draggableId, input.element, input.group, {
     containerId: input.containerId ?? null,
     sortable: true,
+    sortableAxis: normalizedOptions.axis,
   });
 }
 

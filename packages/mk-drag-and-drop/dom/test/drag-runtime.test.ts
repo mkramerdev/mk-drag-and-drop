@@ -11,6 +11,7 @@ import {
   createDragRuntime,
   type DragRuntime,
 } from "../src/runtime/drag-runtime.js";
+import { DropTargetRegistry } from "../src/runtime/drop-target-registry.js";
 import {
   createRect,
   dispatchKeyDown,
@@ -110,6 +111,66 @@ describe("DragRuntime", () => {
         pointerPosition: { x: 110, y: 10 },
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("does not prune disconnected drop targets during pointer updates", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const pruneDisconnectedSpy = vi.spyOn(
+      DropTargetRegistry.prototype,
+      "pruneDisconnected",
+    );
+    configureRuntime(runtime, {});
+    runtime.registerDropTarget("target-1", target, "items");
+
+    try {
+      startRuntimeDrag(runtime, source);
+      pruneDisconnectedSpy.mockClear();
+
+      dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+      raf.flush();
+      dispatchPointerMove(window, { pointerId: 1, clientX: 111, clientY: 10 });
+      raf.flush();
+
+      expect(runtime.activeDropTargetId).toBe("target-1");
+      expect(pruneDisconnectedSpy).not.toHaveBeenCalled();
+    } finally {
+      pruneDisconnectedSpy.mockRestore();
+    }
+  });
+
+  it("ignores disconnected drop targets during pointer updates", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.remove();
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBeNull();
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 110, y: 10 },
+        activeDropTargetId: null,
+        previousDropTargetId: "target-1",
       },
       expect.any(Object),
     );
@@ -348,6 +409,27 @@ describe("DragRuntime", () => {
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("explicit remeasure still prunes disconnected drop targets", () => {
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const pruneDisconnectedSpy = vi.spyOn(
+      DropTargetRegistry.prototype,
+      "pruneDisconnected",
+    );
+    runtime.registerDropTarget("target-1", target, "items");
+
+    try {
+      target.remove();
+      runtime.remeasureDropTargets("target-1");
+
+      expect(pruneDisconnectedSpy).toHaveBeenCalledWith(undefined);
+      expect(runtime.getDropTargetRegistration("target-1", "items")).toBeNull();
+    } finally {
+      pruneDisconnectedSpy.mockRestore();
+    }
   });
 
   it("clears stale active container targets when they unregister", () => {
