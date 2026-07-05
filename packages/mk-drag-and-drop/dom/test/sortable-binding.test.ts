@@ -270,6 +270,9 @@ describe("createSortable", () => {
     oldElement.remove();
     createSortable({ controller, element: newElement, draggableId: "item" });
 
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    runtime.pruneDisconnectedBindingCleanups();
+
     expect(runtime.getBindingCleanupRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("item")?.element).toBe(newElement);
     expect(oldElement.hasAttribute("data-dnd-sortable-draggable")).toBe(false);
@@ -313,6 +316,116 @@ describe("createSortable", () => {
           const element = createMeasuredElement(
             createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
           );
+          createSortable({ controller: controller!, element, draggableId });
+          return element;
+        }),
+      );
+    }
+  });
+
+  it("clears sortable state before user onDrop synchronously replaces sortable DOM", () => {
+    let draggedStateDuringDrop: string | undefined;
+    let placement: SortableDropPlacement | null = null;
+    controller = createDragController({
+      onDrop: ({ sortablePlacement }) => {
+        placement = sortablePlacement ?? null;
+        const activeElement = list.querySelector<HTMLElement>(
+          "[data-sortable-id='a']",
+        );
+
+        draggedStateDuringDrop = activeElement?.dataset.dndDragged;
+        render(["b", "a"]);
+      },
+    });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const list = document.createElement("div");
+    document.body.append(list);
+
+    render(["a", "b"]);
+
+    const [a, b] = Array.from(list.children) as HTMLElement[];
+    dragToTarget(a, b);
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(draggedStateDuringDrop).toBeUndefined();
+    expect(placement).toEqual({
+      sourceContainerId: null,
+      containerId: null,
+      previousDraggableId: "b",
+      nextDraggableId: null,
+      targetDraggableId: "b",
+      side: "after",
+    });
+    expect(getSortableItemIds(list).slice(0, 2)).toEqual(["b", "a"]);
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+
+    function render(draggableIds: string[]): void {
+      list.replaceChildren(
+        ...draggableIds.map((draggableId, index) => {
+          const element = createDetachedMeasuredElement(
+            createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
+          );
+
+          element.dataset.sortableId = draggableId;
+          createSortable({ controller: controller!, element, draggableId });
+          return element;
+        }),
+      );
+    }
+  });
+
+  it("handles vanilla-style bulk sortable rerender during drop", () => {
+    const itemCount = 1_000;
+    let items = Array.from(
+      { length: itemCount },
+      (_, index) => `item-${index}`,
+    );
+    controller = createDragController({
+      onDrop: ({ draggableId, sortablePlacement }) => {
+        if (!sortablePlacement) {
+          return;
+        }
+
+        items = moveItemToSortablePlacement(
+          items,
+          draggableId,
+          sortablePlacement,
+        );
+        render();
+      },
+    });
+    raf = installMockRaf();
+    const runtime = getControllerRuntime(controller);
+    const list = document.createElement("div");
+    document.body.append(list);
+
+    render();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+
+    const [source, target] = Array.from(list.children) as HTMLElement[];
+    dragToTarget(source, target);
+    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount * 2);
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(items.slice(0, 4)).toEqual([
+      "item-1",
+      "item-0",
+      "item-2",
+      "item-3",
+    ]);
+    expect(getSortableItemIds(list).slice(0, 4)).toEqual(items.slice(0, 4));
+    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+
+    function render(): void {
+      list.replaceChildren(
+        ...items.map((draggableId, index) => {
+          const element = createDetachedMeasuredElement(
+            createRect({ left: 0, top: index * 30, width: 20, height: 20 }),
+          );
+
+          element.dataset.sortableId = draggableId;
           createSortable({ controller: controller!, element, draggableId });
           return element;
         }),
@@ -404,4 +517,65 @@ function createDetachedMeasuredElement(
   const element = document.createElement("div");
   stubBoundingClientRect(element, rect);
   return element;
+}
+
+function getSortableItemIds(list: HTMLElement): string[] {
+  return Array.from(list.children, (element) =>
+    (element as HTMLElement).dataset.sortableId ?? "",
+  );
+}
+
+function moveItemToSortablePlacement(
+  items: readonly string[],
+  draggableId: string,
+  placement: SortableDropPlacement,
+): string[] {
+  const withoutItem = items.filter((item) => item !== draggableId);
+
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutItem.indexOf(placement.targetDraggableId);
+
+    if (targetIndex === -1) {
+      return [...items];
+    }
+
+    const insertIndex =
+      placement.side === "after" ? targetIndex + 1 : targetIndex;
+
+    return [
+      ...withoutItem.slice(0, insertIndex),
+      draggableId,
+      ...withoutItem.slice(insertIndex),
+    ];
+  }
+
+  if (placement.previousDraggableId !== null) {
+    const previousIndex = withoutItem.indexOf(placement.previousDraggableId);
+
+    if (previousIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, previousIndex + 1),
+      draggableId,
+      ...withoutItem.slice(previousIndex + 1),
+    ];
+  }
+
+  if (placement.nextDraggableId !== null) {
+    const nextIndex = withoutItem.indexOf(placement.nextDraggableId);
+
+    if (nextIndex === -1) {
+      return [...items];
+    }
+
+    return [
+      ...withoutItem.slice(0, nextIndex),
+      draggableId,
+      ...withoutItem.slice(nextIndex),
+    ];
+  }
+
+  return [...items];
 }

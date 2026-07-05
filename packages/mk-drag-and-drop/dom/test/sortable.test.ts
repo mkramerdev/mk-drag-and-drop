@@ -1000,6 +1000,73 @@ describe("createDomSortable", () => {
     ).toBeLessThan(itemCount);
   });
 
+  it("does not enumerate sortable children on repeated already-placed preview frames", () => {
+    const { list, elements, sourceBehavior } = createLargeSortablePreviewList({
+      itemCount: 10_000,
+    });
+    const draggedElement = elements[0];
+    const secondElement = elements[1];
+
+    if (!draggedElement || !secondElement) {
+      throw new Error("Expected sortable list items");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: draggedElement }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(list.children).slice(0, 2)).toEqual([
+      secondElement,
+      draggedElement,
+    ]);
+
+    const collectionItemSpy = vi.spyOn(HTMLCollection.prototype, "item");
+
+    try {
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+      raf.flush();
+
+      expect(collectionItemSpy).not.toHaveBeenCalled();
+    } finally {
+      collectionItemSpy.mockRestore();
+    }
+
+    expect(Array.from(list.children).slice(0, 2)).toEqual([
+      secondElement,
+      draggedElement,
+    ]);
+    expect(raf.pendingCount()).toBe(0);
+  });
+
+  it("ignores a stale sortable target element that is no longer registry-owned", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const replacementB = createUnattachedSortableElement(
+      "replacement-b",
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+
+    b.after(replacementB);
+    runtime.registerDropTarget("b", replacementB, "rows", {
+      sortable: true,
+      sortableAxis: "vertical",
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([
+      a,
+      b,
+      replacementB,
+      c,
+    ]);
+  });
+
   it("narrows large vertical sortable candidates before built-in targeting", () => {
     const candidateIds: string[] = [];
     configureRuntimeCallbacks(
@@ -1624,6 +1691,54 @@ describe("createDomSortable", () => {
         sortableAxis: axis,
       });
     }
+
+    return {
+      list,
+      elements,
+      sourceBehavior,
+    };
+  }
+
+  function createLargeSortablePreviewList(input: {
+    itemCount: number;
+    axis?: SortableAxis;
+  }) {
+    const axis = input.axis ?? "vertical";
+    const list = document.createElement("div");
+    document.body.append(list);
+    const elements = Array.from({ length: input.itemCount }, (_, index) =>
+      createUnattachedSortableElement(
+        `item-${index}`,
+        axis === "horizontal"
+          ? createRect({ left: index * 30, width: 20, height: 20 })
+          : createRect({ top: index * 30, width: 20, height: 20 }),
+      ),
+    );
+    const sourceElement = elements[0];
+    const targetElement = elements[1];
+
+    if (!sourceElement || !targetElement) {
+      throw new Error("Expected sortable preview source and target elements");
+    }
+
+    list.append(...elements);
+    const sourceBehavior = createDomSortable({
+      runtime,
+      draggableId: "item-0",
+      group: "rows",
+      axis,
+      getElement: () => sourceElement,
+    });
+    const targetBehavior = createDomSortable({
+      runtime,
+      draggableId: "item-1",
+      group: "rows",
+      axis,
+      getElement: () => targetElement,
+    });
+
+    sourceBehavior.setElement(sourceElement);
+    targetBehavior.setElement(targetElement);
 
     return {
       list,

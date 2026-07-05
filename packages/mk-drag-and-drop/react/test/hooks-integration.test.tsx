@@ -359,6 +359,7 @@ describe("React hooks", () => {
       {
         containerId: "container-1",
         sortable: true,
+        sortableAxis: "vertical",
       },
     );
     expect(unregisterSpy).toHaveBeenCalledTimes(1);

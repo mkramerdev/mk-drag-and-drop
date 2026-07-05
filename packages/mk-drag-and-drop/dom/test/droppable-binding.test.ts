@@ -211,6 +211,9 @@ describe("createDroppable", () => {
     oldTarget.remove();
     createDroppable({ controller, element: newTarget, dropTargetId: "target" });
 
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    runtime.pruneDisconnectedBindingCleanups();
+
     expect(runtime.getBindingCleanupRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("target")?.element).toBe(newTarget);
   });

@@ -202,6 +202,9 @@ describe("createDropContainer", () => {
       containerId: "column-a",
     });
 
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    runtime.pruneDisconnectedBindingCleanups();
+
     expect(runtime.getBindingCleanupRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("column-a")?.element).toBe(
       newContainer,

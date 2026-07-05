@@ -197,8 +197,19 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const sortableElements = getSortableDraggableChildren(listElement);
-  const targetIndex = sortableElements.indexOf(targetElement);
+  if (!target.capabilities.sortable) {
+    return;
+  }
+
+  const targetDraggableId = getSortableDraggableId(
+    input.registry,
+    targetElement,
+  );
+
+  if (targetDraggableId !== activeDropTargetId) {
+    return;
+  }
+
   const placementDecision = getSortablePreviewPlacement({
     activeDropTargetId,
     targetElement,
@@ -208,10 +219,6 @@ export function moveSortablePreview(input: {
     options: input.options,
   });
   const placement = placementDecision.placement;
-
-  if (targetIndex === -1) {
-    return;
-  }
 
   setSortablePreviewPlacementState({
     registry: input.registry,
@@ -415,23 +422,6 @@ export function clearSortableDraggedState(
       element,
     });
   }
-}
-
-export function getSortableDraggableChildren(listElement: HTMLElement): HTMLElement[] {
-  const sortableChildren: HTMLElement[] = [];
-
-  for (let index = 0; index < listElement.children.length; index += 1) {
-    const child = listElement.children.item(index);
-
-    if (
-      child instanceof HTMLElement &&
-      child.dataset.dndSortableDraggable !== undefined
-    ) {
-      sortableChildren.push(child);
-    }
-  }
-
-  return sortableChildren;
 }
 
 function getSortableDraggableId(

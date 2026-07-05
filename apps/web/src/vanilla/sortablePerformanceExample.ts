@@ -24,8 +24,10 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
   // Example state: the app owns item order, active styling, and release geometry.
   let items = [...defaultItems];
   let activeItemId: string | null = null;
+  let renderedActiveItemId: string | null = null;
   let releaseTargetRect: DragRect | null = null;
   let releaseOverlayCleanup: (() => void) | null = null;
+  const itemElements = new Map<string, HTMLElement>();
 
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
@@ -60,7 +62,8 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
 
       // Example drop behavior: translate package sortable placement into app data.
       items = moveItemToSortablePlacement(items, draggableId, placement);
-      renderItems();
+      // The sortable preview has already moved the DOM into the committed
+      // position. Re-rendering 10k nodes here delays the release animation.
     },
   });
 
@@ -82,27 +85,78 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
     controller.dispose();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
+    itemElements.clear();
+    renderedActiveItemId = null;
     root.replaceChildren();
   };
 
   // Example rendering: list markup is app-owned and rerendered from data.
   function renderItems(): void {
-    listElement.replaceChildren(
-      ...items.map((draggableId) => createSortableItem(draggableId)),
-    );
+    const currentIds = new Set(items);
+    let shouldSyncDom = listElement.childElementCount !== items.length;
+
+    for (const [draggableId, element] of Array.from(itemElements)) {
+      if (!currentIds.has(draggableId)) {
+        element.remove();
+        itemElements.delete(draggableId);
+        shouldSyncDom = true;
+      }
+    }
+
+    for (let index = 0; index < items.length; index += 1) {
+      const draggableId = items[index];
+
+      if (draggableId === undefined) {
+        continue;
+      }
+
+      let element = itemElements.get(draggableId);
+
+      if (!element) {
+        element = createSortableItem(draggableId);
+        itemElements.set(draggableId, element);
+        shouldSyncDom = true;
+      }
+
+      if (!shouldSyncDom && listElement.children.item(index) !== element) {
+        shouldSyncDom = true;
+      }
+    }
+
+    if (shouldSyncDom) {
+      const fragment = document.createDocumentFragment();
+
+      for (const draggableId of items) {
+        const element = itemElements.get(draggableId);
+
+        if (element) {
+          fragment.append(element);
+        }
+      }
+
+      listElement.replaceChildren(fragment);
+    }
+
     updateItemDraggingClasses();
   }
 
   // Example styling: active item classes drive demo CSS highlights.
   function updateItemDraggingClasses(): void {
-    listElement
-      .querySelectorAll<HTMLElement>(`[${sortableDraggableIdAttribute}]`)
-      .forEach((element) => {
-        element.classList.toggle(
-          "sortableItemDragging",
-          element.getAttribute(sortableDraggableIdAttribute) === activeItemId,
-        );
-      });
+    if (renderedActiveItemId === activeItemId) {
+      return;
+    }
+
+    if (renderedActiveItemId !== null) {
+      itemElements
+        .get(renderedActiveItemId)
+        ?.classList.remove("sortableItemDragging");
+    }
+
+    if (activeItemId !== null) {
+      itemElements.get(activeItemId)?.classList.add("sortableItemDragging");
+    }
+
+    renderedActiveItemId = activeItemId;
   }
 
   function createSortableItem(draggableId: string): HTMLElement {

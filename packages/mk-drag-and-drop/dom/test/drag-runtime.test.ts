@@ -592,6 +592,26 @@ describe("DragRuntime", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
+  it("does not prune binding cleanups during bulk registration", () => {
+    const itemCount = 1_000;
+    const records = Array.from({ length: itemCount }, () => ({
+      cleanup: vi.fn(),
+      isConnected: vi.fn(() => true),
+    }));
+
+    for (const record of records) {
+      runtime.registerBindingCleanup(record);
+    }
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(getTotalIsConnectedCalls(records)).toBe(itemCount);
+
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(getTotalIsConnectedCalls(records)).toBe(itemCount * 2);
+  });
+
   it("self-prunes disconnected binding cleanup records and disposes remaining records", () => {
     const disconnectedCleanup = vi.fn();
     const connectedCleanup = vi.fn();
@@ -664,4 +684,13 @@ function createMeasuredElement(rect: ReturnType<typeof createRect>) {
     .mockReturnValue(rect as DOMRect);
 
   return { element, getBoundingClientRect };
+}
+
+function getTotalIsConnectedCalls(
+  records: { isConnected: ReturnType<typeof vi.fn> }[],
+): number {
+  return records.reduce(
+    (total, record) => total + record.isConnected.mock.calls.length,
+    0,
+  );
 }

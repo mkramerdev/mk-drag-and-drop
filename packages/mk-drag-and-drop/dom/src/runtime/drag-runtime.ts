@@ -520,9 +520,9 @@ export class DragRuntime {
       hasBeenConnected: record.isConnected(),
     };
 
-    this.pruneDisconnectedBindingCleanupRecords();
+    // Keep registration O(1). Full cleanup pruning runs on lifecycle/manual
+    // cleanup paths so bulk renders do not rescan every prior binding.
     this.bindingCleanupRecords.add(storedRecord);
-    this.pruneDisconnectedBindingCleanupRecords(storedRecord);
 
     return () => {
       if (!this.bindingCleanupRecords.delete(storedRecord)) {
@@ -1097,11 +1097,11 @@ export class DragRuntime {
   }
 
   private notifyDrop(event: DropEvent): void {
-    this.lifecycleCallbacks.onDrop?.(event, this.lifecycleHelpers);
-
     for (const subscription of Array.from(this.subscriptions)) {
       subscription.onDrop?.(event);
     }
+
+    this.lifecycleCallbacks.onDrop?.(event, this.lifecycleHelpers);
   }
 }
 
