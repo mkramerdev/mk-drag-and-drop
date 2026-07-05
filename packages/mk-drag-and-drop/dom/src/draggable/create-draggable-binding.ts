@@ -64,5 +64,8 @@ export function createDraggable(input: CreateDraggableInput): void {
     }
   };
 
-  runtime.onDispose(cleanup);
+  runtime.registerBindingCleanup({
+    cleanup,
+    isConnected: () => elementRef.deref()?.isConnected === true,
+  });
 }

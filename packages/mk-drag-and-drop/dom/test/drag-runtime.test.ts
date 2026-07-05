@@ -306,6 +306,36 @@ describe("DragRuntime", () => {
     expect(onDragEnd).not.toHaveBeenCalled();
     expect(onDrop).not.toHaveBeenCalled();
   });
+
+  it("self-prunes disconnected binding cleanup records and disposes remaining records", () => {
+    const disconnectedCleanup = vi.fn();
+    const connectedCleanup = vi.fn();
+    let disconnectedRecordConnected = true;
+
+    runtime.registerBindingCleanup({
+      cleanup: disconnectedCleanup,
+      isConnected: () => disconnectedRecordConnected,
+    });
+    runtime.registerBindingCleanup({
+      cleanup: connectedCleanup,
+      isConnected: () => true,
+    });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+
+    disconnectedRecordConnected = false;
+    runtime.cleanup();
+
+    expect(disconnectedCleanup).toHaveBeenCalledTimes(1);
+    expect(connectedCleanup).not.toHaveBeenCalled();
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+
+    runtime.dispose();
+
+    expect(disconnectedCleanup).toHaveBeenCalledTimes(1);
+    expect(connectedCleanup).toHaveBeenCalledTimes(1);
+    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+  });
 });
 
 function configureRuntime(

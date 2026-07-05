@@ -55,7 +55,6 @@ export function createSortable(input: CreateSortableInput): void {
     const element = elementRef.deref();
 
     if (!element) {
-      behavior.cleanup();
       return;
     }
 
@@ -74,5 +73,8 @@ export function createSortable(input: CreateSortableInput): void {
     behavior.cleanup();
   };
 
-  runtime.onDispose(cleanup);
+  runtime.registerBindingCleanup({
+    cleanup,
+    isConnected: () => elementRef.deref()?.isConnected === true,
+  });
 }

@@ -114,6 +114,60 @@ describe("createDropContainer", () => {
     ).toBeNull();
   });
 
+  it("self-prunes after the bound container is removed", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const container = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 80, height: 80 }),
+    );
+
+    createDropContainer({
+      controller,
+      element: container,
+      containerId: "column-a",
+    });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+
+    container.remove();
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getDropTargetRegistration("column-a")).toBeNull();
+
+    document.body.append(container);
+
+    expect(runtime.getDropTargetRegistration("column-a")).toBeNull();
+  });
+
+  it("keeps a newer same-id container registration when the old binding self-prunes", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const oldContainer = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 80, height: 80 }),
+    );
+    const newContainer = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 80, height: 80 }),
+    );
+
+    createDropContainer({
+      controller,
+      element: oldContainer,
+      containerId: "column-a",
+    });
+    oldContainer.remove();
+    createDropContainer({
+      controller,
+      element: newContainer,
+      containerId: "column-a",
+    });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getDropTargetRegistration("column-a")?.element).toBe(
+      newContainer,
+    );
+  });
+
   it("unregisters the container when the controller is disposed", () => {
     const { source, container, onDrop } = setupDragAndContainer({
       containerId: "column-a",

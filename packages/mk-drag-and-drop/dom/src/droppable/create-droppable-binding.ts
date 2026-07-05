@@ -13,6 +13,7 @@ export type CreateDroppableInput = {
 const defaultDroppableGroup = "default";
 
 export function createDroppable(input: CreateDroppableInput): void {
+  const elementRef = new WeakRef(input.element);
   const runtime = getControllerRuntime(input.controller);
   const behavior = createDomDroppable({
     runtime,
@@ -20,9 +21,26 @@ export function createDroppable(input: CreateDroppableInput): void {
     containerId: input.containerId ?? null,
     group: input.group ?? defaultDroppableGroup,
   });
+  let cleanedUp = false;
 
   behavior.setElement(input.element);
-  runtime.onDispose(() => {
+
+  const cleanup = (): void => {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
+
+    if (!elementRef.deref()) {
+      return;
+    }
+
     behavior.cleanup();
+  };
+
+  runtime.registerBindingCleanup({
+    cleanup,
+    isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

@@ -87,6 +87,11 @@ type DragUpdateSubscriptionEvent = DragUpdateEvent & {
   placementPosition: Point;
 };
 
+export type BindingCleanupRecord = {
+  cleanup: () => void;
+  isConnected: () => boolean;
+};
+
 export class DragRuntime {
   isDragging = false;
   draggedId: string | null = null;
@@ -103,6 +108,7 @@ export class DragRuntime {
   private pointerFrameId: number | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
   private disposeCallbacks = new Set<() => void>();
+  private bindingCleanupRecords = new Set<BindingCleanupRecord>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private lifecycleHelpers: DragLifecycleHelpers = {
     getDropPlacement: (draggableId) => this.getDropPlacement(draggableId),
@@ -213,6 +219,7 @@ export class DragRuntime {
   }
 
   requestDragStart(input: RequestDragStartInput): void {
+    this.pruneDisconnectedBindingCleanups();
     this.pointerActivation.request(input);
   }
 
@@ -225,6 +232,7 @@ export class DragRuntime {
   }
 
   requestKeyboardDragStart(input: RequestKeyboardDragStartInput): void {
+    this.pruneDisconnectedBindingCleanups();
     this.pointerActivation.cancel();
 
     if (
@@ -419,6 +427,7 @@ export class DragRuntime {
     this.resetActiveDragState();
     this.cleanupActiveDragResources();
     this.updateOverlayHost({ type: "unmount" });
+    this.pruneDisconnectedBindingCleanups();
   }
 
   getSortablePlacement(draggableId: string): SortablePlacement | null {
@@ -536,8 +545,10 @@ export class DragRuntime {
         ? input.group
         : undefined;
 
+    this.pruneDisconnectedBindingCleanups();
     this.removeDisconnectedDropTargets(pruneGroup);
     this.dropTargetRegistry.remeasure(input);
+    this.pruneDisconnectedBindingCleanups();
   }
 
   subscribe(subscription: DragRuntimeSubscription): () => void {
@@ -556,8 +567,31 @@ export class DragRuntime {
     };
   }
 
+  registerBindingCleanup(record: BindingCleanupRecord): () => void {
+    this.pruneDisconnectedBindingCleanupRecords();
+    this.bindingCleanupRecords.add(record);
+    this.pruneDisconnectedBindingCleanupRecords(record);
+
+    return () => {
+      if (!this.bindingCleanupRecords.delete(record)) {
+        return;
+      }
+
+      record.cleanup();
+    };
+  }
+
+  pruneDisconnectedBindingCleanups(): void {
+    this.pruneDisconnectedBindingCleanupRecords();
+  }
+
+  getBindingCleanupRecordCount(): number {
+    return this.bindingCleanupRecords.size;
+  }
+
   dispose(): void {
     this.cleanup();
+    this.disposeBindingCleanupRecords();
 
     for (const disposeCallback of Array.from(this.disposeCallbacks)) {
       disposeCallback();
@@ -577,6 +611,8 @@ export class DragRuntime {
         "The selected targeting algorithm requires a drag overlay. Provide dragOverlay or use a pointer-based targeting algorithm.",
       );
     }
+
+    this.pruneDisconnectedBindingCleanups();
 
     const rawPointerPosition = input.pointerPosition;
     const activeDragModifiers = createActiveDragModifiers({
@@ -929,6 +965,26 @@ export class DragRuntime {
   private removeDisconnectedDropTargets(group?: DragGroup): void {
     const removedTargets = this.dropTargetRegistry.pruneDisconnected(group);
     this.clearActiveDropTargetIfRemoved(removedTargets);
+  }
+
+  private pruneDisconnectedBindingCleanupRecords(
+    skipRecord?: BindingCleanupRecord,
+  ): void {
+    for (const record of Array.from(this.bindingCleanupRecords)) {
+      if (record === skipRecord || record.isConnected()) {
+        continue;
+      }
+
+      this.bindingCleanupRecords.delete(record);
+      record.cleanup();
+    }
+  }
+
+  private disposeBindingCleanupRecords(): void {
+    for (const record of Array.from(this.bindingCleanupRecords)) {
+      this.bindingCleanupRecords.delete(record);
+      record.cleanup();
+    }
   }
 
   private clearActiveDropTargetIfRemoved(

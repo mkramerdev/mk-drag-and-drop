@@ -159,7 +159,7 @@ export class DropTargetRegistry {
 
       const entry = this.targetsByGroup.get(target.group)?.get(target.id);
 
-      if (!entry || this.resolveEntry(entry) !== element) {
+      if (!entry || entry.elementRef.deref() !== element) {
         this.targetElements.delete(element);
         return [];
       }

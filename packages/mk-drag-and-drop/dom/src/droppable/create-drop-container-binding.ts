@@ -20,7 +20,24 @@ export function createDropContainer(input: CreateDropContainerInput): void {
     group: input.group ?? defaultDropContainerGroup,
     getElement: () => elementRef.deref() ?? null,
   });
-  runtime.onDispose(() => {
+  let cleanedUp = false;
+
+  const cleanup = (): void => {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
+
+    if (!elementRef.deref()) {
+      return;
+    }
+
     behavior.cleanup();
+  };
+
+  runtime.registerBindingCleanup({
+    cleanup,
+    isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

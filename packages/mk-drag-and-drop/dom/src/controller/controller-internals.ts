@@ -1,18 +1,27 @@
-import type { DragRuntimeHandle } from "../runtime/drag-runtime-handle.js";
+import type {
+  DragRuntimeHandle,
+  InternalBindingCleanupRuntime,
+} from "../runtime/drag-runtime-handle.js";
 import type { DragController } from "./create-drag-controller.js";
 
-const controllerRuntimes = new WeakMap<DragController, DragRuntimeHandle>();
+export type DragControllerRuntimeHandle = DragRuntimeHandle &
+  InternalBindingCleanupRuntime;
+
+const controllerRuntimes = new WeakMap<
+  DragController,
+  DragControllerRuntimeHandle
+>();
 
 export function setControllerRuntime(
   controller: DragController,
   runtime: DragRuntimeHandle,
 ): void {
-  controllerRuntimes.set(controller, runtime);
+  controllerRuntimes.set(controller, runtime as DragControllerRuntimeHandle);
 }
 
 export function getControllerRuntime(
   controller: DragController,
-): DragRuntimeHandle {
+): DragControllerRuntimeHandle {
   const runtime = controllerRuntimes.get(controller);
 
   if (!runtime) {

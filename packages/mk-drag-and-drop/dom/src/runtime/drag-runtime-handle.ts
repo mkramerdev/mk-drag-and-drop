@@ -3,7 +3,7 @@ import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { DomDropContainerRuntime } from "../droppable/create-drop-container.js";
 import type { DomDroppableRuntime } from "../droppable/create-droppable.js";
 import type { DomSortableRuntime } from "../sortable/sortable-registry.js";
-import { DragRuntime } from "./drag-runtime.js";
+import { DragRuntime, type BindingCleanupRecord } from "./drag-runtime.js";
 import type {
   DragRuntimeConfigureInput,
   DragRuntimeOptions,
@@ -24,12 +24,18 @@ export type DragRuntimeHandle = DomDraggableRuntime &
     setOverlayRect: (overlayRect: DragRect | null) => void;
   };
 
+export type InternalBindingCleanupRuntime = {
+  registerBindingCleanup: (record: BindingCleanupRecord) => () => void;
+  pruneDisconnectedBindingCleanups: () => void;
+  getBindingCleanupRecordCount: () => number;
+};
+
 export function createDragRuntimeHandle(
   options?: DragRuntimeHandleOptions,
 ): DragRuntimeHandle {
   const runtime = new DragRuntime(options);
 
-  return {
+  const handle: DragRuntimeHandle & InternalBindingCleanupRuntime = {
     configure: (input) => runtime.configure(input),
     cleanup: () => runtime.cleanup(),
     dispose: () => runtime.dispose(),
@@ -55,5 +61,11 @@ export function createDragRuntimeHandle(
     subscribe: (subscription) => runtime.subscribe(subscription),
     onDispose: (callback) => runtime.onDispose(callback),
     remeasureDropTargets: (input) => runtime.remeasureDropTargets(input),
+    registerBindingCleanup: (record) => runtime.registerBindingCleanup(record),
+    pruneDisconnectedBindingCleanups: () =>
+      runtime.pruneDisconnectedBindingCleanups(),
+    getBindingCleanupRecordCount: () => runtime.getBindingCleanupRecordCount(),
   };
+
+  return handle;
 }

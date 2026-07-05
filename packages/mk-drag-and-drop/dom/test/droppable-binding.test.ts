@@ -139,6 +139,46 @@ describe("createDroppable", () => {
     ).toBeNull();
   });
 
+  it("self-prunes after the bound target is removed", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+
+    createDroppable({ controller, element: target, targetId: "target" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+
+    target.remove();
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getDropTargetRegistration("target")).toBeNull();
+
+    document.body.append(target);
+
+    expect(runtime.getDropTargetRegistration("target")).toBeNull();
+  });
+
+  it("keeps a newer same-id droppable registration when the old binding self-prunes", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const oldTarget = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const newTarget = createMeasuredElement(
+      createRect({ left: 140, top: 0, width: 20, height: 20 }),
+    );
+
+    createDroppable({ controller, element: oldTarget, targetId: "target" });
+    oldTarget.remove();
+    createDroppable({ controller, element: newTarget, targetId: "target" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getDropTargetRegistration("target")?.element).toBe(newTarget);
+  });
+
   it("clears the active drop target when its element is removed", () => {
     const onDragUpdate = vi.fn();
     controller = createDragController({ onDragUpdate });

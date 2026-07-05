@@ -190,7 +190,56 @@ describe("createSortable", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
-  it("supports vanilla-style rerender without storing item cleanup callbacks", () => {
+  it("self-prunes after the bound element is removed", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const runtime = getControllerRuntime(controller);
+    const element = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    element.setAttribute("tabindex", "2");
+
+    createSortable({ controller, element, draggableId: "item" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(element.getAttribute("data-dnd-sortable-draggable")).toBe("true");
+
+    element.remove();
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getDropTargetRegistration("item")).toBeNull();
+    expect(element.hasAttribute("data-dnd-sortable-draggable")).toBe(false);
+    expect(element.getAttribute("tabindex")).toBe("2");
+
+    document.body.append(element);
+    dispatchPointerDown(element, { pointerId: 1 });
+    dispatchKeyDown(element, "Space");
+
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer same-id sortable registration when the old binding self-prunes", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const oldElement = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const newElement = createMeasuredElement(
+      createRect({ left: 40, top: 0, width: 20, height: 20 }),
+    );
+
+    createSortable({ controller, element: oldElement, draggableId: "item" });
+    oldElement.remove();
+    createSortable({ controller, element: newElement, draggableId: "item" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getDropTargetRegistration("item")?.element).toBe(newElement);
+    expect(oldElement.hasAttribute("data-dnd-sortable-draggable")).toBe(false);
+    expect(newElement.getAttribute("data-dnd-sortable-draggable")).toBe("true");
+  });
+
+  it("supports vanilla-style rerender while pruning stale binding records", () => {
     let placement: DropPlacement | null = null;
     controller = createDragController({
       onDrop: ({ draggableId }, helpers) => {
@@ -200,9 +249,14 @@ describe("createSortable", () => {
     raf = installMockRaf();
     const list = document.createElement("div");
     document.body.append(list);
+    const runtime = getControllerRuntime(controller);
 
-    render(["a", "b"]);
-    render(["a", "b"]);
+    for (let index = 0; index < 8; index += 1) {
+      render(["a", "b"]);
+      runtime.pruneDisconnectedBindingCleanups();
+
+      expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    }
 
     const [a, b] = Array.from(list.children) as HTMLElement[];
     dragToTarget(a, b);

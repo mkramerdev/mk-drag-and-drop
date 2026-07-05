@@ -5,6 +5,7 @@ import {
   createDraggable,
   type DragController,
 } from "../src/index.js";
+import { getControllerRuntime } from "../src/controller/controller-internals.js";
 import {
   createRect,
   dispatchKeyDown,
@@ -87,6 +88,30 @@ describe("createDraggable", () => {
 
     expect(element.getAttribute("tabindex")).toBe("2");
 
+    dispatchPointerDown(element, { pointerId: 1 });
+    dispatchKeyDown(element, "Space");
+
+    expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("self-prunes after the bound element is removed", () => {
+    const onDragStart = vi.fn();
+    controller = createDragController({ onDragStart });
+    const runtime = getControllerRuntime(controller);
+    const element = createMeasuredElement();
+    element.setAttribute("tabindex", "2");
+
+    createDraggable({ controller, element, draggableId: "item" });
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+
+    element.remove();
+    runtime.pruneDisconnectedBindingCleanups();
+
+    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(element.getAttribute("tabindex")).toBe("2");
+
+    document.body.append(element);
     dispatchPointerDown(element, { pointerId: 1 });
     dispatchKeyDown(element, "Space");
 
