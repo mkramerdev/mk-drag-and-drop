@@ -1,6 +1,6 @@
 {
   "name": "@mk-drag-and-drop/dom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless DOM drag-and-drop primitives for draggable, droppable, sortable, and grouped interactions.",
   "license": "MIT",
   "homepage": "https://mkramer.dev",

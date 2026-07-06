@@ -1,6 +1,6 @@
 {
   "name": "@mk-drag-and-drop/react",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React hooks and provider for the mk drag-and-drop DOM runtime.",
   "license": "MIT",
   "homepage": "https://mkramer.dev",
