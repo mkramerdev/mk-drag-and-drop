@@ -8,8 +8,9 @@ packages in this pnpm workspace.
 - `@mk-drag-and-drop/dom`
 - `@mk-drag-and-drop/react`
 
-Both packages are intentionally marked `private: true` while release preparation
-is still in progress. Remove `private: true` only as an intentional release step.
+Both packages are public npm packages and have been published under the
+`@mk-drag-and-drop` scope. The package manifests should remain publishable and
+must not be marked `private: true`.
 
 ## Package Relationship
 
@@ -24,10 +25,8 @@ The React source manifest can keep the workspace dependency:
 }
 ```
 
-Use pnpm for package packing and publishing. Do not use `npm pack` or
-`npm publish` for these workspace packages. npm preserves `workspace:*` in the
-packed manifest, while pnpm rewrites workspace dependencies to real package
-versions in the packed manifest.
+Use pnpm for package packing and publishing. pnpm rewrites workspace
+dependencies to real package versions in the packed manifest.
 
 ## Build Workflow
 
@@ -98,7 +97,7 @@ Each publishable package should have:
 ## Release Checklist
 
 - Start from a clean working tree or an intentional release diff.
-- Confirm `private: true` removal is intentional for the release.
+- Confirm package manifests are not marked `private: true`.
 - Run package tests.
 - Run package builds.
 - Run example builds.
@@ -107,6 +106,7 @@ Each publishable package should have:
 - Verify the React tarball dependency rewrite for `@mk-drag-and-drop/dom`.
 - Publish DOM first.
 - Publish React second.
+- Verify both packages on npm with `npm view`.
 - Tag the release if that is the chosen release process.
 
 ## Maintenance Notes

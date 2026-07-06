@@ -19,7 +19,8 @@ measurement for targeting and modifiers.
   and framework adapters.
 - `@mk-drag-and-drop/react`: React provider and hooks over the DOM package.
 
-Both packages are currently marked `private` in this workspace.
+Both packages are public npm packages published under the `@mk-drag-and-drop`
+scope.
 
 ## Public Imports
 
@@ -124,8 +125,8 @@ React examples live in `apps/react-web/src/react`:
 - `groupedExample.tsx`
 - `treeExample.tsx`
 
-The root `docs/` directory currently has no documentation files. Package-level
-documentation lives in the DOM and React package READMEs.
+Package-level documentation lives in the DOM and React package READMEs.
+Maintainer release notes live in `docs/package-maintenance.md`.
 
 ## Development
 
