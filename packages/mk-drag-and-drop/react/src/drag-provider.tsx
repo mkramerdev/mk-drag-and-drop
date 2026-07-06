@@ -227,7 +227,7 @@ export function DragProvider({
 
   useEffect(() => {
     return () => {
-      runtime.dispose();
+      runtime.cleanup();
     };
   }, [runtime]);
 

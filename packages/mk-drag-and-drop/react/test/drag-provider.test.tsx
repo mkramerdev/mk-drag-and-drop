@@ -1,5 +1,11 @@
 import { act, render, screen } from "@testing-library/react";
-import { Suspense, startTransition, useContext, useState } from "react";
+import {
+  StrictMode,
+  Suspense,
+  startTransition,
+  useContext,
+  useState,
+} from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
@@ -18,7 +24,7 @@ import {
   stubBoundingClientRect,
 } from "./test-utils.js";
 
-function createDisposeSpyInstaller(
+function createCleanupSpyInstaller(
   spy: () => void,
 ): (runtime: DragRuntimeHandle) => void {
   let installed = false;
@@ -29,10 +35,10 @@ function createDisposeSpyInstaller(
     }
 
     installed = true;
-    const dispose = runtime.dispose;
-    runtime.dispose = () => {
+    const cleanup = runtime.cleanup;
+    runtime.cleanup = () => {
       spy();
-      dispose();
+      cleanup();
     };
   };
 }
@@ -222,18 +228,49 @@ describe("DragProvider", () => {
     raf.restore();
   });
 
-  it("disposes runtime on unmount", () => {
-    const disposeSpy = vi.fn();
-    const installDisposeSpy = createDisposeSpyInstaller(disposeSpy);
+  it("keeps runtime usable after StrictMode effect replay", () => {
+    const onDragStart = vi.fn();
+    render(
+      <StrictMode>
+        <DragProvider
+          onDragStart={onDragStart}
+          dragOverlay={({ dragState }) => (
+            <div>Overlay item {dragState.draggableId}</div>
+          )}
+        >
+          <DraggableBox />
+        </DragProvider>
+      </StrictMode>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+        clientX: 4,
+        clientY: 4,
+      });
+    });
+
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
+  });
+
+  it("cleans up runtime on unmount", () => {
+    const cleanupSpy = vi.fn();
+    const installCleanupSpy = createCleanupSpyInstaller(cleanupSpy);
     const { unmount } = render(
       <DragProvider>
-        <RuntimeProbe onRuntime={installDisposeSpy} />
+        <RuntimeProbe onRuntime={installCleanupSpy} />
       </DragProvider>,
     );
 
     unmount();
 
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
   });
 
   it("renders overlay during drag", () => {
