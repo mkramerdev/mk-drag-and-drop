@@ -1,6 +1,5 @@
 {
   "name": "@mk-drag-and-drop/react",
-  "private": true,
   "version": "0.1.0",
   "description": "React hooks and provider for the mk drag-and-drop DOM runtime.",
   "license": "MIT",
@@ -50,7 +49,7 @@
     "@mk-drag-and-drop/dom": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19.2.7"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
