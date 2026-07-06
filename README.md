@@ -10,8 +10,10 @@ drag operations and placement data; they do not own application state or persist
 changes for you.
 
 Drag overlays use the same ownership split: apps create overlay content with
-`dragOverlay`, while the packages own overlay hosting, movement, cleanup, and
-measurement for targeting and modifiers.
+`dragOverlay`, while the packages own overlay hosting, movement, release-mode
+coordination, and measurement for targeting and modifiers. Manual overlay
+release is opt-in through `overlayRelease: "manual"` and the overlay-owned
+`removeOverlay` callback.
 
 ## Packages
 
@@ -45,11 +47,30 @@ import {
 ```
 
 The DOM package also exports `@mk-drag-and-drop/dom/integration` for adapter
-authors who need lower-level DOM behaviors and a runtime handle. The React
+authors who need lower-level DOM behaviors and a runtime scope. The React
 package uses that subpath internally. The React package does not expose package
 subpaths.
 
 Deep imports into `src` or `dist` files are not part of the package exports.
+
+## Architecture Model
+
+The public controller/provider is a drag-and-drop scope, not a manually
+disposed resource. The internal runtime is normal JavaScript memory and is
+released by garbage collection when no longer reachable. Application code does
+not manage runtime teardown.
+
+DOM bindings are scope-owned registrations. `createDraggable`,
+`createDroppable`, `createDropContainer`, and `createSortable` return `void`;
+they do not return per-element disposers. Registrations use WeakRef-backed
+records, and disconnected elements are pruned on drag-critical paths and public
+remeasurement while the scope remains alive.
+
+Pending pointer activation resources and active drag resources are owned by the
+input/drag lifecycle. Activation timers are canceled by activation paths. Active
+drag side effects such as window listeners, RAF updates, text-selection
+suppression, overlays, modifiers, active target state, and sortable previews are
+released on drop/cancel/reset paths rather than by runtime disposal.
 
 ## API Shape
 
@@ -69,16 +90,20 @@ The DOM root export includes:
 - pointer and keyboard configuration types
 - `DragPoint`, `DragRect`
 
-The DOM integration subpath includes `createDragRuntimeHandle`, DOM behavior
-factories such as `createDomDraggable`, `createDomDroppable`,
-`createDomDropContainer`, and `createDomSortable`, related behavior/runtime
-types, `DragState`, `DragOverlayPhase`, and `domDragHandleAttribute`.
+The DOM integration subpath is adapter infrastructure. It includes
+`createDragRuntimeScope`, DOM behavior factories such as `createDomDraggable`,
+`createDomDroppable`, `createDomDropContainer`, and `createDomSortable`,
+related behavior/runtime types, `DragState`, `DragOverlayPhase`, and
+`domDragHandleAttribute`. Application code should prefer package root imports.
 
 The React root export includes `DragProvider`, `useDraggable`, `useDroppable`,
 `useDropContainer`, `useSortable`, `useDragHandle`,
 `useRemeasureDropTargets`, `composeRefs`, React-friendly
 `restrictToContainer`, DOM targeting/modifier/type re-exports, and overlay
 types.
+
+No application-facing package root exposes `cleanup`, `dispose`, `update`, or
+`finishOverlay`. The public manual scope operation is `remeasureDropTargets`.
 
 ## Naming And Lifecycle Results
 
@@ -89,7 +114,7 @@ The current drag item identifier field is `draggableId`. Lifecycle events includ
 
 - `"dropped"`: a valid target was accepted and `onDrop` also runs.
 - `"no-target"`: the user ended normally without an active target.
-- `"invalid-target"`: an active target candidate became stale before finish.
+- `"invalid-target"`: an active target candidate became stale before drag end.
 - `"canceled"`: the drag was canceled, such as Escape or pointercancel.
 
 `onDrop` only runs for valid successful drops. Plain drops are id-only

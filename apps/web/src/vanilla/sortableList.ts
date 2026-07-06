@@ -27,7 +27,7 @@ export function mountSortableList(root: HTMLElement): () => void {
 
   // Package API: creates the drag controller used by this vanilla example.
   const controller = createDragController({
-    keepOverlayOnDrop: true,
+    overlayRelease: "manual",
     modifiers: [lockToYAxis()],
     targetingAlgorithm: centerToCenter,
     targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 96 }),
@@ -77,7 +77,6 @@ export function mountSortableList(root: HTMLElement): () => void {
   renderItems();
 
   return () => {
-    controller.dispose();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
     root.replaceChildren();
@@ -139,17 +138,15 @@ export function mountSortableList(root: HTMLElement): () => void {
     return element;
   }
 
-  function createDragOverlay({
-    dragState,
-    phase,
-    finish,
-  }: DragControllerOverlayInput): HTMLElement | null {
+  function createDragOverlay(input: DragControllerOverlayInput): HTMLElement | null {
+    const { dragState, phase } = input;
+
     // Example rendering: overlay markup and release animation are app-owned.
     if (phase === "released" && !releaseTargetRect) {
       cleanupReleaseOverlay();
       activeItemId = null;
       releaseTargetRect = null;
-      finish();
+      input.removeOverlay();
       renderItems();
       return null;
     }
@@ -162,7 +159,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     appendOverlayContents(overlay, dragState.draggableId);
 
     if (phase === "released") {
-      setupReleaseOverlay(overlay, finish);
+      setupReleaseOverlay(overlay, input.removeOverlay);
     } else {
       cleanupReleaseOverlay();
     }
@@ -172,7 +169,7 @@ export function mountSortableList(root: HTMLElement): () => void {
 
   function setupReleaseOverlay(
     overlay: HTMLElement,
-    finish: () => void,
+    removeOverlay: () => void,
   ): void {
     const targetRect = releaseTargetRect;
     cleanupReleaseOverlay();
@@ -180,7 +177,7 @@ export function mountSortableList(root: HTMLElement): () => void {
     if (!targetRect) {
       activeItemId = null;
       releaseTargetRect = null;
-      finish();
+      removeOverlay();
       renderItems();
       return;
     }
@@ -219,7 +216,7 @@ export function mountSortableList(root: HTMLElement): () => void {
       completed = true;
       clearReleaseOverlay();
       activeItemId = null;
-      finish();
+      removeOverlay();
       renderItems();
     };
 

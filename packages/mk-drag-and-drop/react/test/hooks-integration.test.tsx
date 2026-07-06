@@ -2,7 +2,7 @@ import { StrictMode, useContext, useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
+import type { DragRuntimeScope } from "@mk-drag-and-drop/dom/integration";
 import {
   DragProvider,
   useDragHandle,
@@ -26,15 +26,15 @@ import {
 } from "./test-utils.js";
 
 type RuntimeSpyMap = {
-  registerDropTarget?: DragRuntimeHandle["registerDropTarget"];
-  unregisterDropTarget?: DragRuntimeHandle["unregisterDropTarget"];
-  registerDropContainer?: DragRuntimeHandle["registerDropContainer"];
-  unregisterDropContainer?: DragRuntimeHandle["unregisterDropContainer"];
+  registerDropTarget?: DragRuntimeScope["registerDropTarget"];
+  unregisterDropTarget?: DragRuntimeScope["unregisterDropTarget"];
+  registerDropContainer?: DragRuntimeScope["registerDropContainer"];
+  unregisterDropContainer?: DragRuntimeScope["unregisterDropContainer"];
 };
 
 function createRuntimeSpyInstaller(
   spies: RuntimeSpyMap,
-): (runtime: DragRuntimeHandle) => void {
+): (runtime: DragRuntimeScope) => void {
   let installed = false;
 
   return (runtime) => {
@@ -47,41 +47,41 @@ function createRuntimeSpyInstaller(
     if (spies.registerDropTarget) {
       const registerDropTarget = runtime.registerDropTarget;
       runtime.registerDropTarget = ((
-        ...args: Parameters<DragRuntimeHandle["registerDropTarget"]>
+        ...args: Parameters<DragRuntimeScope["registerDropTarget"]>
       ) => {
         spies.registerDropTarget?.(...args);
         registerDropTarget(...args);
-      }) as DragRuntimeHandle["registerDropTarget"];
+      }) as DragRuntimeScope["registerDropTarget"];
     }
 
     if (spies.unregisterDropTarget) {
       const unregisterDropTarget = runtime.unregisterDropTarget;
       runtime.unregisterDropTarget = ((
-        ...args: Parameters<DragRuntimeHandle["unregisterDropTarget"]>
+        ...args: Parameters<DragRuntimeScope["unregisterDropTarget"]>
       ) => {
         spies.unregisterDropTarget?.(...args);
         unregisterDropTarget(...args);
-      }) as DragRuntimeHandle["unregisterDropTarget"];
+      }) as DragRuntimeScope["unregisterDropTarget"];
     }
 
     if (spies.registerDropContainer) {
       const registerDropContainer = runtime.registerDropContainer;
       runtime.registerDropContainer = ((
-        ...args: Parameters<DragRuntimeHandle["registerDropContainer"]>
+        ...args: Parameters<DragRuntimeScope["registerDropContainer"]>
       ) => {
         spies.registerDropContainer?.(...args);
         registerDropContainer(...args);
-      }) as DragRuntimeHandle["registerDropContainer"];
+      }) as DragRuntimeScope["registerDropContainer"];
     }
 
     if (spies.unregisterDropContainer) {
       const unregisterDropContainer = runtime.unregisterDropContainer;
       runtime.unregisterDropContainer = ((
-        ...args: Parameters<DragRuntimeHandle["unregisterDropContainer"]>
+        ...args: Parameters<DragRuntimeScope["unregisterDropContainer"]>
       ) => {
         spies.unregisterDropContainer?.(...args);
         unregisterDropContainer(...args);
-      }) as DragRuntimeHandle["unregisterDropContainer"];
+      }) as DragRuntimeScope["unregisterDropContainer"];
     }
   };
 }
@@ -89,7 +89,7 @@ function createRuntimeSpyInstaller(
 function RuntimeSpyProbe({
   install,
 }: {
-  install: (runtime: DragRuntimeHandle) => void;
+  install: (runtime: DragRuntimeScope) => void;
 }) {
   const context = useContext(DragContext);
 
@@ -368,6 +368,126 @@ describe("React hooks", () => {
       row,
     );
   });
+
+  it("useSortable starts drag and registers the target under React StrictMode", () => {
+    const registerSpy = vi.fn();
+    const onDragStart = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+    });
+
+    render(
+      <StrictMode>
+        <DragProvider onDragStart={onDragStart}>
+          <RuntimeSpyProbe install={installRuntimeSpies} />
+          <SortableWithHandle />
+        </DragProvider>
+      </StrictMode>,
+    );
+    const row = screen.getByTestId("sortable");
+    const handle = screen.getByRole("button", { name: "Drag item" });
+    stubBoundingClientRect(row, createRect({ width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(handle, { pointerId: 1 });
+    });
+
+    expect(onDragStart).toHaveBeenCalledWith(
+      expect.objectContaining({ draggableId: "item-1", source: "pointer" }),
+      expect.any(Object),
+    );
+    expect(registerSpy).toHaveBeenCalledWith(
+      "item-1",
+      row,
+      "items",
+      {
+        containerId: "container-1",
+        sortable: true,
+        sortableAxis: "vertical",
+      },
+    );
+  });
+
+  it("useSortable ref cleanup works under React StrictMode", () => {
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+      unregisterDropTarget: unregisterSpy,
+    });
+    const { unmount } = render(
+      <StrictMode>
+        <DragProvider>
+          <RuntimeSpyProbe install={installRuntimeSpies} />
+          <SortableWithHandle />
+        </DragProvider>
+      </StrictMode>,
+    );
+
+    unmount();
+
+    expect(registerSpy).toHaveBeenCalled();
+    expect(registerSpy).toHaveBeenCalledTimes(unregisterSpy.mock.calls.length);
+    expect(unregisterSpy).toHaveBeenCalledWith(
+      "item-1",
+      expect.any(HTMLElement),
+    );
+  });
+
+  it("useSortable rerender with changed ids, groups, and containers updates registration", () => {
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({
+      registerDropTarget: registerSpy,
+      unregisterDropTarget: unregisterSpy,
+    });
+    const { rerender, unmount } = render(
+      <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
+        <DynamicSortable
+          draggableId="item-1"
+          group="items"
+          containerId="container-1"
+        />
+      </DragProvider>,
+    );
+    const element = screen.getByTestId("dynamic-sortable");
+
+    rerender(
+      <DragProvider>
+        <RuntimeSpyProbe install={installRuntimeSpies} />
+        <DynamicSortable
+          draggableId="item-2"
+          group="other-items"
+          containerId="container-2"
+        />
+      </DragProvider>,
+    );
+    unmount();
+
+    expect(registerSpy).toHaveBeenCalledWith(
+      "item-1",
+      element,
+      "items",
+      {
+        containerId: "container-1",
+        sortable: true,
+        sortableAxis: "vertical",
+      },
+    );
+    expect(registerSpy).toHaveBeenCalledWith(
+      "item-2",
+      element,
+      "other-items",
+      {
+        containerId: "container-2",
+        sortable: true,
+        sortableAxis: "vertical",
+      },
+    );
+    expect(unregisterSpy).toHaveBeenCalledWith("item-1", element);
+    expect(unregisterSpy).toHaveBeenCalledWith("item-2", element);
+  });
 });
 
 describe("React integration flows", () => {
@@ -415,6 +535,49 @@ describe("React integration flows", () => {
       "end:target-1",
       "drop:item-1:target-1",
     ]);
+    raf.restore();
+  });
+
+  it("StrictMode droppable target is active on update and drop", () => {
+    const raf = installMockRaf();
+    const onDragUpdate = vi.fn();
+    const onDrop = vi.fn();
+
+    render(
+      <StrictMode>
+        <DragProvider onDragUpdate={onDragUpdate} onDrop={onDrop}>
+          <DraggableWithChild />
+          <DynamicDroppable dropTargetId="target-1" />
+        </DragProvider>
+      </StrictMode>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("droppable"),
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), { pointerId: 1 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    });
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: "target-1",
+        source: "pointer",
+      }),
+      expect.any(Object),
+    );
+    expect(onDrop).toHaveBeenCalledWith(
+      { draggableId: "item-1", source: "pointer", dropTargetId: "target-1" },
+      expect.any(Object),
+    );
     raf.restore();
   });
 
@@ -860,6 +1023,28 @@ function SortableWithHandle() {
         {"\u22ee\u22ee"}
       </button>
       Item
+    </div>
+  );
+}
+
+function DynamicSortable({
+  draggableId,
+  group,
+  containerId,
+}: {
+  draggableId: string;
+  group: string;
+  containerId: string | null;
+}) {
+  const sortable = useSortable({
+    draggableId,
+    group,
+    containerId,
+  });
+
+  return (
+    <div {...sortable} data-testid="dynamic-sortable">
+      Item {draggableId}
     </div>
   );
 }

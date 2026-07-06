@@ -103,7 +103,7 @@ describe("DOM behaviors", () => {
     droppable.setElement(first);
     droppable.setElement(first);
     droppable.setElement(second);
-    droppable.cleanup();
+    droppable.releaseRegistration();
 
     expect(runtime.registerDropTarget).toHaveBeenCalledTimes(2);
     expect(runtime.registerDropTarget).toHaveBeenNthCalledWith(
@@ -153,7 +153,7 @@ describe("DOM behaviors", () => {
     container.setElement(first);
     currentElement = second;
     container.setElement(second);
-    container.cleanup();
+    container.releaseRegistration();
 
     expect(runtime.registerDropContainer).toHaveBeenCalledTimes(2);
     expect(runtime.registerDropContainer).toHaveBeenNthCalledWith(
@@ -181,13 +181,13 @@ describe("DOM behaviors", () => {
     );
   });
 
-  it("stale droppable cleanup does not remove a newer target registration", () => {
+  it("stale droppable release does not remove a newer target registration", () => {
     const runtime = createDragRuntime();
     runtime.configure({
       targetingAlgorithm: pointerToCenter,
       targetingConstraint: undefined,
       hasDragOverlay: false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       keyboardConfiguration: undefined,
       modifiers: [],
@@ -211,13 +211,13 @@ describe("DOM behaviors", () => {
 
     oldDroppable.setElement(oldElement);
     newDroppable.setElement(newElement);
-    oldDroppable.cleanup();
+    oldDroppable.releaseRegistration();
 
     expect(runtime.getDropTargetRect("target-1")).toEqual(
       createRect({ left: 40, width: 10 }),
     );
 
-    runtime.dispose();
+    runtime.releaseActiveDragResources();
   });
 
   it("reusing a replaced droppable element does not remove the current target", () => {
@@ -226,7 +226,7 @@ describe("DOM behaviors", () => {
       targetingAlgorithm: pointerToCenter,
       targetingConstraint: undefined,
       hasDragOverlay: false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       keyboardConfiguration: undefined,
       modifiers: [],
@@ -264,7 +264,7 @@ describe("DOM behaviors", () => {
       createRect({ left: 0, width: 10 }),
     );
 
-    runtime.dispose();
+    runtime.releaseActiveDragResources();
   });
 });
 

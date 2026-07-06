@@ -21,7 +21,7 @@ describe("createDropContainer", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller?.dispose();
+    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -68,7 +68,7 @@ describe("createDropContainer", () => {
     });
     createDraggable({ controller, element: source, draggableId: "item" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
 
     document.body.append(root);
     dragToTarget(source, container);
@@ -167,12 +167,12 @@ describe("createDropContainer", () => {
       containerId: "column-a",
     });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
 
     container.remove();
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(0);
     expect(runtime.getDropTargetRegistration("column-a")).toBeNull();
 
     document.body.append(container);
@@ -202,24 +202,13 @@ describe("createDropContainer", () => {
       containerId: "column-a",
     });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
-    runtime.pruneDisconnectedBindingCleanups();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("column-a")?.element).toBe(
       newContainer,
     );
-  });
-
-  it("unregisters the container when the controller is disposed", () => {
-    const { source, container, onDrop } = setupDragAndContainer({
-      containerId: "column-a",
-    });
-
-    controller?.dispose();
-    dragToTarget(source, container);
-
-    expect(onDrop).not.toHaveBeenCalled();
   });
 
   function setupDragAndContainer(input: { containerId: string }): {

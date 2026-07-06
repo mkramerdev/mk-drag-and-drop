@@ -19,7 +19,7 @@ describe("createDragController", () => {
   let controller: DragController | null = null;
 
   afterEach(() => {
-    controller?.dispose();
+    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
     controller = null;
     document.body.innerHTML = "";
     vi.restoreAllMocks();
@@ -30,34 +30,22 @@ describe("createDragController", () => {
     controller = createDragController();
     const runtime = getControllerRuntime(controller);
 
-    controller.update({});
-
     expect(getControllerRuntime(controller)).toBe(runtime);
   });
 
-  it("updates callbacks and config without replacing runtime", () => {
-    const firstOnDragStart = vi.fn();
-    const secondOnDragStart = vi.fn();
+  it("applies initial callbacks and configuration to the runtime scope", () => {
+    const onDragStart = vi.fn();
     controller = createDragController({
-      keyboardConfiguration: { enabled: false },
-      onDragStart: firstOnDragStart,
+      keyboardConfiguration: { enabled: true },
+      onDragStart,
     });
     const runtime = getControllerRuntime(controller);
 
-    expect(runtime.isKeyboardDragEnabled()).toBe(false);
-
-    controller.update({
-      keyboardConfiguration: { enabled: true },
-      onDragStart: secondOnDragStart,
-    });
-
-    expect(getControllerRuntime(controller)).toBe(runtime);
     expect(runtime.isKeyboardDragEnabled()).toBe(true);
 
     startDrag(controller, createElementWithRect());
 
-    expect(firstOnDragStart).not.toHaveBeenCalled();
-    expect(secondOnDragStart).toHaveBeenCalledTimes(1);
+    expect(onDragStart).toHaveBeenCalledTimes(1);
   });
 
   it("delegates drop target remeasurement to the runtime", () => {
@@ -281,8 +269,10 @@ describe("createDragController", () => {
 
   it("renders, positions, moves, and removes overlay elements", () => {
     const raf = installMockRaf();
+    const overlayInputs: DragControllerOverlayInput[] = [];
     controller = createDragController({
-      dragOverlay: () => {
+      dragOverlay: (input) => {
+        overlayInputs.push(input);
         const element = document.createElement("div");
         element.className = "drag-overlay-child";
         element.textContent = "Overlay";
@@ -298,6 +288,7 @@ describe("createDragController", () => {
     const overlay = getOverlayChild();
     const wrapper = overlay?.parentElement;
     expect(overlay?.textContent).toBe("Overlay");
+    expect(overlayInputs.at(-1)).not.toHaveProperty("removeOverlay");
     expect(wrapper?.style.position).toBe("fixed");
     expect(wrapper?.style.left).toBe("20px");
     expect(wrapper?.style.top).toBe("30px");
@@ -314,7 +305,7 @@ describe("createDragController", () => {
       "translate3d(10px, 15px, 0)",
     );
 
-    controller.finishOverlay();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 14, clientY: 21 });
 
     expect(getOverlayChild()).toBeNull();
 
@@ -459,23 +450,31 @@ describe("createDragController", () => {
     });
   });
 
-  it("passes the same drag state to released overlays", () => {
+  it("keeps manual release overlays until removeOverlay is called", () => {
     const raf = installMockRaf();
+    let removeReleasedOverlay: (() => void) | null = null;
     const overlayCalls: Array<{
       phase: DragControllerOverlayInput["phase"];
       draggableId: string;
       group: string;
+      hasRemoveOverlay: boolean;
     }> = [];
     const target = createElementWithRect(
       createRect({ left: 100, width: 20, height: 20 }),
     );
     controller = createDragController({
-      keepOverlayOnDrop: true,
-      dragOverlay: ({ dragState, phase }) => {
+      overlayRelease: "manual",
+      dragOverlay: (input) => {
+        const { dragState, phase } = input;
+        if (phase === "released") {
+          removeReleasedOverlay = input.removeOverlay;
+        }
+
         overlayCalls.push({
           phase,
           draggableId: dragState.draggableId,
           group: dragState.group,
+          hasRemoveOverlay: "removeOverlay" in input,
         });
         const element = document.createElement("div");
         element.className = "drag-overlay-child";
@@ -494,23 +493,26 @@ describe("createDragController", () => {
         phase: "dragging",
         draggableId: "item",
         group: "items",
+        hasRemoveOverlay: false,
       },
       {
         phase: "released",
         draggableId: "item",
         group: "items",
+        hasRemoveOverlay: true,
       },
     ]);
     expect(getOverlayChild()).not.toBeNull();
 
-    controller.finishOverlay();
+    removeReleasedOverlay?.();
+    removeReleasedOverlay?.();
 
     expect(getOverlayChild()).toBeNull();
 
     raf.restore();
   });
 
-  it("disconnects overlay resize observation during cleanup", () => {
+  it("disconnects overlay resize observation during active drag resource reset", () => {
     const resizeObserver = installMockResizeObserver();
     controller = createDragController({
       dragOverlay: () => {
@@ -521,7 +523,7 @@ describe("createDragController", () => {
     });
 
     startDrag(controller, createElementWithRect());
-    controller.cleanup();
+    getControllerRuntime(controller).releaseActiveDragResources();
 
     expect(resizeObserver.instances[0]?.disconnect).toHaveBeenCalledTimes(1);
     expect(getOverlayChild()).toBeNull();
@@ -585,20 +587,16 @@ describe("createDragController", () => {
 
     expect(getLiveRegion()).toBeNull();
 
-    controller.update({
+    controller = createDragController({
       announcements: {
         onDragStart: () => "Started",
       },
     });
 
     expect(getLiveRegion()).not.toBeNull();
-
-    controller.update({});
-
-    expect(getLiveRegion()).toBeNull();
   });
 
-  it("cleans active drag state and overlay", () => {
+  it("resets active drag state and overlay through active drag resources", () => {
     controller = createDragController({
       dragOverlay: () => {
         const element = document.createElement("div");
@@ -610,33 +608,25 @@ describe("createDragController", () => {
     startDrag(controller, createElementWithRect());
     expect(getOverlayChild()).not.toBeNull();
 
-    controller.cleanup();
+    getControllerRuntime(controller).releaseActiveDragResources();
 
     expect(getOverlayChild()).toBeNull();
   });
 
-  it("disposes runtime and removes overlay and live region", () => {
+  it("exposes only public drag scope operations", () => {
     controller = createDragController({
       announcements: {
         onDragStart: () => "Started",
       },
-      dragOverlay: () => {
-        const element = document.createElement("div");
-        element.className = "drag-overlay-child";
-        return element;
-      },
     });
-    const disposeSpy = vi.spyOn(getControllerRuntime(controller), "dispose");
 
-    startDrag(controller, createElementWithRect());
-    expect(getOverlayChild()).not.toBeNull();
-    expect(getLiveRegion()).not.toBeNull();
-
-    controller.dispose();
-
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
-    expect(getOverlayChild()).toBeNull();
-    expect(getLiveRegion()).toBeNull();
+    expect(Object.keys(controller)).toEqual(["remeasureDropTargets"]);
+    expect(controller).not.toHaveProperty("cleanup");
+    expect(controller).not.toHaveProperty("dispose");
+    expect(controller).not.toHaveProperty("update");
+    expect(controller).not.toHaveProperty("configure");
+    expect(controller).not.toHaveProperty("finishOverlay");
+    expect(controller).toHaveProperty("remeasureDropTargets");
   });
 });
 

@@ -22,7 +22,7 @@ export type CreateDomSortableInput = SortableOptions & {
 
 export type DomSortableBehavior = {
   setElement: (element: HTMLElement | null) => void;
-  cleanup: () => void;
+  releaseRegistration: () => void;
   onPointerDown: (event: DomDraggablePointerDownEvent) => void;
   onKeyDown: (event: DomDraggableKeyDownEvent) => void;
   tabIndex: 0 | undefined;
@@ -45,7 +45,7 @@ export function createDomSortable(
   let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredDraggableId: string | null = null;
 
-  const cleanup = (): void => {
+  const releaseRegistration = (): void => {
     const registeredElement = registeredElementRef?.deref() ?? null;
 
     unregisterSortableElement({
@@ -69,7 +69,7 @@ export function createDomSortable(
         return;
       }
 
-      cleanup();
+      releaseRegistration();
 
       if (!element) {
         return;
@@ -87,7 +87,7 @@ export function createDomSortable(
       registeredElementRef = new WeakRef(element);
       registeredDraggableId = input.draggableId;
     },
-    cleanup,
+    releaseRegistration,
     onPointerDown: draggable.onPointerDown,
     onKeyDown: draggable.onKeyDown,
     tabIndex: draggable.tabIndex,

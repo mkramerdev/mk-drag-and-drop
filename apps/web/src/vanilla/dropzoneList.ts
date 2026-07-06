@@ -75,7 +75,6 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   renderItems();
 
   return () => {
-    controller.dispose();
     clearActiveDropzoneLine();
     dropTargetElements.clear();
     root.replaceChildren();

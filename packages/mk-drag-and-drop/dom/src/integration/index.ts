@@ -1,14 +1,15 @@
 export {
-  createDragRuntimeHandle,
-  type DragRuntimeHandle,
-  type DragRuntimeHandleConfigureInput,
-  type DragRuntimeHandleOptions,
-} from "../runtime/drag-runtime-handle.js";
+  createDragRuntimeScope,
+  type DragRuntimeScope,
+  type DragRuntimeScopeConfigureInput,
+  type DragRuntimeScopeOptions,
+} from "../runtime/drag-runtime-scope.js";
 export type {
   DragOverlayHostUpdate,
   DragOverlayPhase,
   DragOverlayRenderState,
   DragState,
+  OverlayReleaseMode,
 } from "../runtime/types.js";
 export type { DragRuntimeSubscription } from "../runtime/lifecycle.js";
 export {

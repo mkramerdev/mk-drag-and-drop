@@ -155,7 +155,6 @@ export function mountKanbanExample(root: HTMLElement): () => void {
   renderBoard();
 
   return () => {
-    controller.dispose();
     root.replaceChildren();
   };
 

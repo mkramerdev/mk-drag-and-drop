@@ -22,7 +22,7 @@ callbacks, and optional announcements.
 The React package wraps `@mk-drag-and-drop/dom`.
 
 `DragProvider` creates and configures the DOM runtime through the package
-integration handle.
+integration scope.
 Hooks such as `useDraggable`, `useDroppable`, `useSortable`, and
 `useDropContainer` register DOM nodes with that runtime through React refs.
 React hooks are adapters over DOM behavior, not a separate implementation.
@@ -57,6 +57,7 @@ The React root export includes:
 - DOM targeting helpers, modifier helpers, lifecycle/source/result types,
   sortable placement types, keyboard/pointer configuration types, and geometry
   types re-exported from the DOM package
+- `OverlayReleaseMode`
 - `DragState` and `DragOverlayPhase` from the DOM integration layer
 
 ## Core Mental Model
@@ -72,11 +73,28 @@ The package reports drag/drop operations. Your app owns the data and the final
 UI commit. React state is one common way to commit the result, but it is not
 required by the package.
 
+## Lifetime Model
+
+`DragProvider` is a drag-and-drop scope for a React subtree. It does not expose
+runtime lifecycle controls, and application code does not dispose of the
+runtime. The internal runtime is normal JavaScript memory and is released by
+garbage collection when unreachable.
+
+Hooks are adapters over the DOM behavior layer. They register committed DOM
+nodes through refs/effects, update those registrations when ids, groups, or
+container ids change, and unregister current nodes on ref/effect unmount.
+Stale disconnected DOM registrations are still pruned by the shared DOM runtime
+while the scope remains alive.
+
+Pending pointer activation resources and active drag resources belong to the
+input/drag lifecycle. Provider unmount releases active resources through the
+same active-drag resource path used by DOM drag cancellation; it is not a
+terminal runtime destructor. React StrictMode replay is supported for
+draggable, droppable, sortable, overlay, callback, and announcement behavior.
+
 ## Installation
 
-This workspace currently marks `@mk-drag-and-drop/react` as private. Install the
-React and DOM packages from your workspace or package registry when they are
-available:
+Install the React and DOM packages from your workspace or package registry:
 
 - `@mk-drag-and-drop/react`
 - `@mk-drag-and-drop/dom`
@@ -153,9 +171,11 @@ Real apps own the markup, layout, styling, state updates, and persistence.
 
 ## DragProvider
 
-`DragProvider` owns the runtime lifetime for the React subtree. It creates the
-DOM runtime, configures it from props, exposes it through React context, renders
-an optional drag overlay, and disposes the runtime when the provider unmounts.
+`DragProvider` creates a DOM runtime scope for the React subtree, configures it
+from props, exposes it through React context, and renders an optional drag
+overlay. Provider effect cleanup is not a runtime destructor; runtime objects
+are ordinary JavaScript objects and active drag resources are released by drag
+drop/cancel paths.
 
 Key props:
 
@@ -171,8 +191,8 @@ Key props:
 - `pointerConfiguration`: configures pointer activation delay and distance.
 - `keyboardConfiguration`: enables and configures keyboard drag commands.
 - `announcements`: optional callbacks that return live-region messages.
-- `keepOverlayOnDrop`: keeps the overlay in the released phase until the overlay
-  calls `finish`.
+- `overlayRelease`: `"auto"` removes overlays on drag end; `"manual"` keeps a
+  released overlay until its `removeOverlay` callback is called.
 
 Callbacks receive operation information and helper methods from the runtime.
 Use those callbacks to commit app data. Do not mutate package internals.
@@ -365,9 +385,10 @@ requestAnimationFrame(() => {
 
 It accepts no argument, a target id, an array of target ids, or `{ group }`.
 Use it intentionally for expand/collapse, grouped trees, or drag-state layout
-changes. It is not needed for normal cleanup and should not run on every render.
-Sortable preview movement does not automatically remeasure a group; call this
-function when an app-owned layout change needs to affect targeting.
+changes. It is not needed for normal resource release and should not run on
+every render. Sortable preview movement does not automatically remeasure a
+group; call this function when an app-owned layout change needs to affect
+targeting.
 
 ## Sortable Behavior
 
@@ -420,14 +441,20 @@ The overlay input includes:
 
 - `dragState`: item id, group, source rect, start pointer, and current pointer.
 - `phase`: `"dragging"` or `"released"`.
-- `finish`: call this when a kept release overlay should be removed.
+- `removeOverlay`: present only for `"released"` overlays in manual release
+  mode; call it when app-owned release animation should remove the overlay.
 
 Overlay rendering is app-owned. `DragProvider` mounts overlay content for the
-dragging phase and, when `keepOverlayOnDrop` is enabled, replaces it once for
-the released phase. Pointer movement updates the package-owned overlay host
-imperatively and does not call `dragOverlay` by default.
+dragging phase. Default `overlayRelease: "auto"` removes the overlay
+immediately on drag end. Manual release replaces it once for the released phase
+and leaves removal to `removeOverlay`. Pointer movement updates the
+package-owned overlay host imperatively and does not call `dragOverlay` by
+default.
 
-The package owns overlay hosting, movement, cleanup, and measurement for
+`removeOverlay` is idempotent and belongs to overlay release only. It is not a
+provider, controller, or runtime teardown API.
+
+The package owns overlay hosting, movement, release, and measurement for
 targeting and modifiers. It measures overlay content on mount/replacement and
 uses `ResizeObserver` when available to remeasure content size changes. Dynamic
 overlay content should use overlay-local state, component effects, lifecycle
@@ -451,7 +478,10 @@ The React package re-exports targeting helpers such as `pointerToCenter`,
 `maxPointerDistanceToRect` / `maxOverlayCenterDistanceToRect`, plus modifier
 helpers. Sortable placement remains separate from targeting: the configured
 targeting algorithm chooses the active target, and sortable only chooses
-before/after placement relative to that target.
+before/after placement relative to that target. For sortable groups, the shared
+DOM registry may narrow measured candidates to relevant sortable item, neighbor,
+or container entries before the targeting algorithm runs; the algorithm still
+chooses from that narrowed measured list.
 
 - `lockToXAxis()`
 - `lockToYAxis()`
@@ -507,19 +537,20 @@ Accessibility still depends on the app's markup and product behavior:
 - Do not assume this package alone provides complete screen-reader drag-and-drop
   support for your domain.
 
-## Cleanup And Effects
+## Lifetime And Effects
 
 Hooks attach input props and register DOM nodes through refs and lifecycle
-effects. Users should not manually clean runtime entries for normal React
+effects. Users should not manually release runtime entries for normal React
 mount/unmount.
 
-`DragProvider` owns runtime lifetime and disposes the runtime when it unmounts.
-`useDropContainer` also cleans its DOM binding on effect cleanup.
+`DragProvider` does not call a terminal runtime destructor when it unmounts.
+`useDropContainer` releases its current DOM registration from effect cleanup.
 `useDraggable`, `useDroppable`, and `useSortable` rely on React prop/ref updates
 for normal mount, unmount, and element replacement behavior.
 
-`useRemeasureDropTargets` is for layout changes, not cleanup. The runtime also
-prunes disconnected targets on drag-critical paths such as remeasurement.
+`useRemeasureDropTargets` is for layout changes, not resource release. The
+runtime also prunes disconnected targets on drag-critical paths such as
+remeasurement.
 
 ## Examples
 
@@ -540,7 +571,7 @@ React examples live in `apps/react-web/src/react`:
 - `DragProvider`: creates/configures the DOM runtime for a React subtree.
   Important props include lifecycle callbacks, overlay rendering, targeting,
   constraints, modifiers, pointer/keyboard configuration, announcements, and
-  `keepOverlayOnDrop`.
+  `overlayRelease`.
 - `useDraggable(options)`: registers a drag source. Important options:
   `draggableId`, `group`. Returns ref and input props.
 - `useDroppable(options)`: registers a drop target. Important options:
@@ -561,8 +592,9 @@ Important event/helper types are re-exported from the React package, including
 `DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`, `DropEvent`,
 `DragSource`, `DragEndResult`, `DragLifecycleHelpers`, `DragState`,
 `DragOverlayPhase`, `SortableDropPlacement`, `RemeasureDropTargetsInput`,
-`PointerConfiguration`, `KeyboardConfiguration`, `KeyboardCommand`, `DropTarget`,
-targeting types, geometry types, and modifier types.
+`OverlayReleaseMode`, `PointerConfiguration`, `KeyboardConfiguration`,
+`KeyboardCommand`, `DropTarget`, targeting types, geometry types, and modifier
+types.
 
 ## When To Use DOM Directly
 
@@ -577,7 +609,7 @@ Use `@mk-drag-and-drop/react` when:
 
 - Your UI is rendered with React.
 - You want ref-based hooks for registration.
-- You want provider-based runtime lifetime and lifecycle integration.
+- You want provider-based runtime scoping and lifecycle integration.
 
 ## Development
 

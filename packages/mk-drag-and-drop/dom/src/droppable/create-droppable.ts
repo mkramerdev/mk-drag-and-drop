@@ -19,7 +19,7 @@ export type CreateDomDroppableInput = {
 
 export type DomDroppableBehavior = {
   setElement: (element: HTMLElement | null) => void;
-  cleanup: () => void;
+  releaseRegistration: () => void;
 };
 
 export function createDomDroppable(
@@ -28,7 +28,7 @@ export function createDomDroppable(
   let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredTargetId: string | null = null;
 
-  const cleanup = (): void => {
+  const releaseRegistration = (): void => {
     const registeredElement = registeredElementRef?.deref() ?? null;
 
     if (registeredTargetId !== null) {
@@ -53,7 +53,7 @@ export function createDomDroppable(
         return;
       }
 
-      cleanup();
+      releaseRegistration();
 
       if (!element) {
         return;
@@ -70,6 +70,6 @@ export function createDomDroppable(
       registeredElementRef = new WeakRef(element);
       registeredTargetId = input.dropTargetId;
     },
-    cleanup,
+    releaseRegistration,
   };
 }

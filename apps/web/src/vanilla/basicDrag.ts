@@ -57,7 +57,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     modifiers: [
       restrictToContainer(({ group }) => (group === basicGroup ? root : null)),
     ],
-    keepOverlayOnDrop: true,
+    overlayRelease: "manual",
     dragOverlay: createDragOverlay,
     onDragStart() {
       overlayTargetRect = null;
@@ -120,7 +120,6 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   rootDropzoneElement.append(itemElement);
 
   return () => {
-    controller.dispose();
     cleanupMovePreview();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
@@ -180,7 +179,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     movePreviewState = null;
   }
 
-  // Example drop behavior: finish the app-owned preview and move the real DOM item.
+  // Example drop behavior: complete the app-owned preview and move the real DOM item.
   function finishMovePreviewToDropzone(targetDropzone: HTMLElement): void {
     const state = movePreviewState;
 
@@ -205,14 +204,12 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   }
 
   // Example rendering: overlay markup and release animation are app-owned.
-  function createDragOverlay({
-    dragState,
-    phase,
-    finish,
-  }: DragControllerOverlayInput): HTMLElement | null {
+  function createDragOverlay(input: DragControllerOverlayInput): HTMLElement | null {
+    const { dragState, phase } = input;
+
     if (phase === "released" && !overlayTargetRect) {
       cleanupReleaseOverlay();
-      finish();
+      input.removeOverlay();
       return null;
     }
 
@@ -224,7 +221,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     appendItemContents(overlay, dragState.draggableId, false);
 
     if (phase === "released") {
-      setupReleaseOverlay(overlay, finish);
+      setupReleaseOverlay(overlay, input.removeOverlay);
     } else {
       cleanupReleaseOverlay();
     }
@@ -234,14 +231,14 @@ export function mountBasicDrag(root: HTMLElement): () => void {
 
   function setupReleaseOverlay(
     overlay: HTMLElement,
-    finish: () => void,
+    removeOverlay: () => void,
   ): void {
     cleanupReleaseOverlay();
     const targetRect = overlayTargetRect;
 
     if (!targetRect) {
       overlayTargetRect = null;
-      finish();
+      removeOverlay();
       return;
     }
 
@@ -261,7 +258,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       completed = true;
       cleanupReleaseOverlay();
       overlayTargetRect = null;
-      finish();
+      removeOverlay();
     };
 
     releaseState.animationFrameId = scheduleAnimationFrame(() => {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   type HTMLAttributes,
@@ -80,6 +81,16 @@ export function useSortable<
     },
     [behavior],
   );
+
+  useEffect(() => {
+    if (nodeRef.current) {
+      behavior.setElement(nodeRef.current);
+    }
+
+    return () => {
+      behavior.releaseRegistration();
+    };
+  }, [behavior]);
 
   return useMemo(() => {
     const sortableProps: UseSortableResult<ElementType> = {

@@ -4,6 +4,7 @@ import {
   centerToCenter,
   pointerToCenter,
   type DragLifecycleCallbacks,
+  type DragModifierInput,
   type TargetingAlgorithm,
   type TargetingConstraint,
 } from "../src/index.js";
@@ -33,7 +34,7 @@ describe("DragRuntime", () => {
   });
 
   afterEach(() => {
-    runtime.dispose();
+    runtime.releaseActiveDragResources();
     raf.restore();
     document.body.innerHTML = "";
     vi.useRealTimers();
@@ -196,7 +197,7 @@ describe("DragRuntime", () => {
       targetingAlgorithm,
       targetingConstraint,
       hasDragOverlay: false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       keyboardConfiguration: undefined,
       modifiers: [],
@@ -246,7 +247,7 @@ describe("DragRuntime", () => {
       targetingAlgorithm: centerToCenter,
       targetingConstraint: undefined,
       hasDragOverlay: true,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       keyboardConfiguration: undefined,
       modifiers: [],
@@ -523,6 +524,43 @@ describe("DragRuntime", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
+  it("releases keyboard listeners on invalid-target keyboard drop", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 24, top: 0, width: 10, height: 10 }),
+    );
+    const onDragEnd = vi.fn();
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, { onDragEnd });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    runtime.requestKeyboardDragStart({
+      draggableId: "item-1",
+      group: "items",
+      element: source,
+    });
+    dispatchKeyDown(window, "ArrowRight");
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.remove();
+    dispatchKeyDown(window, "Enter");
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "keyboard",
+        result: "invalid-target",
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
+    expect(removeListener).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+    );
+    expectActiveResourcesReleased(runtime, raf);
+  });
+
   it("ignores pointer events from another pointerId", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const target = createElementWithRect(
@@ -570,7 +608,7 @@ describe("DragRuntime", () => {
     );
   });
 
-  it("cleans listeners, text selection suppression, and RAF on cleanup", () => {
+  it("releases listeners, text selection suppression, and RAF on active drag reset", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const onDragEnd = vi.fn();
     const onDrop = vi.fn();
@@ -581,7 +619,7 @@ describe("DragRuntime", () => {
     expect(raf.pendingCount()).toBe(1);
     expect(document.documentElement.style.userSelect).toBe("none");
 
-    runtime.cleanup();
+    runtime.releaseActiveDragResources();
     dispatchPointerUp(window, { pointerId: 1 });
 
     expect(raf.pendingCount()).toBe(0);
@@ -592,54 +630,205 @@ describe("DragRuntime", () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 
-  it("does not prune binding cleanups during bulk registration", () => {
+  it("releases active resources and rethrows when onDragStart throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("drag start failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, {
+      onDragStart: () => {
+        throw error;
+      },
+    });
+
+    expect(() => {
+      startRuntimeDrag(runtime, source);
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("releases active resources and rethrows when onDragUpdate throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("drag update failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, {
+      onDragUpdate: () => {
+        throw error;
+      },
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+
+    expect(() => {
+      raf.flush();
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("releases active resources and rethrows when onDragEnd throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("drag end failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, {
+      onDragEnd: () => {
+        throw error;
+      },
+    });
+
+    startRuntimeDrag(runtime, source);
+
+    expect(() => {
+      runtime.endDrag();
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("releases active resources and rethrows when onDrop throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const error = new Error("drop failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, {
+      onDrop: () => {
+        throw error;
+      },
+    });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(() => {
+      runtime.endDrag();
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("releases active resources and rethrows when overlay mount throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("overlay mount failed");
+    runtime = createDragRuntime({
+      updateOverlayHost: (update) => {
+        if (update.type === "mount") {
+          throw error;
+        }
+      },
+    });
+    configureRuntimeWith(runtime, {
+      hasDragOverlay: true,
+    });
+
+    expect(() => {
+      startRuntimeDrag(runtime, source);
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+  });
+
+  it("releases active resources and rethrows when modifier setup throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("modifier setup failed");
+    const modifier: DragModifierInput = {
+      setup: () => {
+        throw error;
+      },
+      transform: ({ pointerPosition }) => pointerPosition,
+    };
+    configureRuntimeWith(runtime, {
+      modifiers: [modifier],
+    });
+
+    expect(() => {
+      startRuntimeDrag(runtime, source);
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+  });
+
+  it("releases active resources and rethrows when modifier transform throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("modifier transform failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    let transformCalls = 0;
+    const modifier: DragModifierInput = {
+      transform: ({ pointerPosition }) => {
+        transformCalls += 1;
+
+        if (transformCalls > 1) {
+          throw error;
+        }
+
+        return pointerPosition;
+      },
+    };
+    configureRuntimeWith(runtime, {
+      modifiers: [modifier],
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+
+    expect(() => {
+      raf.flush();
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("does not prune stale DOM binding releases during bulk registration", () => {
     const itemCount = 1_000;
     const records = Array.from({ length: itemCount }, () => ({
-      cleanup: vi.fn(),
+      release: vi.fn(),
       isConnected: vi.fn(() => true),
     }));
 
     for (const record of records) {
-      runtime.registerBindingCleanup(record);
+      runtime.registerStaleDomBinding(record);
     }
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount);
     expect(getTotalIsConnectedCalls(records)).toBe(itemCount);
 
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount);
     expect(getTotalIsConnectedCalls(records)).toBe(itemCount * 2);
   });
 
-  it("self-prunes disconnected binding cleanup records and disposes remaining records", () => {
-    const disconnectedCleanup = vi.fn();
-    const connectedCleanup = vi.fn();
+  it("prunes disconnected stale DOM binding records while keeping connected records", () => {
+    const disconnectedRelease = vi.fn();
+    const connectedRelease = vi.fn();
     let disconnectedRecordConnected = true;
 
-    runtime.registerBindingCleanup({
-      cleanup: disconnectedCleanup,
+    runtime.registerStaleDomBinding({
+      release: disconnectedRelease,
       isConnected: () => disconnectedRecordConnected,
     });
-    runtime.registerBindingCleanup({
-      cleanup: connectedCleanup,
+    runtime.registerStaleDomBinding({
+      release: connectedRelease,
       isConnected: () => true,
     });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
 
     disconnectedRecordConnected = false;
-    runtime.cleanup();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(disconnectedCleanup).toHaveBeenCalledTimes(1);
-    expect(connectedCleanup).not.toHaveBeenCalled();
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
-
-    runtime.dispose();
-
-    expect(disconnectedCleanup).toHaveBeenCalledTimes(1);
-    expect(connectedCleanup).toHaveBeenCalledTimes(1);
-    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(disconnectedRelease).toHaveBeenCalledTimes(1);
+    expect(connectedRelease).not.toHaveBeenCalled();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
   });
 });
 
@@ -647,14 +836,26 @@ function configureRuntime(
   runtime: DragRuntime,
   lifecycleCallbacks: DragLifecycleCallbacks,
 ): void {
+  configureRuntimeWith(runtime, { lifecycleCallbacks });
+}
+
+function configureRuntimeWith(
+  runtime: DragRuntime,
+  input: {
+    lifecycleCallbacks?: DragLifecycleCallbacks;
+    hasDragOverlay?: boolean;
+    overlayRelease?: "auto" | "manual";
+    modifiers?: readonly DragModifierInput[];
+  },
+): void {
   runtime.configure({
     targetingAlgorithm: pointerToCenter,
     targetingConstraint: undefined,
-    hasDragOverlay: false,
-    keepOverlayOnDrop: false,
-    lifecycleCallbacks,
+    hasDragOverlay: input.hasDragOverlay ?? false,
+    overlayRelease: input.overlayRelease ?? "auto",
+    lifecycleCallbacks: input.lifecycleCallbacks ?? {},
     keyboardConfiguration: undefined,
-    modifiers: [],
+    modifiers: input.modifiers ?? [],
     pointerConfiguration: undefined,
   });
 }
@@ -692,5 +893,32 @@ function getTotalIsConnectedCalls(
   return records.reduce(
     (total, record) => total + record.isConnected.mock.calls.length,
     0,
+  );
+}
+
+function expectActiveResourcesReleased(
+  runtime: DragRuntime,
+  raf: ReturnType<typeof installMockRaf>,
+): void {
+  expect(runtime.isDragging).toBe(false);
+  expect(raf.pendingCount()).toBe(0);
+  expect(document.documentElement.style.userSelect).toBe("");
+  expect(document.body.style.userSelect).toBe("");
+}
+
+function expectPointerWindowListenersReleased(
+  removeListener: ReturnType<typeof vi.spyOn>,
+): void {
+  expect(removeListener).toHaveBeenCalledWith(
+    "pointermove",
+    expect.any(Function),
+  );
+  expect(removeListener).toHaveBeenCalledWith(
+    "pointerup",
+    expect.any(Function),
+  );
+  expect(removeListener).toHaveBeenCalledWith(
+    "pointercancel",
+    expect.any(Function),
   );
 }

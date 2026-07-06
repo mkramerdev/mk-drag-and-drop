@@ -39,7 +39,7 @@ export function createDraggable(input: CreateDraggableInput): void {
     keyDownAttached = true;
   }
 
-  const cleanup = (): void => {
+  const releaseDomBinding = (): void => {
     if (cleanedUp) {
       return;
     }
@@ -64,8 +64,8 @@ export function createDraggable(input: CreateDraggableInput): void {
     }
   };
 
-  runtime.registerBindingCleanup({
-    cleanup,
+  runtime.registerStaleDomBinding({
+    release: releaseDomBinding,
     isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

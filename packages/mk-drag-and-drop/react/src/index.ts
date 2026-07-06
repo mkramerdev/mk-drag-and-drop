@@ -30,6 +30,7 @@ export {
   type DropTarget,
   type KeyboardCommand,
   type KeyboardConfiguration,
+  type OverlayReleaseMode,
   type PointerConfiguration,
   type RemeasureDropTargetsInput,
   type SortableAxis,

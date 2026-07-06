@@ -23,7 +23,7 @@ describe("createSortable", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller?.dispose();
+    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -85,7 +85,7 @@ describe("createSortable", () => {
     createSortable({ controller, element: a, draggableId: "a" });
     createSortable({ controller, element: b, draggableId: "b" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
 
     document.body.append(list);
     dragToTarget(a, b);
@@ -238,13 +238,13 @@ describe("createSortable", () => {
 
     createSortable({ controller, element, draggableId: "item" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
     expect(element.getAttribute("data-dnd-sortable-draggable")).toBe("true");
 
     element.remove();
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(0);
     expect(runtime.getDropTargetRegistration("item")).toBeNull();
     expect(element.hasAttribute("data-dnd-sortable-draggable")).toBe(false);
     expect(element.getAttribute("tabindex")).toBe("2");
@@ -270,10 +270,10 @@ describe("createSortable", () => {
     oldElement.remove();
     createSortable({ controller, element: newElement, draggableId: "item" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
-    runtime.pruneDisconnectedBindingCleanups();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("item")?.element).toBe(newElement);
     expect(oldElement.hasAttribute("data-dnd-sortable-draggable")).toBe(false);
     expect(newElement.getAttribute("data-dnd-sortable-draggable")).toBe("true");
@@ -293,9 +293,9 @@ describe("createSortable", () => {
 
     for (let index = 0; index < 8; index += 1) {
       render(["a", "b"]);
-      runtime.pruneDisconnectedBindingCleanups();
+      runtime.pruneDisconnectedDomBindings();
 
-      expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+      expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
     }
 
     const [a, b] = Array.from(list.children) as HTMLElement[];
@@ -346,7 +346,7 @@ describe("createSortable", () => {
 
     const [a, b] = Array.from(list.children) as HTMLElement[];
     dragToTarget(a, b);
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
     expect(draggedStateDuringDrop).toBeUndefined();
     expect(placement).toEqual({
@@ -358,7 +358,7 @@ describe("createSortable", () => {
       side: "after",
     });
     expect(getSortableItemIds(list).slice(0, 2)).toEqual(["b", "a"]);
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
 
     function render(draggableIds: string[]): void {
       list.replaceChildren(
@@ -402,12 +402,12 @@ describe("createSortable", () => {
 
     render();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount);
 
     const [source, target] = Array.from(list.children) as HTMLElement[];
     dragToTarget(source, target);
-    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount * 2);
-    runtime.pruneDisconnectedBindingCleanups();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount * 2);
+    runtime.pruneDisconnectedDomBindings();
 
     expect(items.slice(0, 4)).toEqual([
       "item-1",
@@ -416,7 +416,7 @@ describe("createSortable", () => {
       "item-3",
     ]);
     expect(getSortableItemIds(list).slice(0, 4)).toEqual(items.slice(0, 4));
-    expect(runtime.getBindingCleanupRecordCount()).toBe(itemCount);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount);
 
     function render(): void {
       list.replaceChildren(
@@ -478,29 +478,7 @@ describe("createSortable", () => {
     expect(orderAfterCommit).toEqual(["b", "a", "c"]);
     expect(items).toEqual(["b", "a", "c"]);
     expect(getSortableItemIds(list)).toEqual(["b", "a", "c"]);
-    expect(runtime.getBindingCleanupRecordCount()).toBe(3);
-  });
-
-  it("cleans up sortable listeners and registration when the controller is disposed", () => {
-    const onDragStart = vi.fn();
-    controller = createDragController({ onDragStart });
-    const element = createMeasuredElement(
-      createRect({ left: 0, top: 0, width: 20, height: 20 }),
-    );
-    element.setAttribute("tabindex", "2");
-
-    createSortable({ controller, element, draggableId: "item" });
-    controller.dispose();
-
-    expect(element.getAttribute("tabindex")).toBe("2");
-    expect(
-      getControllerRuntime(controller).getDropTargetRegistration("item"),
-    ).toBeNull();
-
-    dispatchPointerDown(element, { pointerId: 1 });
-    dispatchKeyDown(element, "Space");
-
-    expect(onDragStart).not.toHaveBeenCalled();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(3);
   });
 
   function setupSortablePair(input: {

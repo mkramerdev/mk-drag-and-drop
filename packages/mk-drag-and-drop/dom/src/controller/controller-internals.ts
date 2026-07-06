@@ -1,27 +1,27 @@
 import type {
-  DragRuntimeHandle,
-  InternalBindingCleanupRuntime,
-} from "../runtime/drag-runtime-handle.js";
+  DragRuntimeScope,
+  InternalStaleDomBindingRuntime,
+} from "../runtime/drag-runtime-scope.js";
 import type { DragController } from "./create-drag-controller.js";
 
-export type DragControllerRuntimeHandle = DragRuntimeHandle &
-  InternalBindingCleanupRuntime;
+export type DragControllerRuntimeScope = DragRuntimeScope &
+  InternalStaleDomBindingRuntime;
 
 const controllerRuntimes = new WeakMap<
   DragController,
-  DragControllerRuntimeHandle
+  DragControllerRuntimeScope
 >();
 
 export function setControllerRuntime(
   controller: DragController,
-  runtime: DragRuntimeHandle,
+  runtime: DragRuntimeScope,
 ): void {
-  controllerRuntimes.set(controller, runtime as DragControllerRuntimeHandle);
+  controllerRuntimes.set(controller, runtime as DragControllerRuntimeScope);
 }
 
 export function getControllerRuntime(
   controller: DragController,
-): DragControllerRuntimeHandle {
+): DragControllerRuntimeScope {
   const runtime = controllerRuntimes.get(controller);
 
   if (!runtime) {

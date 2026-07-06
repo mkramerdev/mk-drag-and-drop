@@ -23,7 +23,7 @@ import {
 ```
 
 The package also exports `@mk-drag-and-drop/dom/integration` for adapter authors
-who need lower-level DOM behavior factories and a runtime handle. Deep imports
+who need lower-level DOM behavior factories and a runtime scope. Deep imports
 into `src` or `dist` files are not part of the public package exports.
 
 ## Public Root API
@@ -40,6 +40,7 @@ The root export includes:
   `DropEvent`, `DragSource`, `DragEndResult`, `DragLifecycleCallbacks`,
   `DragLifecycleHelpers`
 - placement types: `SortableDropPlacement`, `RemeasureDropTargetsInput`
+- overlay types: `OverlayReleaseMode`
 - targeting helpers and types: `pointerToCenter`, `centerToCenter`,
   `pointerToRectDistance`, `getDistanceToRect`,
   `maxPointerDistanceToRect`, `maxOverlayCenterDistanceToRect`, `DropTarget`,
@@ -59,10 +60,11 @@ pipeline internals are not public root APIs.
 
 `@mk-drag-and-drop/dom/integration` exports:
 
-- `createDragRuntimeHandle`
-- `DragRuntimeHandle`, `DragRuntimeHandleOptions`,
-  `DragRuntimeHandleConfigureInput`
-- `DragState`, `DragOverlayPhase`, `DragOverlayRenderState`
+- `createDragRuntimeScope`
+- `DragRuntimeScope`, `DragRuntimeScopeOptions`,
+  `DragRuntimeScopeConfigureInput`
+- `DragState`, `DragOverlayPhase`, `DragOverlayRenderState`,
+  `OverlayReleaseMode`
 - `DragRuntimeSubscription`
 - `createDomDraggable`, `createDomDroppable`, `createDomDropContainer`,
   `createDomSortable`
@@ -74,15 +76,15 @@ ordinary DOM usage, prefer the root controller and binding helpers.
 
 ## Controller
 
-`createDragController(options?)` creates the public DOM controller used by the
-root binding helpers. Controller options include:
+`createDragController(options?)` creates the public DOM drag-and-drop scope used
+by the root binding helpers. Controller options include:
 
 - lifecycle callbacks: `onDragStart`, `onDragUpdate`, `onDragEnd`, `onDrop`
 - `announcements`: lifecycle callbacks that return polite live-region text
 - `dragOverlay(input)`: returns an overlay `HTMLElement` or `null`
 - `overlayRoot`: optional root for the DOM overlay wrapper
-- `keepOverlayOnDrop`: keeps the overlay in the `"released"` phase until
-  `finishOverlay` or the overlay input `finish` callback removes it
+- `overlayRelease`: `"auto"` removes overlays on drag end; `"manual"` keeps a
+  released overlay until its `removeOverlay` callback is called
 - `targetingAlgorithm` and `targetingConstraint`
 - `modifiers`
 - `pointerConfiguration`
@@ -90,23 +92,28 @@ root binding helpers. Controller options include:
 
 The returned controller has:
 
-- `update(options)`: replaces runtime/controller configuration
 - `remeasureDropTargets(input?)`: remeasures all targets, one target id, an
   array of target ids, or `{ group }`
-- `cleanup()`: ends active drag resources and removes the current overlay
-- `dispose()`: final teardown for the controller, runtime registrations,
-  subscriptions, overlays, live region, and registered dispose callbacks
-- `finishOverlay()`: removes a kept overlay
+
+The controller does not expose runtime teardown, disposal, update, or broad
+overlay removal methods. Runtime objects are ordinary JavaScript objects; DOM
+bindings and active drag resources are owned by their own lifetimes.
 
 ## Drag Overlays
 
 `dragOverlay(input)` is a creation hook. The controller calls it when overlay
-content is mounted for the `"dragging"` phase, and once more for the
-`"released"` phase when `keepOverlayOnDrop` is enabled. Pointer movement does
-not call `dragOverlay`.
+content is mounted for the `"dragging"` phase. By default, overlays are removed
+immediately when a drag ends. When `overlayRelease: "manual"` is configured, the
+controller calls `dragOverlay` once more for the `"released"` phase and passes
+`removeOverlay`; call that function when app-owned release animation is done.
+Pointer movement does not call `dragOverlay`.
+
+`removeOverlay` is only present for released overlays in manual release mode.
+Calling it more than once is safe. It removes the overlay host state only; it is
+not a controller or runtime teardown API.
 
 Apps own the returned overlay element and any dynamic content inside it. The
-package owns the overlay wrapper, movement, cleanup, and geometry measurement
+package owns the overlay wrapper, movement, release, and geometry measurement
 used by targeting and modifiers. The wrapper is positioned with `position:
 fixed`, source rect dimensions, `pointer-events: none`, and a transform derived
 from the current pointer delta.
@@ -200,14 +207,15 @@ Helpers:
 `onDrop` only runs for a valid successful drop. `onDragEnd` runs whenever a drag
 ends. `result: "dropped"` means a valid target was accepted and `onDrop` also
 runs. `result: "no-target"` means the user ended normally with no active target.
-`result: "invalid-target"` means an active target candidate was stale by finish
-time. `result: "canceled"` means the drag was canceled, such as Escape,
+`result: "invalid-target"` means an active target candidate was stale by drag
+end. `result: "canceled"` means the drag was canceled, such as Escape,
 pointercancel, or runtime cancellation.
 
 ## Bindings
 
 Root binding helpers attach behavior to DOM elements and return `void`.
-Registrations and listeners are tied to the controller lifetime.
+Registrations are WeakRef-backed and stale disconnected elements are pruned on
+drag-critical paths and explicit remeasurement.
 
 `createDraggable(input)` accepts:
 
@@ -303,7 +311,10 @@ distance helper that matches the intended behavior.
 
 Sortable placement is separate from targeting. The configured targeting
 algorithm alone chooses `activeDropTarget`; sortable only decides before/after
-preview placement relative to that active target.
+preview placement relative to that active target. For sortable groups, the
+registry may narrow measured candidates to relevant sortable item, neighbor, or
+container entries before the targeting algorithm runs; the algorithm still makes
+the active-target decision from that narrowed measured list.
 
 ## Modifiers
 
@@ -353,19 +364,33 @@ and container ids are identifiers that your app maps to its own model.
 Commit data in lifecycle callbacks, usually `onDrop`. Rerender or patch the DOM
 using your app's normal rendering path after the commit.
 
-## Cleanup Model
+## Lifetime Model
 
-Root binding helpers do not return per-item disposers. Dispose the controller
-when tearing down the view or application area that owns those bindings.
+Root binding helpers do not return per-item disposers. Runtime/controller
+objects are ordinary JavaScript objects and are released by garbage collection
+when unreachable.
 
-Use:
+DOM registrations are a separate lifetime. Bindings keep WeakRef-backed records,
+and disconnected drop targets/sortables are pruned on drag-critical paths and
+explicit remeasurement. Active drag resources are owned by the input drag
+lifecycle and are released on drop, cancel, and pointercancel.
 
-- `controller.cleanup()` to end active drag work and remove the active overlay
-- `controller.dispose()` for final teardown
+Pending pointer activation is also separate from an active drag. Activation
+delay timers, the pending activation state, and the latest pre-activation
+pointer position are canceled by pointerup, pointercancel, activation success,
+activation failure, or active drag reset.
 
-Disconnected drop targets are pruned on drag-critical paths, and dispose clears
-runtime registrations. React users usually rely on `DragProvider` and hooks for
-runtime and binding lifetime.
+Active drag resources include pointer/window listeners, keyboard listeners, RAF
+pointer updates, text-selection suppression, active target/session state,
+overlay host state, active modifiers, and sortable preview/snapshot state. They
+are released by active drag lifecycle paths. Runtime disposal is not the cleanup
+mechanism for those resources.
+
+Sortable registration state and sortable active preview state are separate.
+Registered sortable elements, ids, groups, containers, and options remain until
+they are unregistered or pruned as stale DOM. Per-drag sortable snapshots,
+dragged attributes, preview placement, and moved DOM are restored by active drag
+cleanup.
 
 ## Accessibility Scope
 
@@ -429,7 +454,6 @@ for (const columnId of ["todo", "done"]) {
 }
 
 document.body.append(item);
-window.addEventListener("pagehide", () => controller.dispose(), { once: true });
 ```
 
 ## Examples

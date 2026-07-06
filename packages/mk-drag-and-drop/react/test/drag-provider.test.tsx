@@ -8,7 +8,7 @@ import {
 } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
+import type { DragRuntimeScope } from "@mk-drag-and-drop/dom/integration";
 import {
   DragProvider,
   useDraggable,
@@ -17,6 +17,7 @@ import {
 import { DragContext } from "../src/drag-context.js";
 import {
   createRect,
+  dispatchKeyDown,
   dispatchPointerDown,
   dispatchPointerMove,
   dispatchPointerUp,
@@ -24,28 +25,9 @@ import {
   stubBoundingClientRect,
 } from "./test-utils.js";
 
-function createCleanupSpyInstaller(
-  spy: () => void,
-): (runtime: DragRuntimeHandle) => void {
-  let installed = false;
-
-  return (runtime) => {
-    if (installed) {
-      return;
-    }
-
-    installed = true;
-    const cleanup = runtime.cleanup;
-    runtime.cleanup = () => {
-      spy();
-      cleanup();
-    };
-  };
-}
-
 function createConfigureSpyInstaller(
-  spy: DragRuntimeHandle["configure"],
-): (runtime: DragRuntimeHandle) => void {
+  spy: DragRuntimeScope["configure"],
+): (runtime: DragRuntimeScope) => void {
   let installed = false;
 
   return (runtime) => {
@@ -58,7 +40,7 @@ function createConfigureSpyInstaller(
     runtime.configure = ((...args) => {
       spy(...args);
       configure(...args);
-    }) as DragRuntimeHandle["configure"];
+    }) as DragRuntimeScope["configure"];
   };
 }
 
@@ -70,7 +52,7 @@ describe("DragProvider", () => {
 
   it("does not configure the runtime during initial render", () => {
     const renderPhaseKeyboardEnabled: boolean[] = [];
-    let runtime: DragRuntimeHandle | null = null;
+    let runtime: DragRuntimeScope | null = null;
 
     render(
       <DragProvider keyboardConfiguration={{ enabled: false }}>
@@ -259,18 +241,165 @@ describe("DragProvider", () => {
     expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
   });
 
-  it("cleans up runtime on unmount", () => {
-    const cleanupSpy = vi.fn();
-    const installCleanupSpy = createCleanupSpyInstaller(cleanupSpy);
+  it("unmounts while idle and remounts with a usable drag scope", () => {
+    const publishedRuntimes: DragRuntimeScope[] = [];
     const { unmount } = render(
       <DragProvider>
-        <RuntimeProbe onRuntime={installCleanupSpy} />
+        <RuntimeProbe
+          onRuntime={(runtime) => {
+            publishedRuntimes.push(runtime);
+          }}
+        />
       </DragProvider>,
     );
 
-    unmount();
+    expect(() => {
+      unmount();
+    }).not.toThrow();
 
-    expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    const onDragStart = vi.fn();
+    render(
+      <DragProvider onDragStart={onDragStart}>
+        <RuntimeProbe
+          onRuntime={(runtime) => {
+            publishedRuntimes.push(runtime);
+          }}
+        />
+        <DraggableBox />
+      </DragProvider>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+      });
+    });
+
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(publishedRuntimes.at(-1)).not.toHaveProperty("cleanup");
+    expect(publishedRuntimes.at(-1)).not.toHaveProperty("dispose");
+  });
+
+  it("unmounts during an active drag by releasing active resources", () => {
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(
+      <DragProvider>
+        <DraggableBox />
+      </DragProvider>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+      });
+    });
+
+    expect(document.documentElement.style.userSelect).toBe("none");
+
+    act(() => {
+      unmount();
+    });
+
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointermove",
+      expect.any(Function),
+    );
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointerup",
+      expect.any(Function),
+    );
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointercancel",
+      expect.any(Function),
+    );
+    expect(document.documentElement.style.userSelect).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("unmounts during an active keyboard drag by releasing active resources", () => {
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(
+      <DragProvider>
+        <DraggableBox />
+      </DragProvider>,
+    );
+    const source = screen.getByTestId("draggable");
+    stubBoundingClientRect(source, createRect({ width: 20, height: 20 }));
+
+    act(() => {
+      source.focus();
+      dispatchKeyDown(source, "Space");
+    });
+
+    expect(document.documentElement.style.userSelect).toBe("none");
+
+    act(() => {
+      unmount();
+    });
+
+    expect(removeListener).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+    );
+    expect(document.documentElement.style.userSelect).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("does not fire stale lifecycle callbacks after provider unmount", () => {
+    const onDragEnd = vi.fn();
+    const { unmount } = render(
+      <DragProvider onDragEnd={onDragEnd}>
+        <DraggableBox />
+      </DragProvider>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+      });
+      unmount();
+      dispatchPointerUp(window, { pointerId: 1 });
+    });
+
+    expect(onDragEnd).not.toHaveBeenCalled();
+  });
+
+  it("keeps announcements working after StrictMode replay", () => {
+    render(
+      <StrictMode>
+        <DragProvider
+          announcements={{
+            onDragStart: ({ draggableId }) => `Started ${draggableId}`,
+          }}
+        >
+          <DraggableBox />
+        </DragProvider>
+      </StrictMode>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+      });
+    });
+
+    expect(screen.getByText("Started item-1")).toBeInTheDocument();
   });
 
   it("renders overlay during drag", () => {
@@ -297,6 +426,42 @@ describe("DragProvider", () => {
     });
 
     expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
+  });
+
+  it("removes auto-release overlays on drag end", () => {
+    const overlayInputKeys: string[][] = [];
+    render(
+      <DragProvider
+        dragOverlay={(input) => {
+          overlayInputKeys.push(Object.keys(input).sort());
+
+          return <div>Overlay item {input.dragState.draggableId}</div>;
+        }}
+      >
+        <DraggableBox />
+      </DragProvider>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+        clientX: 4,
+        clientY: 4,
+      });
+    });
+
+    expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
+
+    act(() => {
+      dispatchPointerUp(window, { pointerId: 1, clientX: 4, clientY: 4 });
+    });
+
+    expect(screen.queryByText("Overlay item item-1")).toBeNull();
+    expect(overlayInputKeys).toEqual([["dragState", "phase"]]);
   });
 
   it("does not call the overlay render callback on pointer updates", () => {
@@ -449,15 +614,19 @@ describe("DragProvider", () => {
     raf.restore();
   });
 
-  it("supports released overlay phase and finish", () => {
+  it("supports manual released overlay removal", () => {
     const raf = installMockRaf();
-    let finishReleasedOverlay: (() => void) | null = null;
+    let removeReleasedOverlay: (() => void) | null = null;
+    const overlayInputKeys: string[][] = [];
     render(
       <DragProvider
-        keepOverlayOnDrop
-        dragOverlay={({ dragState, phase, finish }) => {
+        overlayRelease="manual"
+        dragOverlay={(input) => {
+          const { dragState, phase } = input;
+          overlayInputKeys.push(Object.keys(input).sort());
+
           if (phase === "released") {
-            finishReleasedOverlay = finish;
+            removeReleasedOverlay = input.removeOverlay;
           }
 
           return (
@@ -494,9 +663,69 @@ describe("DragProvider", () => {
     expect(
       screen.getByText("released:item-1"),
     ).toBeInTheDocument();
+    expect(overlayInputKeys).toContainEqual([
+      "dragState",
+      "phase",
+      "removeOverlay",
+    ]);
 
     act(() => {
-      finishReleasedOverlay?.();
+      removeReleasedOverlay?.();
+      removeReleasedOverlay?.();
+    });
+
+    expect(screen.queryByText("released:item-1")).toBeNull();
+    raf.restore();
+  });
+
+  it("keeps manual overlays removable after StrictMode replay", () => {
+    const raf = installMockRaf();
+    let removeReleasedOverlay: (() => void) | null = null;
+    render(
+      <StrictMode>
+        <DragProvider
+          overlayRelease="manual"
+          dragOverlay={(input) => {
+            if (input.phase === "released") {
+              removeReleasedOverlay = input.removeOverlay;
+            }
+
+            return (
+              <div>
+                {input.phase}:{input.dragState.draggableId}
+              </div>
+            );
+          }}
+        >
+          <DraggableBox />
+          <DroppableBox />
+        </DragProvider>
+      </StrictMode>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("droppable"),
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+      });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+      raf.flush();
+      dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    });
+
+    expect(screen.getByText("released:item-1")).toBeInTheDocument();
+
+    act(() => {
+      removeReleasedOverlay?.();
     });
 
     expect(screen.queryByText("released:item-1")).toBeNull();
@@ -818,7 +1047,7 @@ describe("DragProvider", () => {
 function RuntimeProbe({
   onRuntime,
 }: {
-  onRuntime?: (runtime: DragRuntimeHandle) => void;
+  onRuntime?: (runtime: DragRuntimeScope) => void;
 }) {
   const context = useContext(DragContext);
 
@@ -905,7 +1134,7 @@ function ReleaseStateOverlayProbe() {
 
   return (
     <DragProvider
-      keepOverlayOnDrop
+      overlayRelease="manual"
       onDragEnd={() => {
         setReleaseLabel("ready");
       }}

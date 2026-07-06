@@ -43,6 +43,7 @@ export type {
   RemeasureDropTargetsInput,
   SortableDropPlacement,
 } from "./runtime/drop-target-registry.js";
+export type { OverlayReleaseMode } from "./runtime/types.js";
 export {
   centerToCenter,
   pointerToCenter,

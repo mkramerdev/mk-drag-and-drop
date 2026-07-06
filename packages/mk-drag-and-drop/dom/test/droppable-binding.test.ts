@@ -21,7 +21,7 @@ describe("createDroppable", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller?.dispose();
+    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -62,7 +62,7 @@ describe("createDroppable", () => {
     });
     createDraggable({ controller, element: source, draggableId: "item" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
 
     document.body.append(root);
     dragToTarget(source, target);
@@ -184,12 +184,12 @@ describe("createDroppable", () => {
 
     createDroppable({ controller, element: target, dropTargetId: "target" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
 
     target.remove();
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(0);
     expect(runtime.getDropTargetRegistration("target")).toBeNull();
 
     document.body.append(target);
@@ -211,10 +211,10 @@ describe("createDroppable", () => {
     oldTarget.remove();
     createDroppable({ controller, element: newTarget, dropTargetId: "target" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(2);
-    runtime.pruneDisconnectedBindingCleanups();
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(2);
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
     expect(runtime.getDropTargetRegistration("target")?.element).toBe(newTarget);
   });
 
@@ -298,16 +298,6 @@ describe("createDroppable", () => {
       },
       expect.any(Object),
     );
-  });
-
-  it("unregisters the target when the controller is disposed", () => {
-    const onDrop = vi.fn();
-    const { source, target } = setupDragAndDrop({ onDrop });
-
-    controller?.dispose();
-    dragToTarget(source, target);
-
-    expect(onDrop).not.toHaveBeenCalled();
   });
 
   function setupDragAndDrop(input: { onDrop: ReturnType<typeof vi.fn> }): {

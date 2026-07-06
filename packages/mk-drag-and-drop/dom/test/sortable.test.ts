@@ -19,6 +19,7 @@ import {
 import {
   createPointerHandlerEvent,
   createRect,
+  dispatchKeyDown,
   dispatchPointerCancel,
   dispatchPointerMove,
   dispatchPointerUp,
@@ -42,7 +43,7 @@ describe("createDomSortable", () => {
       targetingAlgorithm: pointerToCenter,
       targetingConstraint: undefined,
       hasDragOverlay: false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       keyboardConfiguration: undefined,
       modifiers: [],
@@ -51,7 +52,7 @@ describe("createDomSortable", () => {
   });
 
   afterEach(() => {
-    runtime.dispose();
+    runtime.releaseActiveDragResources();
     raf.restore();
     document.body.innerHTML = "";
   });
@@ -122,6 +123,191 @@ describe("createDomSortable", () => {
     expect(a.dataset.dndDragged).toBeUndefined();
     expect(a.dataset.dndSortableDraggable).toBe("true");
     expect(remeasureSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps sortable registrations after drop, cancel, and direct active cleanup", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    expectSortableRegistrations(["a", "b", "c"]);
+
+    behaviors.b.onPointerDown(createPointerHandlerEvent({ target: b }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 75 });
+    raf.flush();
+    runtime.cancelDrag();
+    expectSortableRegistrations(["a", "b", "c"]);
+
+    behaviors.c.onPointerDown(createPointerHandlerEvent({ target: c }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 15 });
+    raf.flush();
+    runtime.releaseActiveDragResources();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable active state on keyboard cancel", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.a.onKeyDown(createKeyboardHandlerEvent({ target: a, key: "Space" }));
+    dispatchKeyDown(window, "ArrowDown");
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    dispatchKeyDown(window, "Escape");
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable active state on no-target release", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    runtime.endDrag();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable preview on invalid-target release", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    b.remove();
+    runtime.endDrag();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expect(runtime.getDropTargetRegistration("a", "rows")).not.toBeNull();
+  });
+
+  it("restores sortable active state when onDragStart throws", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("drag start failed");
+    configureRuntimeCallbacks({
+      onDragStart: () => {
+        throw error;
+      },
+    });
+
+    expect(() => {
+      behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    }).toThrow(error);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable preview when onDragUpdate throws after preview movement", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("drag update failed");
+    configureRuntimeCallbacks({
+      onDragUpdate: () => {
+        throw error;
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+
+    expect(() => {
+      raf.flush();
+    }).toThrow(error);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable preview when onDragEnd throws", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("drag end failed");
+    configureRuntimeCallbacks({
+      onDragEnd: () => {
+        throw error;
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(() => {
+      runtime.endDrag();
+    }).toThrow(error);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable preview when onDrop throws", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("drop failed");
+    configureRuntimeCallbacks({
+      onDrop: () => {
+        throw error;
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(() => {
+      runtime.endDrag();
+    }).toThrow(error);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable active state when overlay creation throws", () => {
+    const error = new Error("overlay mount failed");
+    runtime = createDragRuntime({
+      updateOverlayHost: (update) => {
+        if (update.type === "mount") {
+          throw error;
+        }
+      },
+    });
+    configureRuntimeCallbacks(
+      {},
+      {
+        hasDragOverlay: true,
+      },
+    );
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    expect(() => {
+      behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    }).toThrow(error);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expectSortableRegistrations(["a", "b", "c"]);
   });
 
   it("does not oscillate on repeated pointer frames over the same active target", () => {
@@ -1264,7 +1450,7 @@ describe("createDomSortable", () => {
     sortable.setElement(item);
     expect(item.dataset.dndSortableDraggable).toBe("true");
 
-    sortable.cleanup();
+    sortable.releaseRegistration();
 
     expect(item.dataset.dndSortableDraggable).toBeUndefined();
     expect(item.dataset.dndDragged).toBeUndefined();
@@ -1285,7 +1471,7 @@ describe("createDomSortable", () => {
     sortable.setElement(item);
     expect(item.getAttribute("data-dnd-sortable-draggable")).toBe("true");
 
-    sortable.cleanup();
+    sortable.releaseRegistration();
 
     expect(item.getAttribute("data-dnd-sortable-draggable")).toBe("custom-sortable");
     expect(item.getAttribute("data-dnd-dragged")).toBe("custom-dragged");
@@ -1354,7 +1540,7 @@ describe("createDomSortable", () => {
       targetingAlgorithm: pointerToCenter,
       targetingConstraint: ({ pointerPosition }) => pointerPosition.y < 100,
       hasDragOverlay: false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {
         onDragEnd: () => {
           const nextA = createSortableElement(
@@ -1624,6 +1810,32 @@ describe("createDomSortable", () => {
     expect(left.a.dataset.dndDragged).toBeUndefined();
   });
 
+  function createKeyboardHandlerEvent(input: {
+    target: EventTarget | null;
+    key: string;
+  }) {
+    return {
+      target: input.target,
+      key: input.key,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+  }
+
+  function expectSortableRegistrations(draggableIds: readonly string[]): void {
+    for (const draggableId of draggableIds) {
+      expect(runtime.getDropTargetRegistration(draggableId, "rows")).toMatchObject(
+        {
+          id: draggableId,
+          group: "rows",
+          capabilities: {
+            sortable: true,
+          },
+        },
+      );
+    }
+  }
+
   function configureRuntimeCallbacks(
     lifecycleCallbacks: Parameters<DragRuntime["configure"]>[0]["lifecycleCallbacks"],
     options: Partial<
@@ -1637,7 +1849,7 @@ describe("createDomSortable", () => {
       targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
       targetingConstraint: options.targetingConstraint,
       hasDragOverlay: options.hasDragOverlay ?? false,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks,
       keyboardConfiguration: undefined,
       modifiers: [],

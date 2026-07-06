@@ -38,6 +38,11 @@ export type DropEvent = {
   sortablePlacement?: SortableDropPlacement;
 };
 
+export type ActiveDragResetEvent = {
+  draggableId: string;
+  source: DragSource;
+};
+
 export type DragLifecycleHelpers = {
   getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };
@@ -60,4 +65,5 @@ export type DragRuntimeSubscription = {
   onDragUpdate?: (event: DragUpdateEvent) => void;
   onDragEnd?: (event: DragEndEvent) => void;
   onDrop?: (event: DropEvent) => void;
+  onActiveDragReset?: (event: ActiveDragResetEvent) => void;
 };

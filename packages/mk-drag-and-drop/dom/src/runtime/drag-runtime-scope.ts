@@ -3,42 +3,41 @@ import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { DomDropContainerRuntime } from "../droppable/create-drop-container.js";
 import type { DomDroppableRuntime } from "../droppable/create-droppable.js";
 import type { DomSortableRuntime } from "../sortable/sortable-registry.js";
-import { DragRuntime, type BindingCleanupRecord } from "./drag-runtime.js";
+import { DragRuntime, type StaleDomBindingRecord } from "./drag-runtime.js";
 import type {
   DragRuntimeConfigureInput,
   DragRuntimeOptions,
 } from "./types.js";
 
-export type DragRuntimeHandleOptions = DragRuntimeOptions;
+export type DragRuntimeScopeOptions = DragRuntimeOptions;
 
-export type DragRuntimeHandleConfigureInput = DragRuntimeConfigureInput;
+export type DragRuntimeScopeConfigureInput = DragRuntimeConfigureInput;
 
-export type DragRuntimeHandle = DomDraggableRuntime &
+export type DragRuntimeScope = DomDraggableRuntime &
   DomDroppableRuntime &
   DomDropContainerRuntime &
   DomSortableRuntime & {
-    configure: (input: DragRuntimeHandleConfigureInput) => void;
-    cleanup: () => void;
-    dispose: () => void;
-    onDispose: (callback: () => void) => () => void;
+    configure: (input: DragRuntimeScopeConfigureInput) => void;
+    cancelDrag: () => void;
+    releaseActiveDragResources: () => void;
     setOverlayRect: (overlayRect: DragRect | null) => void;
   };
 
-export type InternalBindingCleanupRuntime = {
-  registerBindingCleanup: (record: BindingCleanupRecord) => () => void;
-  pruneDisconnectedBindingCleanups: () => void;
-  getBindingCleanupRecordCount: () => number;
+export type InternalStaleDomBindingRuntime = {
+  registerStaleDomBinding: (record: StaleDomBindingRecord) => () => void;
+  pruneDisconnectedDomBindings: () => void;
+  getStaleDomBindingRecordCount: () => number;
 };
 
-export function createDragRuntimeHandle(
-  options?: DragRuntimeHandleOptions,
-): DragRuntimeHandle {
+export function createDragRuntimeScope(
+  options?: DragRuntimeScopeOptions,
+): DragRuntimeScope {
   const runtime = new DragRuntime(options);
 
-  const handle: DragRuntimeHandle & InternalBindingCleanupRuntime = {
+  const scope: DragRuntimeScope & InternalStaleDomBindingRuntime = {
     configure: (input) => runtime.configure(input),
-    cleanup: () => runtime.cleanup(),
-    dispose: () => runtime.dispose(),
+    cancelDrag: () => runtime.cancelDrag(),
+    releaseActiveDragResources: () => runtime.releaseActiveDragResources(),
     setOverlayRect: (overlayRect) => runtime.setOverlayRect(overlayRect),
     requestDragStart: (input) => runtime.requestDragStart(input),
     isKeyboardDragEnabled: () => runtime.isKeyboardDragEnabled(),
@@ -59,13 +58,12 @@ export function createDragRuntimeHandle(
     getDropTargetRegistration: (dropTargetId, group) =>
       runtime.getDropTargetRegistration(dropTargetId, group),
     subscribe: (subscription) => runtime.subscribe(subscription),
-    onDispose: (callback) => runtime.onDispose(callback),
     remeasureDropTargets: (input) => runtime.remeasureDropTargets(input),
-    registerBindingCleanup: (record) => runtime.registerBindingCleanup(record),
-    pruneDisconnectedBindingCleanups: () =>
-      runtime.pruneDisconnectedBindingCleanups(),
-    getBindingCleanupRecordCount: () => runtime.getBindingCleanupRecordCount(),
+    registerStaleDomBinding: (record) => runtime.registerStaleDomBinding(record),
+    pruneDisconnectedDomBindings: () => runtime.pruneDisconnectedDomBindings(),
+    getStaleDomBindingRecordCount: () =>
+      runtime.getStaleDomBindingRecordCount(),
   };
 
-  return handle;
+  return scope;
 }

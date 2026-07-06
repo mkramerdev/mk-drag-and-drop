@@ -40,7 +40,7 @@ export function snapshotSortableElement(
   }
 
   element.dataset.dndDragged = "true";
-  registry.snapshots.set(draggableId, {
+  registry.activeDrag.snapshots.set(draggableId, {
     element,
     parent: element.parentElement,
     previousSibling: element.previousSibling,
@@ -62,17 +62,17 @@ export function initializeSortablePointerMovement(
   registry: SortableRegistry,
   pointerPosition: { x: number; y: number },
 ): void {
-  registry.pointerMovement = {
+  registry.activeDrag.pointerMovement = {
     previousPointerPosition: { ...pointerPosition },
   };
-  registry.previewPlacement = null;
+  registry.activeDrag.previewPlacement = null;
 }
 
 export function updateSortablePointerMovement(
   registry: SortableRegistry,
   pointerPosition: { x: number; y: number },
 ): void {
-  const movement = registry.pointerMovement;
+  const movement = registry.activeDrag.pointerMovement;
 
   if (!movement) {
     initializeSortablePointerMovement(registry, pointerPosition);
@@ -83,11 +83,11 @@ export function updateSortablePointerMovement(
 }
 
 export function clearSortablePointerMovement(registry: SortableRegistry): void {
-  registry.pointerMovement = null;
+  registry.activeDrag.pointerMovement = null;
 }
 
 export function clearSortablePreviewPlacement(registry: SortableRegistry): void {
-  registry.previewPlacement = null;
+  registry.activeDrag.previewPlacement = null;
 }
 
 export function moveSortablePreview(input: {
@@ -107,7 +107,9 @@ export function moveSortablePreview(input: {
     input.registry,
     input.draggedDraggableId,
   );
-  const draggedGroup = input.registry.groups.get(input.draggedDraggableId);
+  const draggedGroup = input.registry.registration.sortableGroups.get(
+    input.draggedDraggableId,
+  );
 
   if (!draggedElement || !draggedGroup) {
     return;
@@ -115,7 +117,7 @@ export function moveSortablePreview(input: {
 
   const activeDropTargetId =
     input.activeDropTargetId === input.draggedDraggableId
-      ? input.registry.previewPlacement?.activeDropTargetId
+      ? input.registry.activeDrag.previewPlacement?.activeDropTargetId
       : input.activeDropTargetId;
 
   if (
@@ -164,7 +166,7 @@ export function moveSortablePreview(input: {
       placement: null,
       movementDirection: getCurrentAxisMovementDirection({
         placementPosition: input.placementPosition,
-        movement: input.registry.pointerMovement,
+        movement: input.registry.activeDrag.pointerMovement,
         axis: input.options.axis,
       }),
     });
@@ -214,8 +216,8 @@ export function moveSortablePreview(input: {
     activeDropTargetId,
     targetElement,
     placementPosition: input.placementPosition,
-    movement: input.registry.pointerMovement,
-    previewPlacement: input.registry.previewPlacement,
+    movement: input.registry.activeDrag.pointerMovement,
+    previewPlacement: input.registry.activeDrag.previewPlacement,
     options: input.options,
   });
   const placement = placementDecision.placement;
@@ -334,7 +336,7 @@ function setSortablePreviewPlacementState(input: {
   placement: SortablePlacementSide | null;
   movementDirection: SortableAxisMovementDirection;
 }): void {
-  input.registry.previewPlacement = {
+  input.registry.activeDrag.previewPlacement = {
     activeDropTargetId: input.activeDropTargetId,
     placement: input.placement,
     movementDirection: input.movementDirection,
@@ -394,7 +396,7 @@ export function restoreSortableSnapshot(
   registry: SortableRegistry,
   draggableId: string,
 ): boolean {
-  const snapshot = registry.snapshots.get(draggableId);
+  const snapshot = registry.activeDrag.snapshots.get(draggableId);
 
   if (!snapshot) {
     return false;
@@ -413,7 +415,7 @@ export function clearSortableDraggedState(
 ): void {
   const element =
     getRegisteredSortableElement(registry, draggableId) ??
-    registry.snapshots.get(draggableId)?.element;
+    registry.activeDrag.snapshots.get(draggableId)?.element;
 
   if (element) {
     restoreSortableDraggedAttribute({
@@ -428,9 +430,13 @@ function getSortableDraggableId(
   registry: SortableRegistry,
   element: HTMLElement,
 ): string | null {
-  const draggableId = registry.elementIds.get(element);
+  const draggableId = registry.registration.sortableElementIds.get(element);
 
-  return draggableId && registry.elements.get(draggableId)?.deref() === element
+  return (
+    draggableId &&
+      registry.registration.sortableElementRefs.get(draggableId)?.deref() ===
+        element
+  )
     ? draggableId
     : null;
 }
@@ -535,7 +541,8 @@ function refreshSortableDropTargetMeasurements(input: {
         containerId: registration.containerId,
         sortable: registration.capabilities.sortable,
         sortableAxis:
-          input.registry.sortableOptions.get(registration.id)?.axis ?? "vertical",
+          input.registry.registration.sortableOptions.get(registration.id)
+            ?.axis ?? "vertical",
       },
     );
   }

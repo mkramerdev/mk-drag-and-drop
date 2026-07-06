@@ -62,7 +62,7 @@ export function BasicDrag(): ReactElement {
     null,
   );
 
-  function finishMovePreview(): void {
+  function completeMovePreview(): void {
     if (!movePreview) {
         return;
     }
@@ -151,14 +151,16 @@ export function BasicDrag(): ReactElement {
     <DragProvider
       targetingAlgorithm={pointerToRectDistance}
       targetingConstraint={basicTargetingConstraint}
-      keepOverlayOnDrop
-      dragOverlay={({ dragState, phase, finish }) => (
+      overlayRelease="manual"
+      dragOverlay={(input) => (
         <BasicDragOverlay
-            draggableId={dragState.draggableId}
-            phase={phase}
+            draggableId={input.dragState.draggableId}
+            phase={input.phase}
             targetRect={releaseTargetRect}
-            finish={finish}
-            onFinish={clearOverlayState}
+            removeOverlay={
+                input.phase === "released" ? input.removeOverlay : null
+            }
+            onReleaseComplete={clearOverlayState}
         />
       )}
       onDragStart={() => {
@@ -213,7 +215,7 @@ export function BasicDrag(): ReactElement {
                 {movePreview?.toTargetId === rootContainer.dropTargetId ? (
                     <DraggableItemPreview
                         item={draggableItem}
-                        onFadeInEnd={finishMovePreview}
+                        onFadeInEnd={completeMovePreview}
                     />
                 ) : null}
             </DroppableContainer>
@@ -233,7 +235,7 @@ export function BasicDrag(): ReactElement {
                 {movePreview?.toTargetId === droppableContainer.dropTargetId ? (
                     <DraggableItemPreview
                         item={draggableItem}
-                        onFadeInEnd={finishMovePreview}
+                        onFadeInEnd={completeMovePreview}
                     />
                 ) : null}
             </DroppableContainer>
@@ -247,14 +249,14 @@ function BasicDragOverlay({
     draggableId,
     phase,
     targetRect,
-    finish,
-    onFinish,
+    removeOverlay,
+    onReleaseComplete,
 }: {
     draggableId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
-    finish: () => void;
-    onFinish: () => void;
+    removeOverlay: (() => void) | null;
+    onReleaseComplete: () => void;
 }): ReactElement {
     // Example state: release offset exists only to animate this demo's overlay.
     const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -270,9 +272,9 @@ function BasicDragOverlay({
         }
 
         completedRef.current = true;
-        onFinish();
-        finish();
-    }, [finish, onFinish]);
+        onReleaseComplete();
+        removeOverlay?.();
+    }, [onReleaseComplete, removeOverlay]);
 
     useEffect(() => {
         if (phase === "dragging") {

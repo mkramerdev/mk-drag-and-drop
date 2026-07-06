@@ -1,9 +1,9 @@
 import { createContext } from "react";
 
-import type { DragRuntimeHandle } from "@mk-drag-and-drop/dom/integration";
+import type { DragRuntimeScope } from "@mk-drag-and-drop/dom/integration";
 
 export type DragContextValue = {
-  runtime: DragRuntimeHandle;
+  runtime: DragRuntimeScope;
   keyboardDragEnabled: boolean;
 };
 

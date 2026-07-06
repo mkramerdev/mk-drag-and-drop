@@ -23,7 +23,7 @@ export type CreateDomDropContainerInput = {
 
 export type DomDropContainerBehavior = {
   setElement: (element: HTMLElement | null) => void;
-  cleanup: () => void;
+  releaseRegistration: () => void;
 };
 
 export function createDomDropContainer(
@@ -32,7 +32,7 @@ export function createDomDropContainer(
   let registeredElementRef: WeakRef<HTMLElement> | null = null;
   let registeredContainerId: string | null = null;
 
-  const cleanup = (): void => {
+  const releaseRegistration = (): void => {
     const registeredElement = registeredElementRef?.deref() ?? null;
 
     if (registeredContainerId !== null) {
@@ -69,7 +69,7 @@ export function createDomDropContainer(
         return;
       }
 
-      cleanup();
+      releaseRegistration();
 
       if (!element) {
         return;
@@ -77,6 +77,6 @@ export function createDomDropContainer(
 
       registerElement(element);
     },
-    cleanup,
+    releaseRegistration,
   };
 }

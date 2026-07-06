@@ -189,7 +189,6 @@ export function mountTreeExample(root: HTMLElement): () => void {
   renderTree();
 
   return () => {
-    controller.dispose();
     clearActiveTreeDropTarget();
     dropTargetElements.clear();
     root.replaceChildren();

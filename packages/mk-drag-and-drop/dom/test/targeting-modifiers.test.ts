@@ -310,7 +310,7 @@ describe("modifiers", () => {
         expect.any(Object),
       );
     } finally {
-      controller.dispose();
+      getControllerRuntime(controller).releaseActiveDragResources();
       cleanupSourceRect();
       cleanupContainerRect();
       source.remove();
@@ -335,7 +335,7 @@ describe("modifiers", () => {
       targetingAlgorithm: pointerToCenter,
       targetingConstraint: undefined,
       hasDragOverlay: true,
-      keepOverlayOnDrop: false,
+      overlayRelease: "auto",
       lifecycleCallbacks: {},
       modifiers: [restrictToContainer(() => container)],
       keyboardConfiguration: undefined,
@@ -362,7 +362,7 @@ describe("modifiers", () => {
         createRect({ left: 60, top: 0, width: 40, height: 10 }),
       );
     } finally {
-      runtime.dispose();
+      runtime.releaseActiveDragResources();
       cleanupSourceRect();
       cleanupContainerRect();
       source.remove();

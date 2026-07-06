@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PointerActivationController } from "../src/input/pointer-activation.js";
-import { dispatchPointerMove, dispatchPointerUp } from "./test-utils.js";
+import {
+  dispatchPointerCancel,
+  dispatchPointerMove,
+  dispatchPointerUp,
+} from "./test-utils.js";
 
 describe("PointerActivationController", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("activates immediately when no thresholds are configured", () => {
@@ -98,7 +103,7 @@ describe("PointerActivationController", () => {
     });
 
     controller.request(createRequest());
-    controller.cancel();
+    controller.cancelPendingActivation();
     vi.advanceTimersByTime(100);
     dispatchPointerMove(window, { pointerId: 1, clientX: 20, clientY: 0 });
 
@@ -128,7 +133,134 @@ describe("PointerActivationController", () => {
 
     expect(activate).not.toHaveBeenCalled();
   });
+
+  it("clears the activation delay timer on pointerup before activation", () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const activate = vi.fn();
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+    dispatchPointerUp(window, { pointerId: 1 });
+    vi.advanceTimersByTime(100);
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("clears the activation delay timer on pointercancel before activation", () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const activate = vi.fn();
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+    dispatchPointerCancel(window, { pointerId: 1 });
+    vi.advanceTimersByTime(100);
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("clears the activation delay timer when activation succeeds", () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const activate = vi.fn();
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+    vi.advanceTimersByTime(100);
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(activate).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels pending activation idempotently", () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
+    const controller = createDelayedController({ activate: vi.fn() });
+
+    controller.request(createRequest());
+    controller.cancelPendingActivation();
+    controller.cancelPendingActivation();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "pointermove",
+      expect.any(Function),
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "pointerup",
+      expect.any(Function),
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "pointercancel",
+      expect.any(Function),
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not allow a stale activation timer to start a drag after cancellation", () => {
+    vi.useFakeTimers();
+    const activate = vi.fn();
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+    controller.cancelPendingActivation();
+    vi.advanceTimersByTime(100);
+
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("cancels pending activation without runtime teardown and remains reusable", () => {
+    vi.useFakeTimers();
+    const activate = vi.fn();
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+    controller.cancelPendingActivation();
+    vi.advanceTimersByTime(100);
+    controller.request(createRequest());
+    vi.advanceTimersByTime(100);
+
+    expect(activate).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears pending activation before rethrowing activation errors", () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const error = new Error("activation failed");
+    const activate = vi.fn(() => {
+      throw error;
+    });
+    const controller = createDelayedController({ activate });
+
+    controller.request(createRequest());
+
+    expect(() => {
+      vi.advanceTimersByTime(100);
+    }).toThrow(error);
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+
+    expect(() => {
+      controller.cancelPendingActivation();
+    }).not.toThrow();
+    expect(activate).toHaveBeenCalledTimes(1);
+  });
 });
+
+function createDelayedController(input: { activate: ReturnType<typeof vi.fn> }) {
+  return new PointerActivationController({
+    getConfiguration: () => ({
+      activationDelay: 100,
+      activationDistance: null,
+    }),
+    isDragging: () => false,
+    startImmediately: vi.fn(),
+    activate: input.activate,
+  });
+}
 
 function createRequest() {
   const element = document.createElement("div");

@@ -49,7 +49,7 @@ export function SortablePerformanceExample(): ReactElement {
   return (
     // Package API: DragProvider owns drag lifecycle and runtime configuration.
     <DragProvider
-      keepOverlayOnDrop
+      overlayRelease="manual"
       modifiers={sortableModifiers}
       targetingAlgorithm={centerToCenter}
       targetingConstraint={sortableTargetingConstraint}
@@ -78,13 +78,15 @@ export function SortablePerformanceExample(): ReactElement {
           moveItemToSortablePlacement(currentItems, draggableId, placement),
         );
       }}
-      dragOverlay={({ dragState, phase, finish }) => (
+      dragOverlay={(input) => (
         <SortableDragOverlay
-          draggableId={dragState.draggableId}
-          phase={phase}
+          draggableId={input.dragState.draggableId}
+          phase={input.phase}
           targetRect={releaseTargetRect}
-          finish={finish}
-          onFinish={clearOverlayState}
+          removeOverlay={
+            input.phase === "released" ? input.removeOverlay : null
+          }
+          onReleaseComplete={clearOverlayState}
         />
       )}
     >
@@ -106,14 +108,14 @@ function SortableDragOverlay({
     draggableId,
     phase,
     targetRect,
-    finish,
-    onFinish,
+    removeOverlay,
+    onReleaseComplete,
 }: {
     draggableId: string;
     phase: DragOverlayPhase;
     targetRect: DragRect | null;
-    finish: () => void;
-    onFinish: () => void;
+    removeOverlay: (() => void) | null;
+    onReleaseComplete: () => void;
 }): ReactElement {
     // Example state: release offset exists only to animate this demo's overlay.
     const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -129,9 +131,9 @@ function SortableDragOverlay({
         }
 
         completedRef.current = true;
-        onFinish();
-        finish();
-    }, [finish, onFinish]);
+        onReleaseComplete();
+        removeOverlay?.();
+    }, [onReleaseComplete, removeOverlay]);
 
     useEffect(() => {
         if (phase === "dragging") {

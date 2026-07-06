@@ -19,17 +19,18 @@ import {
   type DragUpdateEvent,
   type DropEvent,
   type KeyboardConfiguration,
+  type OverlayReleaseMode,
   type PointerConfiguration,
   type TargetingAlgorithm,
   type TargetingConstraint,
 } from "@mk-drag-and-drop/dom";
 import {
-  createDragRuntimeHandle,
+  createDragRuntimeScope,
   type DragOverlayHostUpdate,
   type DragOverlayRenderState,
   type DragState,
-  type DragRuntimeHandle,
-  type DragRuntimeHandleConfigureInput,
+  type DragRuntimeScope,
+  type DragRuntimeScopeConfigureInput,
 } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "./drag-context.js";
@@ -51,8 +52,8 @@ export type DragProviderProps = {
   announcements?: DragAnnouncements;
   dragOverlay?: (overlay: DragOverlayInput) => ReactNode;
   keyboardConfiguration?: KeyboardConfiguration;
-  keepOverlayOnDrop?: boolean;
   modifiers?: readonly DragModifierInput[];
+  overlayRelease?: OverlayReleaseMode;
   pointerConfiguration?: PointerConfiguration;
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
@@ -87,7 +88,7 @@ type LatestLifecycleProps = Pick<
 >;
 
 type RuntimeConfigurationSnapshot = Omit<
-  DragRuntimeHandleConfigureInput,
+  DragRuntimeScopeConfigureInput,
   "lifecycleCallbacks"
 >;
 
@@ -96,8 +97,8 @@ export function DragProvider({
   announcements,
   dragOverlay,
   keyboardConfiguration,
-  keepOverlayOnDrop = false,
   modifiers,
+  overlayRelease = "auto",
   pointerConfiguration,
   targetingAlgorithm = pointerToCenter,
   targetingConstraint,
@@ -113,7 +114,7 @@ export function DragProvider({
     message: "",
   });
   const lastAnnouncementRef = useRef<string | null>(null);
-  const runtimeRef = useRef<DragRuntimeHandle | null>(null);
+  const runtimeRef = useRef<DragRuntimeScope | null>(null);
   const dragOverlayRef = useRef(dragOverlay);
   const overlayHostRef = useRef<DragOverlayHostHandle | null>(null);
   const overlayContentIdRef = useRef(0);
@@ -132,7 +133,7 @@ export function DragProvider({
   const keyboardDragEnabled =
     isKeyboardDragEnabledFromConfiguration(keyboardConfiguration);
 
-  const finishOverlay = useCallback((): void => {
+  const clearOverlayHost = useCallback((): void => {
     pendingOverlayDragStateRef.current = null;
     overlayHostRef.current = null;
     overlaySnapshotRef.current = null;
@@ -175,7 +176,7 @@ export function DragProvider({
   }
 
   if (runtimeRef.current === null) {
-    runtimeRef.current = createDragRuntimeHandle({
+    runtimeRef.current = createDragRuntimeScope({
       updateOverlayHost: handleOverlayHostUpdate,
     });
   }
@@ -188,11 +189,18 @@ export function DragProvider({
     }),
     [keyboardDragEnabled, runtime],
   );
-  const nextRuntimeConfiguration: DragRuntimeHandleConfigureInput = {
+
+  useEffect(() => {
+    return () => {
+      runtime.releaseActiveDragResources();
+    };
+  }, [runtime]);
+
+  const nextRuntimeConfiguration: DragRuntimeScopeConfigureInput = {
     targetingAlgorithm,
     targetingConstraint,
     hasDragOverlay: dragOverlay !== undefined,
-    keepOverlayOnDrop,
+    overlayRelease,
     lifecycleCallbacks: lifecycleCallbacksRef.current,
     keyboardConfiguration,
     modifiers,
@@ -226,16 +234,10 @@ export function DragProvider({
   });
 
   useEffect(() => {
-    return () => {
-      runtime.cleanup();
-    };
-  }, [runtime]);
-
-  useEffect(() => {
     if (!dragOverlay) {
-      finishOverlay();
+      clearOverlayHost();
     }
-  }, [dragOverlay, finishOverlay]);
+  }, [dragOverlay, clearOverlayHost]);
 
   useEffect(() => {
     if (!announcements) {
@@ -314,7 +316,7 @@ export function DragProvider({
       return;
     }
 
-    finishOverlay();
+    clearOverlayHost();
   }
 
   function mountOverlay(state: DragOverlayRenderState): void {
@@ -322,7 +324,7 @@ export function DragProvider({
     overlayHostRef.current?.move(state.dragState);
 
     if (!dragOverlayRef.current) {
-      finishOverlay();
+      clearOverlayHost();
       return;
     }
 
@@ -351,25 +353,38 @@ export function DragProvider({
     overlaySnapshotRef.current = {
       id: overlayRequest.id,
       state: overlayRequest.state,
-      content: dragOverlay({
-        dragState: overlayRequest.state.dragState,
-        phase: overlayRequest.state.phase,
-        finish: finishOverlay,
-      }),
+      content: dragOverlay(createOverlayInput(overlayRequest.state)),
     };
 
     return overlaySnapshotRef.current;
   }
+
+  function createOverlayInput(
+    overlayState: DragOverlayRenderState,
+  ): DragOverlayInput {
+    if (overlayState.phase === "released") {
+      return {
+        dragState: overlayState.dragState,
+        phase: "released",
+        removeOverlay: clearOverlayHost,
+      };
+    }
+
+    return {
+      dragState: overlayState.dragState,
+      phase: "dragging",
+    };
+  }
 }
 
 function createRuntimeConfigurationSnapshot(
-  input: DragRuntimeHandleConfigureInput,
+  input: DragRuntimeScopeConfigureInput,
 ): RuntimeConfigurationSnapshot {
   return {
     targetingAlgorithm: input.targetingAlgorithm,
     targetingConstraint: input.targetingConstraint,
     hasDragOverlay: input.hasDragOverlay,
-    keepOverlayOnDrop: input.keepOverlayOnDrop,
+    overlayRelease: input.overlayRelease,
     keyboardConfiguration: cloneKeyboardConfiguration(
       input.keyboardConfiguration,
     ),
@@ -382,14 +397,14 @@ function createRuntimeConfigurationSnapshot(
 
 function areRuntimeConfigurationSnapshotsEqual(
   previous: RuntimeConfigurationSnapshot | null,
-  next: DragRuntimeHandleConfigureInput,
+  next: DragRuntimeScopeConfigureInput,
 ): boolean {
   return (
     previous !== null &&
     previous.targetingAlgorithm === next.targetingAlgorithm &&
     previous.targetingConstraint === next.targetingConstraint &&
     previous.hasDragOverlay === next.hasDragOverlay &&
-    previous.keepOverlayOnDrop === next.keepOverlayOnDrop &&
+    previous.overlayRelease === next.overlayRelease &&
     areKeyboardConfigurationsEqual(
       previous.keyboardConfiguration,
       next.keyboardConfiguration,

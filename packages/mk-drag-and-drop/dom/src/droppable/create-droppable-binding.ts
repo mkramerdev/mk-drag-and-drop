@@ -25,7 +25,7 @@ export function createDroppable(input: CreateDroppableInput): void {
 
   behavior.setElement(input.element);
 
-  const cleanup = (): void => {
+  const releaseDomBinding = (): void => {
     if (cleanedUp) {
       return;
     }
@@ -36,11 +36,11 @@ export function createDroppable(input: CreateDroppableInput): void {
       return;
     }
 
-    behavior.cleanup();
+    behavior.releaseRegistration();
   };
 
-  runtime.registerBindingCleanup({
-    cleanup,
+  runtime.registerStaleDomBinding({
+    release: releaseDomBinding,
     isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

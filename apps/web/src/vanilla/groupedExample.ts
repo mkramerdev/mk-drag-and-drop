@@ -273,7 +273,6 @@ export function mountGroupedExample(root?: HTMLElement): () => void {
   render();
 
   return () => {
-    controller.dispose();
     clearActiveGroupedDropTarget();
     dropTargetElements.clear();
 

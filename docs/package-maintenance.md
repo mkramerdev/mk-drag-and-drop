@@ -45,6 +45,7 @@ pnpm --filter @mk-drag-and-drop/dom test
 pnpm --filter @mk-drag-and-drop/react test
 pnpm --filter web build
 pnpm --filter react-web build
+pnpm install --lockfile-only
 ```
 
 The app builds are useful release confidence checks because the examples track
@@ -60,9 +61,11 @@ pnpm --filter @mk-drag-and-drop/react... build
 
 cd packages/mk-drag-and-drop/dom
 pnpm pack --pack-destination <temp-dir>
+pnpm publish --dry-run
 
 cd ../react
 pnpm pack --pack-destination <temp-dir>
+pnpm publish --dry-run
 ```
 
 Inspect the packed tarball contents, not only command output. For each tarball,
@@ -80,6 +83,16 @@ Checks:
 - Package contents do not include stale `dist` files.
 - Package contents do not include `*.map` files when source map emission is
   disabled.
+
+## Public API Guardrails
+
+- Root application APIs must not expose runtime lifecycle controls such as
+  `cleanup`, `dispose`, `update`, or broad overlay release methods.
+- The public controller operation is `remeasureDropTargets`.
+- DOM binding helpers return `void`; do not add per-binding disposer returns.
+- Manual overlay release is opt-in through `overlayRelease: "manual"` and the
+  overlay-owned `removeOverlay` callback.
+- Keep `@mk-drag-and-drop/dom/integration` scoped to adapter infrastructure.
 
 ## Metadata Checklist
 
@@ -101,8 +114,10 @@ Each publishable package should have:
 - Run package tests.
 - Run package builds.
 - Run example builds.
+- Run `pnpm install --lockfile-only` to verify lockfile consistency.
 - Pack DOM with pnpm and inspect the tarball.
 - Pack React with pnpm and inspect the tarball.
+- Run `pnpm publish --dry-run` from each package directory.
 - Verify the React tarball dependency rewrite for `@mk-drag-and-drop/dom`.
 - Publish DOM first.
 - Publish React second.

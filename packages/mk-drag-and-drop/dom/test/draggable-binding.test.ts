@@ -17,7 +17,7 @@ describe("createDraggable", () => {
   let controller: DragController | null = null;
 
   afterEach(() => {
-    controller?.dispose();
+    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
     controller = null;
     document.body.innerHTML = "";
     vi.restoreAllMocks();
@@ -78,23 +78,6 @@ describe("createDraggable", () => {
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
-  it("removes listeners and restores DOM state when the controller is disposed", () => {
-    const onDragStart = vi.fn();
-    controller = createDragController({ onDragStart });
-    const element = createMeasuredElement();
-    element.setAttribute("tabindex", "2");
-
-    createDraggable({ controller, element, draggableId: "item" });
-    controller.dispose();
-
-    expect(element.getAttribute("tabindex")).toBe("2");
-
-    dispatchPointerDown(element, { pointerId: 1 });
-    dispatchKeyDown(element, "Space");
-
-    expect(onDragStart).not.toHaveBeenCalled();
-  });
-
   it("self-prunes after the bound element is removed", () => {
     const onDragStart = vi.fn();
     controller = createDragController({ onDragStart });
@@ -104,12 +87,12 @@ describe("createDraggable", () => {
 
     createDraggable({ controller, element, draggableId: "item" });
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(1);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
 
     element.remove();
-    runtime.pruneDisconnectedBindingCleanups();
+    runtime.pruneDisconnectedDomBindings();
 
-    expect(runtime.getBindingCleanupRecordCount()).toBe(0);
+    expect(runtime.getStaleDomBindingRecordCount()).toBe(0);
     expect(element.getAttribute("tabindex")).toBe("2");
 
     document.body.append(element);

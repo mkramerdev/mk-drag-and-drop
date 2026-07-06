@@ -10,7 +10,7 @@ import {
 import {
   createDomDropContainer,
   type DomDropContainerBehavior,
-  type DragRuntimeHandle,
+  type DragRuntimeScope,
 } from "@mk-drag-and-drop/dom/integration";
 
 import { DragContext } from "../drag-context.js";
@@ -37,7 +37,7 @@ export function useDropContainer<
   const context = useContext(DragContext);
   const nodeRef = useRef<ElementType | null>(null);
   const behaviorRef = useRef<{
-    runtime: DragRuntimeHandle;
+    runtime: DragRuntimeScope;
     containerId: string;
     group: string;
     behavior: DomDropContainerBehavior;
@@ -62,7 +62,7 @@ export function useDropContainer<
       return existingBehavior.behavior;
     }
 
-    existingBehavior?.behavior.cleanup();
+    existingBehavior?.behavior.releaseRegistration();
 
     const behavior = createDomDropContainer({
       runtime,
@@ -97,7 +97,7 @@ export function useDropContainer<
     }
 
     return () => {
-      behavior.cleanup();
+      behavior.releaseRegistration();
 
       if (behaviorRef.current?.behavior === behavior) {
         behaviorRef.current = null;

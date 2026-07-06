@@ -53,12 +53,14 @@ import type {
   DragStartEvent,
   DragUpdateEvent,
   DropEvent,
+  ActiveDragResetEvent,
 } from "./lifecycle.js";
 import type {
   DragOverlayHostUpdate,
   DragRuntimeConfigureInput,
   DragRuntimeOptions,
   DragState,
+  OverlayReleaseMode,
   Point,
   RequestDragStartInput,
   RequestKeyboardDragStartInput,
@@ -94,13 +96,13 @@ type DragStartSubscriptionEvent = DragStartEvent & {
   placementPosition: Point;
 };
 
-export type BindingCleanupRecord = {
-  cleanup: () => void;
+export type StaleDomBindingRecord = {
+  release: () => void;
   isConnected: () => boolean;
 };
 
-type StoredBindingCleanupRecord = {
-  record: BindingCleanupRecord;
+type StoredStaleDomBindingRecord = {
+  record: StaleDomBindingRecord;
   hasBeenConnected: boolean;
 };
 
@@ -114,13 +116,12 @@ export class DragRuntime {
   private session: DragSession = { status: "idle" };
   private modifiers: readonly DragModifierInput[] = [];
   private activeDragModifiers: ActiveDragModifier[] = [];
-  private cleanupWindowListeners: (() => void) | null = null;
-  private cleanupTextSelectionSuppression: (() => void) | null = null;
+  private releaseActiveInputListeners: (() => void) | null = null;
+  private restoreTextSelectionSuppression: (() => void) | null = null;
   private queuedPointerPosition: Point | null = null;
   private pointerFrameId: number | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
-  private disposeCallbacks = new Set<() => void>();
-  private bindingCleanupRecords = new Set<StoredBindingCleanupRecord>();
+  private staleDomBindingRecords = new Set<StoredStaleDomBindingRecord>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
   private lifecycleHelpers: DragLifecycleHelpers = {
     getDropTargetRect: (dropTargetId) =>
@@ -138,7 +139,7 @@ export class DragRuntime {
   private updateOverlayHost: (update: DragOverlayHostUpdate) => void;
   private targetingAlgorithm: TargetingAlgorithm;
   private hasDragOverlay: boolean;
-  private keepOverlayOnDrop: boolean;
+  private overlayRelease: OverlayReleaseMode;
   private targetingConstraint: TargetingConstraint | undefined;
   private pointerActivation = new PointerActivationController({
     getConfiguration: () => this.pointerConfiguration,
@@ -203,13 +204,13 @@ export class DragRuntime {
     this.updateOverlayHost = options.updateOverlayHost ?? noopUpdateOverlayHost;
     this.targetingAlgorithm = options.targetingAlgorithm ?? pointerToCenter;
     this.hasDragOverlay = options.hasDragOverlay ?? false;
-    this.keepOverlayOnDrop = options.keepOverlayOnDrop ?? false;
+    this.overlayRelease = options.overlayRelease ?? "auto";
     this.targetingConstraint = options.targetingConstraint;
   }
 
   configure(input: DragRuntimeConfigureInput): void {
     this.hasDragOverlay = input.hasDragOverlay;
-    this.keepOverlayOnDrop = input.keepOverlayOnDrop;
+    this.overlayRelease = input.overlayRelease;
     this.targetingAlgorithm = input.targetingAlgorithm;
     this.targetingConstraint = input.targetingConstraint;
     this.lifecycleCallbacks = input.lifecycleCallbacks;
@@ -223,7 +224,7 @@ export class DragRuntime {
   }
 
   requestDragStart(input: RequestDragStartInput): void {
-    this.pruneDisconnectedBindingCleanups();
+    this.pruneDisconnectedDomBindings();
     this.pointerActivation.request(input);
   }
 
@@ -236,8 +237,8 @@ export class DragRuntime {
   }
 
   requestKeyboardDragStart(input: RequestKeyboardDragStartInput): void {
-    this.pruneDisconnectedBindingCleanups();
-    this.pointerActivation.cancel();
+    this.pruneDisconnectedDomBindings();
+    this.cancelPendingActivation();
 
     if (
       this.isDragging ||
@@ -285,7 +286,7 @@ export class DragRuntime {
       pointerPosition.x += distance;
     }
 
-    this.updatePointerNow(pointerPosition);
+    this.updatePointerNowOrRelease(pointerPosition);
   }
 
   updatePointer(rawPointerPosition: Point): void {
@@ -305,7 +306,7 @@ export class DragRuntime {
       this.queuedPointerPosition = null;
 
       if (nextPointerPosition) {
-        this.updatePointerNow(nextPointerPosition);
+        this.updatePointerNowOrRelease(nextPointerPosition);
       }
     });
   }
@@ -365,20 +366,43 @@ export class DragRuntime {
     });
   }
 
+  private updatePointerNowOrRelease(rawPointerPosition: Point): void {
+    try {
+      this.updatePointerNow(rawPointerPosition);
+    } catch (error) {
+      this.releaseActiveDragResourcesAndRethrow(error);
+    }
+  }
+
+  private finishDragAfterQueuedPointerUpdate(input: {
+    reason: "drop" | "cancel";
+    overlayRelease: OverlayReleaseMode;
+  }): void {
+    try {
+      this.flushQueuedPointerUpdate();
+    } catch (error) {
+      this.releaseActiveDragResourcesAndRethrow(error);
+    }
+
+    this.finishDrag(input);
+  }
+
   endDrag(): void {
-    this.flushQueuedPointerUpdate();
-    this.finishDrag({
+    this.finishDragAfterQueuedPointerUpdate({
       reason: "drop",
-      keepReleasedOverlay: this.keepOverlayOnDrop,
+      overlayRelease: this.overlayRelease,
     });
   }
 
   cancelDrag(): void {
-    this.flushQueuedPointerUpdate();
-    this.finishDrag({
+    this.finishDragAfterQueuedPointerUpdate({
       reason: "cancel",
-      keepReleasedOverlay: false,
+      overlayRelease: this.overlayRelease,
     });
+  }
+
+  cancelPendingActivation(): void {
+    this.pointerActivation.cancelPendingActivation();
   }
 
   registerDropTarget(
@@ -430,12 +454,57 @@ export class DragRuntime {
     this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
-  cleanup(): void {
-    this.pointerActivation.cancel();
+  releaseActiveDragResources(): void {
+    const activeSession = this.getDraggingSession();
+    this.cancelPendingActivation();
+
+    let firstReleaseError: unknown;
+    let hasReleaseError = false;
+
+    if (activeSession) {
+      try {
+        this.notifyActiveDragReset({
+          draggableId: activeSession.draggableId,
+          source: activeSession.source,
+        });
+      } catch (error) {
+        firstReleaseError = error;
+        hasReleaseError = true;
+      }
+    }
+
     this.resetActiveDragState();
-    this.cleanupActiveDragResources();
-    this.updateOverlayHost({ type: "unmount" });
-    this.pruneDisconnectedBindingCleanups();
+
+    try {
+      this.releaseActiveInputResources();
+    } catch (error) {
+      firstReleaseError = error;
+      hasReleaseError = true;
+    }
+
+    try {
+      this.clearOverlayHost();
+    } catch (error) {
+      if (!hasReleaseError) {
+        firstReleaseError = error;
+        hasReleaseError = true;
+      }
+    }
+
+    if (hasReleaseError) {
+      throw firstReleaseError;
+    }
+  }
+
+  private releaseActiveDragResourcesAndRethrow(error: unknown): never {
+    try {
+      this.releaseActiveDragResources();
+    } catch {
+      // Preserve the original failure while still making a best effort to
+      // release resources that were acquired before it was thrown.
+    }
+
+    throw error;
   }
 
   getDropTargetRect(dropTargetId: string): DragRect | null {
@@ -483,7 +552,7 @@ export class DragRuntime {
       ...session,
       overlayMeasurement,
     });
-    this.updatePointerNow(session.rawPointerPosition);
+    this.updatePointerNowOrRelease(session.rawPointerPosition);
   }
 
   remeasureDropTargets(input?: RemeasureDropTargetsInput): void {
@@ -492,10 +561,10 @@ export class DragRuntime {
         ? input.group
         : undefined;
 
-    this.pruneDisconnectedBindingCleanups();
+    this.pruneDisconnectedDomBindings();
     this.removeDisconnectedDropTargets(pruneGroup);
     this.dropTargetRegistry.remeasure(input);
-    this.pruneDisconnectedBindingCleanups();
+    this.pruneDisconnectedDomBindings();
   }
 
   subscribe(subscription: DragRuntimeSubscription): () => void {
@@ -506,151 +575,135 @@ export class DragRuntime {
     };
   }
 
-  onDispose(callback: () => void): () => void {
-    this.disposeCallbacks.add(callback);
-
-    return () => {
-      this.disposeCallbacks.delete(callback);
-    };
-  }
-
-  registerBindingCleanup(record: BindingCleanupRecord): () => void {
-    const storedRecord: StoredBindingCleanupRecord = {
+  registerStaleDomBinding(record: StaleDomBindingRecord): () => void {
+    const storedRecord: StoredStaleDomBindingRecord = {
       record,
       hasBeenConnected: record.isConnected(),
     };
 
-    // Keep registration O(1). Full cleanup pruning runs on lifecycle/manual
-    // cleanup paths so bulk renders do not rescan every prior binding.
-    this.bindingCleanupRecords.add(storedRecord);
+    // Keep registration O(1). Full stale DOM pruning runs on drag lifecycle and
+    // explicit remeasurement paths so bulk renders do not rescan prior bindings.
+    this.staleDomBindingRecords.add(storedRecord);
 
     return () => {
-      if (!this.bindingCleanupRecords.delete(storedRecord)) {
+      if (!this.staleDomBindingRecords.delete(storedRecord)) {
         return;
       }
 
-      record.cleanup();
+      record.release();
     };
   }
 
-  pruneDisconnectedBindingCleanups(): void {
-    this.pruneDisconnectedBindingCleanupRecords();
+  pruneDisconnectedDomBindings(): void {
+    this.pruneDisconnectedDomBindingRecords();
   }
 
-  getBindingCleanupRecordCount(): number {
-    return this.bindingCleanupRecords.size;
-  }
-
-  dispose(): void {
-    this.cleanup();
-    this.disposeBindingCleanupRecords();
-
-    for (const disposeCallback of Array.from(this.disposeCallbacks)) {
-      disposeCallback();
-    }
-
-    this.disposeCallbacks.clear();
-    this.subscriptions.clear();
-    this.dropTargetRegistry.clear();
-    this.lifecycleCallbacks = {};
-    this.modifiers = [];
-    this.updateOverlayHost = noopUpdateOverlayHost;
+  getStaleDomBindingRecordCount(): number {
+    return this.staleDomBindingRecords.size;
   }
 
   private startDragNow(input: StartDragInput): void {
-    if (this.targetingAlgorithm.mode === "rect" && !this.hasDragOverlay) {
-      throw new Error(
-        "The selected targeting algorithm requires a drag overlay. Provide dragOverlay or use a pointer-based targeting algorithm.",
-      );
-    }
+    this.cancelPendingActivation();
 
-    this.pruneDisconnectedBindingCleanups();
+    try {
+      if (this.targetingAlgorithm.mode === "rect" && !this.hasDragOverlay) {
+        throw new Error(
+          "The selected targeting algorithm requires a drag overlay. Provide dragOverlay or use a pointer-based targeting algorithm.",
+        );
+      }
 
-    const rawPointerPosition = input.pointerPosition;
-    const activeDragModifiers = createActiveDragModifiers({
-      modifiers: this.modifiers,
-      setupInput: {
+      this.pruneDisconnectedDomBindings();
+
+      const rawPointerPosition = input.pointerPosition;
+      const activeDragModifiers = createActiveDragModifiers({
+        modifiers: this.modifiers,
+        setupInput: {
+          draggableId: input.draggableId,
+          group: input.group,
+          sourceRect: input.sourceRect,
+          initialPointerPosition: rawPointerPosition,
+        },
+      });
+      this.activeDragModifiers = activeDragModifiers;
+      const effectivePointerPosition = applyDragModifiers({
+        activeModifiers: activeDragModifiers,
         draggableId: input.draggableId,
         group: input.group,
         sourceRect: input.sourceRect,
         initialPointerPosition: rawPointerPosition,
-      },
-    });
-    this.activeDragModifiers = activeDragModifiers;
-    const effectivePointerPosition = applyDragModifiers({
-      activeModifiers: activeDragModifiers,
-      draggableId: input.draggableId,
-      group: input.group,
-      sourceRect: input.sourceRect,
-      initialPointerPosition: rawPointerPosition,
-      rawPointerPosition,
-    });
-    const sourceContainerId =
-      this.dropTargetRegistry.getDropTargetRegistration(
-        input.draggableId,
-        input.group,
-      )?.containerId ?? null;
-    const sourceSortablePlacement =
-      this.dropTargetRegistry.getSortableItemPlacement(
-        input.draggableId,
-        input.group,
-      );
+        rawPointerPosition,
+      });
+      const sourceContainerId =
+        this.dropTargetRegistry.getDropTargetRegistration(
+          input.draggableId,
+          input.group,
+        )?.containerId ?? null;
+      const sourceSortablePlacement =
+        this.dropTargetRegistry.getSortableItemPlacement(
+          input.draggableId,
+          input.group,
+        );
 
-    const nextSession: DraggingSession = {
-      status: "dragging",
-      source: input.inputType,
-      draggableId: input.draggableId,
-      group: input.group,
-      sourceRect: input.sourceRect,
-      sourceContainerId,
-      sourceSortablePlacement,
-      overlayMeasurement: null,
-      startPointerPosition: rawPointerPosition,
-      rawPointerPosition,
-      pointerPosition: effectivePointerPosition,
-      activeDropTargetId: null,
-    };
-
-    this.setSession(nextSession);
-    this.remeasureDropTargets({ group: input.group });
-
-    this.updateOverlayHost({
-      type: "mount",
-      state: {
-        dragState: this.createDragState(nextSession),
-        phase: "dragging",
-      },
-    });
-    this.suppressTextSelection();
-    if (input.inputType === "pointer") {
-      this.bindPointerWindowListeners(input.pointerId);
-    } else {
-      this.bindKeyboardWindowListeners();
-    }
-    const dragStartEvent: DragStartEvent = {
-      draggableId: input.draggableId,
-      source: input.inputType,
-      pointerPosition: effectivePointerPosition,
-      sourceRect: input.sourceRect,
-    };
-    const startOverlayRect = this.hasDragOverlay
-      ? this.getCurrentDragRectAt(effectivePointerPosition)
-      : null;
-
-    this.notifyDragStart(dragStartEvent, {
-      ...dragStartEvent,
-      placementPosition: this.getSortablePlacementPosition({
+      const nextSession: DraggingSession = {
+        status: "dragging",
+        source: input.inputType,
+        draggableId: input.draggableId,
+        group: input.group,
+        sourceRect: input.sourceRect,
+        sourceContainerId,
+        sourceSortablePlacement,
+        overlayMeasurement: null,
+        startPointerPosition: rawPointerPosition,
+        rawPointerPosition,
         pointerPosition: effectivePointerPosition,
-        overlayRect: startOverlayRect,
-      }),
-    });
+        activeDropTargetId: null,
+      };
+
+      this.setSession(nextSession);
+      this.remeasureDropTargets({ group: input.group });
+
+      const dragStartEvent: DragStartEvent = {
+        draggableId: input.draggableId,
+        source: input.inputType,
+        pointerPosition: effectivePointerPosition,
+        sourceRect: input.sourceRect,
+      };
+      const startOverlayRect = this.hasDragOverlay
+        ? this.getCurrentDragRectAt(effectivePointerPosition)
+        : null;
+      const dragStartSubscriptionEvent: DragStartSubscriptionEvent = {
+        ...dragStartEvent,
+        placementPosition: this.getSortablePlacementPosition({
+          pointerPosition: effectivePointerPosition,
+          overlayRect: startOverlayRect,
+        }),
+      };
+
+      this.notifyDragStartSubscriptions(dragStartSubscriptionEvent);
+      this.updateOverlayHost({
+        type: "mount",
+        state: {
+          dragState: this.createDragState(nextSession),
+          phase: "dragging",
+        },
+      });
+      this.suppressTextSelection();
+      if (input.inputType === "pointer") {
+        this.bindPointerWindowListeners(input.pointerId);
+      } else {
+        this.bindKeyboardWindowListeners();
+      }
+      this.notifyDragStartLifecycle(dragStartEvent);
+    } catch (error) {
+      this.releaseActiveDragResourcesAndRethrow(error);
+    }
   }
 
   private finishDrag(input: {
     reason: "drop" | "cancel";
-    keepReleasedOverlay: boolean;
+    overlayRelease: OverlayReleaseMode;
   }): void {
-    this.pointerActivation.cancel();
+    this.cancelPendingActivation();
 
     const session = this.getDraggingSession();
     const releasedDragState = session
@@ -687,7 +740,15 @@ export class DragRuntime {
       : null;
 
     this.resetActiveDragState();
-    this.cleanupActiveDragResources();
+    let finishError: unknown;
+    let hasFinishError = false;
+
+    try {
+      this.releaseActiveInputResources();
+    } catch (error) {
+      finishError = error;
+      hasFinishError = true;
+    }
 
     if (session && result) {
       this.lifecycleDropTargetRectSnapshot = lifecycleDropTargetRectSnapshot;
@@ -708,27 +769,68 @@ export class DragRuntime {
             ...(sortablePlacement ? { sortablePlacement } : {}),
           });
         }
+      } catch (error) {
+        finishError = error;
+        hasFinishError = true;
       } finally {
         this.lifecycleDropTargetRectSnapshot = null;
       }
     }
 
-    if (input.keepReleasedOverlay && releasedDragState && this.hasDragOverlay) {
-      this.updateOverlayHost({
-        type: "release",
-        state: {
-          dragState: releasedDragState,
-          phase: "released",
-        },
+    try {
+      this.releaseOverlayAfterDrag({
+        overlayRelease: input.overlayRelease,
+        releasedDragState,
       });
-    } else {
-      this.updateOverlayHost({ type: "unmount" });
+    } catch (error) {
+      if (!hasFinishError) {
+        finishError = error;
+        hasFinishError = true;
+      }
+    }
+
+    if (hasFinishError) {
+      throw finishError;
     }
   }
 
-  private bindPointerWindowListeners(pointerId: number): void {
-    this.cleanupWindowListeners?.();
+  private releaseOverlayAfterDrag(input: {
+    overlayRelease: OverlayReleaseMode;
+    releasedDragState: DragState | null;
+  }): void {
+    if (
+      input.overlayRelease === "manual" &&
+      input.releasedDragState &&
+      this.hasDragOverlay
+    ) {
+      try {
+        this.updateOverlayHost({
+          type: "release",
+          state: {
+            dragState: input.releasedDragState,
+            phase: "released",
+          },
+        });
+      } catch (error) {
+        try {
+          this.clearOverlayHost();
+        } catch {
+          // Preserve the overlay release error while still making a best effort
+          // to clear the host state.
+        }
 
+        throw error;
+      }
+      return;
+    }
+
+    this.clearOverlayHost();
+  }
+
+  private bindPointerWindowListeners(pointerId: number): void {
+    this.releaseActiveInputListeners?.();
+
+    let listenersReleased = false;
     const handlePointerMove = (event: PointerEvent): void => {
       if (event.pointerId !== pointerId) {
         return;
@@ -760,7 +862,12 @@ export class DragRuntime {
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerCancel);
 
-    this.cleanupWindowListeners = () => {
+    this.releaseActiveInputListeners = () => {
+      if (listenersReleased) {
+        return;
+      }
+
+      listenersReleased = true;
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
@@ -768,12 +875,12 @@ export class DragRuntime {
   }
 
   private bindKeyboardWindowListeners(): void {
-    this.cleanupWindowListeners?.();
-    this.cleanupWindowListeners = this.keyboardDrag.bindWindowListeners();
+    this.releaseActiveInputListeners?.();
+    this.releaseActiveInputListeners = this.keyboardDrag.bindWindowListeners();
   }
 
   private suppressTextSelection(): void {
-    this.cleanupTextSelectionSuppression?.();
+    this.restoreTextSelectionSuppression?.();
 
     const root = document.documentElement;
     const body = document.body;
@@ -783,7 +890,7 @@ export class DragRuntime {
     root.style.userSelect = "none";
     body.style.userSelect = "none";
 
-    this.cleanupTextSelectionSuppression = () => {
+    this.restoreTextSelectionSuppression = () => {
       root.style.userSelect = previousRootUserSelect;
       body.style.userSelect = previousBodyUserSelect;
     };
@@ -795,11 +902,39 @@ export class DragRuntime {
     this.activeDragModifiers = [];
   }
 
-  private cleanupActiveDragResources(): void {
-    this.cleanupWindowListeners?.();
-    this.cleanupWindowListeners = null;
-    this.cleanupTextSelectionSuppression?.();
-    this.cleanupTextSelectionSuppression = null;
+  private releaseActiveInputResources(): void {
+    const releaseActiveInputListeners = this.releaseActiveInputListeners;
+    this.releaseActiveInputListeners = null;
+    const restoreTextSelectionSuppression =
+      this.restoreTextSelectionSuppression;
+    this.restoreTextSelectionSuppression = null;
+
+    let releaseError: unknown;
+    let hasReleaseError = false;
+
+    try {
+      releaseActiveInputListeners?.();
+    } catch (error) {
+      releaseError = error;
+      hasReleaseError = true;
+    }
+
+    try {
+      restoreTextSelectionSuppression?.();
+    } catch (error) {
+      if (!hasReleaseError) {
+        releaseError = error;
+        hasReleaseError = true;
+      }
+    }
+
+    if (hasReleaseError) {
+      throw releaseError;
+    }
+  }
+
+  private clearOverlayHost(): void {
+    this.updateOverlayHost({ type: "unmount" });
   }
 
   private flushQueuedPointerUpdate(): void {
@@ -1004,10 +1139,10 @@ export class DragRuntime {
     this.clearActiveDropTargetIdIfRemoved(removedTargets);
   }
 
-  private pruneDisconnectedBindingCleanupRecords(
-    skipRecord?: StoredBindingCleanupRecord,
+  private pruneDisconnectedDomBindingRecords(
+    skipRecord?: StoredStaleDomBindingRecord,
   ): void {
-    for (const storedRecord of Array.from(this.bindingCleanupRecords)) {
+    for (const storedRecord of Array.from(this.staleDomBindingRecords)) {
       if (storedRecord === skipRecord) {
         continue;
       }
@@ -1021,15 +1156,8 @@ export class DragRuntime {
         continue;
       }
 
-      this.bindingCleanupRecords.delete(storedRecord);
-      storedRecord.record.cleanup();
-    }
-  }
-
-  private disposeBindingCleanupRecords(): void {
-    for (const storedRecord of Array.from(this.bindingCleanupRecords)) {
-      this.bindingCleanupRecords.delete(storedRecord);
-      storedRecord.record.cleanup();
+      this.staleDomBindingRecords.delete(storedRecord);
+      storedRecord.record.release();
     }
   }
 
@@ -1057,32 +1185,33 @@ export class DragRuntime {
     });
   }
 
-  private notifyDragStart(
-    event: DragStartEvent,
+  private notifyDragStartSubscriptions(
     subscriptionEvent: DragStartSubscriptionEvent,
   ): void {
+    for (const subscription of Array.from(this.subscriptions)) {
+      subscription.onDragStart?.(subscriptionEvent);
+    }
+  }
+
+  private notifyDragStartLifecycle(event: DragStartEvent): void {
     this.lifecycleCallbacks.onDragStart?.(
       event,
       this.lifecycleHelpers,
     );
-
-    for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragStart?.(subscriptionEvent);
-    }
   }
 
   private notifyDragUpdate(
     event: DragUpdateEvent,
     subscriptionEvent: DragUpdateSubscriptionEvent,
   ): void {
+    for (const subscription of Array.from(this.subscriptions)) {
+      subscription.onDragUpdate?.(subscriptionEvent);
+    }
+
     this.lifecycleCallbacks.onDragUpdate?.(
       event,
       this.lifecycleHelpers,
     );
-
-    for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragUpdate?.(subscriptionEvent);
-    }
   }
 
   private notifyDragEnd(event: DragEndEvent): void {
@@ -1102,6 +1231,12 @@ export class DragRuntime {
     }
 
     this.lifecycleCallbacks.onDrop?.(event, this.lifecycleHelpers);
+  }
+
+  private notifyActiveDragReset(event: ActiveDragResetEvent): void {
+    for (const subscription of Array.from(this.subscriptions)) {
+      subscription.onActiveDragReset?.(event);
+    }
   }
 }
 

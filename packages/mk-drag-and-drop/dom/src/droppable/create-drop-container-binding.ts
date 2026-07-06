@@ -22,7 +22,7 @@ export function createDropContainer(input: CreateDropContainerInput): void {
   });
   let cleanedUp = false;
 
-  const cleanup = (): void => {
+  const releaseDomBinding = (): void => {
     if (cleanedUp) {
       return;
     }
@@ -33,11 +33,11 @@ export function createDropContainer(input: CreateDropContainerInput): void {
       return;
     }
 
-    behavior.cleanup();
+    behavior.releaseRegistration();
   };
 
-  runtime.registerBindingCleanup({
-    cleanup,
+  runtime.registerStaleDomBinding({
+    release: releaseDomBinding,
     isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

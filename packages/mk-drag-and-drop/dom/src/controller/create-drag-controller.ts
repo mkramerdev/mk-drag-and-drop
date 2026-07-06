@@ -4,7 +4,7 @@ import type {
 } from "../input/config.js";
 import { rectToDragRect } from "../geometry/rects.js";
 import type { DragModifierInput } from "../modifiers/types.js";
-import { createDragRuntimeHandle } from "../runtime/drag-runtime-handle.js";
+import { createDragRuntimeScope } from "../runtime/drag-runtime-scope.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
 import type {
   DragEndEvent,
@@ -15,9 +15,9 @@ import type {
 } from "../runtime/lifecycle.js";
 import type {
   DragOverlayHostUpdate,
-  DragOverlayPhase,
   DragOverlayRenderState,
   DragState,
+  OverlayReleaseMode,
 } from "../runtime/types.js";
 import { pointerToCenter } from "../targeting/algorithms.js";
 import type {
@@ -33,18 +33,24 @@ export type DragControllerAnnouncements = {
   onDrop?: (event: DropEvent) => string | null;
 };
 
-export type DragControllerOverlayInput = {
-  dragState: DragState;
-  phase: DragOverlayPhase;
-  finish: () => void;
-};
+export type DragControllerOverlayInput =
+  | {
+      dragState: DragState;
+      phase: "dragging";
+      removeOverlay?: never;
+    }
+  | {
+      dragState: DragState;
+      phase: "released";
+      removeOverlay: () => void;
+    };
 
 export type DragControllerOptions = {
   announcements?: DragControllerAnnouncements;
   dragOverlay?: (input: DragControllerOverlayInput) => HTMLElement | null;
   keyboardConfiguration?: KeyboardConfiguration;
-  keepOverlayOnDrop?: boolean;
   modifiers?: readonly DragModifierInput[];
+  overlayRelease?: OverlayReleaseMode;
   overlayRoot?: HTMLElement;
   pointerConfiguration?: PointerConfiguration;
   targetingAlgorithm?: TargetingAlgorithm;
@@ -52,68 +58,31 @@ export type DragControllerOptions = {
 } & DragLifecycleCallbacks;
 
 export type DragController = {
-  update: (options: DragControllerOptions) => void;
-  cleanup: () => void;
-  dispose: () => void;
-  finishOverlay: () => void;
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
 };
 
 export function createDragController(
   options: DragControllerOptions = {},
 ): DragController {
-  let currentOptions = options;
+  const currentOptions = options;
   let overlayWrapper: HTMLElement | null = null;
   let overlayElement: HTMLElement | null = null;
   let overlayResizeObserver: ResizeObserver | null = null;
   let liveRegion: HTMLElement | null = null;
   let lastAnnouncement: string | null = null;
-  let disposed = false;
 
-  const runtime = createDragRuntimeHandle({
+  const runtime = createDragRuntimeScope({
     updateOverlayHost,
     targetingAlgorithm: options.targetingAlgorithm ?? pointerToCenter,
     targetingConstraint: options.targetingConstraint,
     hasDragOverlay: hasDragOverlay(options),
-    keepOverlayOnDrop: options.keepOverlayOnDrop ?? false,
+    overlayRelease: options.overlayRelease ?? "auto",
   });
 
   configureRuntime(options);
   syncLiveRegion();
 
   const controller: DragController = {
-    update: (nextOptions) => {
-      if (disposed) {
-        return;
-      }
-
-      currentOptions = nextOptions;
-      configureRuntime(nextOptions);
-      syncLiveRegion();
-
-      if (!hasDragOverlay(nextOptions)) {
-        removeOverlay();
-      }
-    },
-    cleanup: () => {
-      if (disposed) {
-        return;
-      }
-
-      runtime.cleanup();
-      removeOverlay();
-    },
-    dispose: () => {
-      if (disposed) {
-        return;
-      }
-
-      runtime.dispose();
-      removeOverlay();
-      removeLiveRegion();
-      disposed = true;
-    },
-    finishOverlay,
     remeasureDropTargets: (input) => {
       runtime.remeasureDropTargets(input);
     },
@@ -128,7 +97,7 @@ export function createDragController(
       targetingAlgorithm: nextOptions.targetingAlgorithm ?? pointerToCenter,
       targetingConstraint: nextOptions.targetingConstraint,
       hasDragOverlay: hasDragOverlay(nextOptions),
-      keepOverlayOnDrop: nextOptions.keepOverlayOnDrop ?? false,
+      overlayRelease: nextOptions.overlayRelease ?? "auto",
       lifecycleCallbacks: createLifecycleCallbacks(nextOptions),
       keyboardConfiguration: nextOptions.keyboardConfiguration,
       modifiers: nextOptions.modifiers,
@@ -163,11 +132,6 @@ export function createDragController(
   }
 
   function updateOverlayHost(update: DragOverlayHostUpdate): void {
-    if (disposed) {
-      removeOverlay();
-      return;
-    }
-
     if (update.type === "mount" || update.type === "release") {
       mountOverlay(update.state);
       return;
@@ -178,23 +142,21 @@ export function createDragController(
       return;
     }
 
-    removeOverlay();
+    clearOverlayHost();
   }
 
   function mountOverlay(overlayState: DragOverlayRenderState): void {
     if (!currentOptions.dragOverlay) {
-      removeOverlay();
+      clearOverlayHost();
       return;
     }
 
-    const nextOverlayElement = currentOptions.dragOverlay({
-      dragState: overlayState.dragState,
-      phase: overlayState.phase,
-      finish: finishOverlay,
-    });
+    const nextOverlayElement = currentOptions.dragOverlay(
+      createOverlayInput(overlayState),
+    );
 
     if (!nextOverlayElement) {
-      removeOverlay();
+      clearOverlayHost();
       return;
     }
 
@@ -277,20 +239,29 @@ export function createDragController(
     return overlayWrapper;
   }
 
-  function finishOverlay(): void {
-    if (disposed) {
-      return;
-    }
-
-    removeOverlay();
-  }
-
-  function removeOverlay(): void {
+  function clearOverlayHost(): void {
     disconnectOverlayResizeObserver();
     overlayElement = null;
     runtime.setOverlayRect(null);
     overlayWrapper?.remove();
     overlayWrapper = null;
+  }
+
+  function createOverlayInput(
+    overlayState: DragOverlayRenderState,
+  ): DragControllerOverlayInput {
+    if (overlayState.phase === "released") {
+      return {
+        dragState: overlayState.dragState,
+        phase: "released",
+        removeOverlay: clearOverlayHost,
+      };
+    }
+
+    return {
+      dragState: overlayState.dragState,
+      phase: "dragging",
+    };
   }
 
   function syncLiveRegion(): void {

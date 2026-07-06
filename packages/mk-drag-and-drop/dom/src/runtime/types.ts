@@ -31,6 +31,8 @@ export type DragState = {
 
 export type DragOverlayPhase = "dragging" | "released";
 
+export type OverlayReleaseMode = "auto" | "manual";
+
 export type DragOverlayRenderState = {
   dragState: DragState;
   phase: DragOverlayPhase;
@@ -67,14 +69,14 @@ export type DragRuntimeOptions = {
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
   hasDragOverlay?: boolean;
-  keepOverlayOnDrop?: boolean;
+  overlayRelease?: OverlayReleaseMode;
 };
 
 export type DragRuntimeConfigureInput = {
   targetingAlgorithm: TargetingAlgorithm;
   targetingConstraint: TargetingConstraint | undefined;
   hasDragOverlay: boolean;
-  keepOverlayOnDrop: boolean;
+  overlayRelease: OverlayReleaseMode;
   lifecycleCallbacks: DragLifecycleCallbacks;
   keyboardConfiguration?: KeyboardConfiguration;
   modifiers?: readonly DragModifierInput[];

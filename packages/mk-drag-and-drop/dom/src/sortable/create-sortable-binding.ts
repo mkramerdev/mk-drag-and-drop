@@ -46,7 +46,7 @@ export function createSortable(input: CreateSortableInput): void {
     keyDownAttached = true;
   }
 
-  const cleanup = (): void => {
+  const releaseDomBinding = (): void => {
     if (cleanedUp) {
       return;
     }
@@ -70,11 +70,11 @@ export function createSortable(input: CreateSortableInput): void {
       }
     }
 
-    behavior.cleanup();
+    behavior.releaseRegistration();
   };
 
-  runtime.registerBindingCleanup({
-    cleanup,
+  runtime.registerStaleDomBinding({
+    release: releaseDomBinding,
     isConnected: () => elementRef.deref()?.isConnected === true,
   });
 }

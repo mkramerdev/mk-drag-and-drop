@@ -26,19 +26,19 @@ export type PointerActivationControllerOptions = {
   activate: (activation: ActivatedPointerDrag) => void;
 };
 
-type PendingPointerActivation = ActivatedPointerDrag & {
+type PendingPointerActivationState = ActivatedPointerDrag & {
   pointerId: number;
-  timeoutId: number | null;
-  cleanupWindowListeners: () => void;
+  activationTimerId: number | null;
+  releasePendingPointerListeners: (() => void) | null;
 };
 
 export class PointerActivationController {
-  private pendingActivation: PendingPointerActivation | null = null;
+  private pendingActivation: PendingPointerActivationState | null = null;
 
   constructor(private options: PointerActivationControllerOptions) {}
 
   request(request: PointerDragActivationRequest): void {
-    this.cancel();
+    this.cancelPendingActivation();
 
     if (this.options.isDragging()) {
       return;
@@ -56,15 +56,15 @@ export class PointerActivationController {
       x: request.pointerPosition.x,
       y: request.pointerPosition.y,
     };
-    const pendingActivation: PendingPointerActivation = {
+    const pendingActivation: PendingPointerActivationState = {
       draggableId: request.draggableId,
       group: request.group,
       element: request.element,
       pointerId: request.pointerId,
       initialPointerPosition,
       latestPointerPosition: initialPointerPosition,
-      timeoutId: null,
-      cleanupWindowListeners: () => {},
+      activationTimerId: null,
+      releasePendingPointerListeners: null,
     };
 
     const handlePointerMove = (event: PointerEvent): void => {
@@ -90,7 +90,7 @@ export class PointerActivationController {
         activationDistance * activationDistance;
 
       if (distanceSquared >= activationDistanceSquared) {
-        this.activatePending(pendingActivation);
+        this.activatePendingPointerDrag(pendingActivation);
       }
     };
 
@@ -99,49 +99,72 @@ export class PointerActivationController {
         return;
       }
 
-      this.cancel();
+      this.cancelPendingActivation();
     };
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerEnd);
     window.addEventListener("pointercancel", handlePointerEnd);
 
-    pendingActivation.cleanupWindowListeners = () => {
+    pendingActivation.releasePendingPointerListeners = () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerEnd);
       window.removeEventListener("pointercancel", handlePointerEnd);
     };
 
+    this.pendingActivation = pendingActivation;
+
     if (activationDelay !== null) {
-      pendingActivation.timeoutId = window.setTimeout(() => {
-        this.activatePending(pendingActivation);
+      pendingActivation.activationTimerId = window.setTimeout(() => {
+        this.activatePendingPointerDrag(pendingActivation);
       }, activationDelay);
     }
-
-    this.pendingActivation = pendingActivation;
   }
 
-  cancel(): void {
+  cancelPendingActivation(): void {
     const pendingActivation = this.pendingActivation;
 
     if (!pendingActivation) {
       return;
     }
 
-    if (pendingActivation.timeoutId !== null) {
-      window.clearTimeout(pendingActivation.timeoutId);
-    }
-
-    pendingActivation.cleanupWindowListeners();
-    this.pendingActivation = null;
+    this.clearPendingActivation(pendingActivation);
   }
 
-  private activatePending(pendingActivation: PendingPointerActivation): void {
+  private clearPendingActivation(
+    pendingActivation: PendingPointerActivationState,
+  ): void {
+    if (this.pendingActivation === pendingActivation) {
+      this.pendingActivation = null;
+    }
+
+    this.clearPendingActivationTimer(pendingActivation);
+
+    const releasePendingPointerListeners =
+      pendingActivation.releasePendingPointerListeners;
+    pendingActivation.releasePendingPointerListeners = null;
+    releasePendingPointerListeners?.();
+  }
+
+  private clearPendingActivationTimer(
+    pendingActivation: PendingPointerActivationState,
+  ): void {
+    if (pendingActivation.activationTimerId === null) {
+      return;
+    }
+
+    window.clearTimeout(pendingActivation.activationTimerId);
+    pendingActivation.activationTimerId = null;
+  }
+
+  private activatePendingPointerDrag(
+    pendingActivation: PendingPointerActivationState,
+  ): void {
     if (this.pendingActivation !== pendingActivation) {
       return;
     }
 
-    this.cancel();
+    this.clearPendingActivation(pendingActivation);
     this.options.activate({
       draggableId: pendingActivation.draggableId,
       group: pendingActivation.group,

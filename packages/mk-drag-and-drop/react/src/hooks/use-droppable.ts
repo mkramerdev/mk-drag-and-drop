@@ -1,7 +1,9 @@
 import {
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   type HTMLAttributes,
   type RefCallback,
 } from "react";
@@ -32,6 +34,7 @@ export function useDroppable<
   containerId = null,
 }: UseDroppableOptions): UseDroppableResult<ElementType> {
   const context = useContext(DragContext);
+  const nodeRef = useRef<ElementType | null>(null);
 
   if (!context) {
     throw new Error("useDroppable must be used inside DragProvider");
@@ -51,10 +54,21 @@ export function useDroppable<
 
   const setNodeRef = useCallback(
     (node: ElementType | null) => {
+      nodeRef.current = node;
       behavior.setElement(node);
     },
     [behavior],
   );
+
+  useEffect(() => {
+    if (nodeRef.current) {
+      behavior.setElement(nodeRef.current);
+    }
+
+    return () => {
+      behavior.releaseRegistration();
+    };
+  }, [behavior]);
 
   return useMemo(
     () => ({

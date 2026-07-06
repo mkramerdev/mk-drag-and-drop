@@ -13,9 +13,16 @@ import type {
 
 export type DragOverlayInput = {
   dragState: DragState;
-  phase: DragOverlayPhase;
-  finish: () => void;
-};
+} & (
+  | {
+      phase: Extract<DragOverlayPhase, "dragging">;
+      removeOverlay?: never;
+    }
+  | {
+      phase: Extract<DragOverlayPhase, "released">;
+      removeOverlay: () => void;
+    }
+);
 
 export type DragOverlayHostHandle = {
   move: (dragState: DragState) => void;
