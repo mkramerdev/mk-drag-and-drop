@@ -161,7 +161,6 @@ export function getSortableRegistry(
           runtime,
           draggedDraggableId: event.draggableId,
           activeDropTargetId: event.activeDropTargetId,
-          pointerPosition: event.pointerPosition,
           placementPosition: event.placementPosition ?? event.pointerPosition,
           options: getSortableOptions(registry, event.draggableId),
         });

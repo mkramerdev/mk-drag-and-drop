@@ -21,6 +21,8 @@ export type SortablePreviewPlacementState = {
   activeDropTargetId: string | null;
   placement: SortablePlacementSide | null;
   movementDirection: SortableAxisMovementDirection;
+  containerElement: HTMLElement | null;
+  pendingMidpointInitialPlacement: boolean;
 };
 export type SortablePreviewPlacementDecision = {
   placement: SortablePlacementSide;
@@ -95,7 +97,6 @@ export function moveSortablePreview(input: {
   runtime: DomSortableRuntime;
   draggedDraggableId: string;
   activeDropTargetId: string | null;
-  pointerPosition: { x: number; y: number };
   placementPosition: { x: number; y: number };
   options: NormalizedSortableOptions;
 }): void {
@@ -160,10 +161,18 @@ export function moveSortablePreview(input: {
 
   if (target.capabilities.container) {
     measurementIds.add(target.id);
+    const previousListElement =
+      input.registry.activeDrag.previewPlacement?.containerElement ?? null;
+    const pendingMidpointInitialPlacement =
+      draggedElement.parentElement !== target.element ||
+      (previousListElement !== null && previousListElement !== target.element);
+
     setSortablePreviewPlacementState({
       registry: input.registry,
       activeDropTargetId: target.id,
       placement: null,
+      containerElement: target.element,
+      pendingMidpointInitialPlacement,
       movementDirection: getCurrentAxisMovementDirection({
         placementPosition: input.placementPosition,
         movement: input.registry.activeDrag.pointerMovement,
@@ -199,10 +208,14 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const sourceListElement =
-    input.registry.activeDrag.snapshots.get(input.draggedDraggableId)?.parent ??
-    draggedElement.parentElement;
-  const useMidpointInitialPlacement = sourceListElement !== listElement;
+  const previousPlacement = input.registry.activeDrag.previewPlacement;
+  const previousListElement = previousPlacement?.containerElement ?? null;
+  const useMidpointInitialPlacement =
+    draggedElement.parentElement !== listElement ||
+    (previousListElement !== null && previousListElement !== listElement) ||
+    (previousPlacement?.placement === null &&
+      previousPlacement.pendingMidpointInitialPlacement &&
+      previousListElement === listElement);
 
   if (!target.capabilities.sortable) {
     return;
@@ -221,9 +234,6 @@ export function moveSortablePreview(input: {
     activeDropTargetId,
     targetElement,
     placementPosition: input.placementPosition,
-    midpointPlacementPosition: useMidpointInitialPlacement
-      ? input.pointerPosition
-      : input.placementPosition,
     movement: input.registry.activeDrag.pointerMovement,
     previewPlacement: input.registry.activeDrag.previewPlacement,
     options: input.options,
@@ -236,6 +246,8 @@ export function moveSortablePreview(input: {
     activeDropTargetId,
     placement,
     movementDirection: placementDecision.movementDirection,
+    containerElement: listElement,
+    pendingMidpointInitialPlacement: false,
   });
 
   if (
@@ -276,7 +288,6 @@ export function getSortablePreviewPlacement(input: {
   activeDropTargetId: string;
   targetElement: HTMLElement;
   placementPosition: { x: number; y: number };
-  midpointPlacementPosition?: { x: number; y: number };
   movement: SortablePointerMovementState | null;
   previewPlacement: SortablePreviewPlacementState | null;
   options: NormalizedSortableOptions;
@@ -284,10 +295,6 @@ export function getSortablePreviewPlacement(input: {
 }): SortablePreviewPlacementDecision {
   const axis = input.options.axis;
   const axisPosition = getAxisPosition(input.placementPosition, axis);
-  const midpointAxisPosition = getAxisPosition(
-    input.midpointPlacementPosition ?? input.placementPosition,
-    axis,
-  );
   const targetRect = input.targetElement.getBoundingClientRect();
   const currentDirection = getCurrentAxisMovementDirection({
     placementPosition: input.placementPosition,
@@ -302,19 +309,26 @@ export function getSortablePreviewPlacement(input: {
     previousPlacement.placement === null ||
     previousPlacement.movementDirection === "none"
   ) {
+    if (input.useMidpointInitialPlacement) {
+      const placement = getPlacementSideFromTargetMidpoint({
+        axis,
+        axisPosition,
+        targetRect,
+      });
+
+      return {
+        placement,
+        movementDirection: getMovementDirectionFromPlacementSide(placement),
+      };
+    }
+
     return {
-      placement: input.useMidpointInitialPlacement
-        ? getPlacementSideFromTargetMidpoint({
-            axis,
-            axisPosition: midpointAxisPosition,
-            targetRect,
-          })
-        : getOptimisticPlacement({
-            axis,
-            axisPosition,
-            currentDirection,
-            targetRect,
-          }),
+      placement: getOptimisticPlacement({
+        axis,
+        axisPosition,
+        currentDirection,
+        targetRect,
+      }),
       movementDirection: currentDirection,
     };
   }
@@ -356,11 +370,15 @@ function setSortablePreviewPlacementState(input: {
   activeDropTargetId: string;
   placement: SortablePlacementSide | null;
   movementDirection: SortableAxisMovementDirection;
+  containerElement: HTMLElement | null;
+  pendingMidpointInitialPlacement: boolean;
 }): void {
   input.registry.activeDrag.previewPlacement = {
     activeDropTargetId: input.activeDropTargetId,
     placement: input.placement,
     movementDirection: input.movementDirection,
+    containerElement: input.containerElement,
+    pendingMidpointInitialPlacement: input.pendingMidpointInitialPlacement,
   };
 }
 
@@ -402,6 +420,12 @@ function getPlacementSideFromTargetMidpoint(input: {
   const midpoint = targetStart + targetSize / 2;
 
   return input.axisPosition < midpoint ? "before" : "after";
+}
+
+function getMovementDirectionFromPlacementSide(
+  placement: SortablePlacementSide,
+): SortableAxisMovementDirection {
+  return placement === "before" ? "backward" : "forward";
 }
 
 function getCurrentAxisMovementDirection(input: {
@@ -542,6 +566,7 @@ function addRegistrationContainerId(
     dropTargetIds.add(registration.containerId);
   }
 }
+
 
 function refreshSortableDropTargetMeasurements(input: {
   registry: SortableRegistry;

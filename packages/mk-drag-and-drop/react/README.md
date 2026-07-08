@@ -457,11 +457,11 @@ React uses the DOM package placement rules. Same-container sortable preview
 keeps its movement-responsive first-placement behavior: forward movement places
 after a newly active target, backward movement places before, and no
 sortable-axis movement uses the target midpoint. When a sortable item first
-enters a different DOM container, the initial side is based on the pointer
-position against the target midpoint on the sortable axis: above or left of
-midpoint places before, while below or right of midpoint places after.
-Rect-based targeting such as `centerToCenter` still selects the active target;
-cross-container initial preview side follows the pointer. `placementBoundary`
+enters a different DOM container, the initial side is based on the current
+sortable placement position against the target midpoint on the sortable axis:
+above or left of midpoint places before, while below or right of midpoint places
+after. Pointer-based targeting uses the pointer as that position; rect-based
+targeting such as `centerToCenter` uses the overlay center. `placementBoundary`
 remains a same-target reversal and hysteresis control after preview placement
 exists; it does not decide the initial side for cross-container sortable entry.
 
@@ -565,7 +565,7 @@ or container entries before the targeting algorithm runs; the algorithm still
 chooses from that narrowed measured list.
 
 The before/after side follows the DOM package sortable placement behavior
-described above, including pointer-vs-midpoint initial placement for
+described above, including placement-position-vs-midpoint initial placement for
 cross-container entry and `placementBoundary` for later same-target reversal
 behavior.
 

@@ -369,10 +369,10 @@ Same-container sortable preview keeps its movement-responsive first-placement
 behavior: forward movement places after a newly active target, backward movement
 places before, and no sortable-axis movement uses the target midpoint. When a
 sortable item first enters a different DOM container, the initial side is based
-on the pointer position against the target midpoint on the sortable axis: above
-or left of midpoint places before, while below or right of midpoint places
-after. Rect-based targeting such as `centerToCenter` still selects the active
-target; cross-container initial preview side follows the pointer.
+on the current sortable placement position against the target midpoint on the
+sortable axis: above or left of midpoint places before, while below or right of
+midpoint places after. Pointer-based targeting uses the pointer as that position;
+rect-based targeting such as `centerToCenter` uses the overlay center.
 
 `placementBoundary` is used after a preview placement already exists to control
 same-target reversal and hysteresis thresholds. It does not decide the initial

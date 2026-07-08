@@ -1737,7 +1737,9 @@ describe("createDomSortable", () => {
       rightItems: ["b", "c"],
     });
 
-    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: left.a, clientX: 25, clientY: 10 }),
+    );
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
     raf.flush();
 
@@ -1749,7 +1751,71 @@ describe("createDomSortable", () => {
     ]);
   });
 
-  it("uses the source container for cross-container item placement after a container preview move", () => {
+  it("advances cross-container midpoint placement on the same target while moving forward", () => {
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm: centerToCenter,
+        hasDragOverlay: true,
+      },
+    );
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: left.a, clientX: 25, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 12 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      right.b,
+      left.a,
+      right.c,
+    ]);
+  });
+
+
+  it("uses same-container placement after entering a destination list", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 34 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(right.container.children)).toEqual([
+      right.b,
+      right.c,
+      left.a,
+    ]);
+  });
+
+  it("uses midpoint placement for the first item target after a container preview move", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: [],
     });

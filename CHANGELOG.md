@@ -5,6 +5,17 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## 0.4.3
+
+### Fixed
+
+- Fixed cross-container sortable preview state so midpoint entry applies to the
+  first target in a newly entered list, including container-to-item transitions,
+  and subsequent targets in that list return to normal sortable placement.
+- Fixed same-target advancement after midpoint-based cross-container entry so
+  continued movement can move the preview past the active target without waiting
+  for the next target selection.
+
 ## 0.4.2
 
 ### Fixed
