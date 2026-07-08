@@ -1076,6 +1076,108 @@ describe("createDomSortable", () => {
     expect(remeasureSpy).not.toHaveBeenCalled();
   });
 
+  it("runs sortable drag update subscriptions when recomputing an active drag", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const bMeasure = vi.mocked(b.getBoundingClientRect);
+    const onDragUpdate = vi.fn();
+    runtime.subscribe({ onDragUpdate });
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 35 }),
+    );
+    bMeasure.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: "b",
+        previousDropTargetId: null,
+        pointerPosition: { x: 10, y: 35 },
+        placementPosition: { x: 10, y: 35 },
+      }),
+    );
+    expect(bMeasure).toHaveBeenCalled();
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+  });
+
+  it("updates sortable preview when window scroll changes the active target on recompute", () => {
+    const scrollOffset = mockWindowScrollOffset();
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+
+    try {
+      behaviors.a.onPointerDown(
+        createPointerHandlerEvent({ target: a, clientX: 10, clientY: 35 }),
+      );
+
+      runtime.recomputeActiveDrag();
+      expect(runtime.activeDropTargetId).toBe("b");
+      expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+
+      scrollOffset.set({ y: 30 });
+      runtime.recomputeActiveDrag();
+
+      expect(runtime.activeDropTargetId).toBe("c");
+      expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    } finally {
+      scrollOffset.restore();
+    }
+  });
+
+  it("does not invoke global sortable remeasurement during recompute", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a] = elements;
+    const remeasureSpy = vi.spyOn(runtime, "remeasureDropTargets");
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    remeasureSpy.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(remeasureSpy).not.toHaveBeenCalled();
+  });
+
+  it("requires explicit remeasure before recompute reflects stale sortable measurements", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const bMeasure = vi.mocked(b.getBoundingClientRect);
+    const cMeasure = vi.mocked(c.getBoundingClientRect);
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    bMeasure.mockReturnValue(
+      createRect({ top: 200, width: 20, height: 20 }) as DOMRect,
+    );
+    cMeasure.mockReturnValue(
+      createRect({ top: 30, width: 20, height: 20 }) as DOMRect,
+    );
+    bMeasure.mockClear();
+    cMeasure.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+
+    runtime.remeasureDropTargets({ group: "rows" });
+    expect(bMeasure).toHaveBeenCalled();
+    expect(cMeasure).toHaveBeenCalled();
+
+    bMeasure.mockClear();
+    cMeasure.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(runtime.activeDropTargetId).toBe("c");
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, c, a]);
+  });
+
   it("keeps manual runtime drop-target remeasurement explicit", () => {
     const a = createSortableElement(
       "a",
@@ -2493,6 +2595,31 @@ function createContainer(
   stubBoundingClientRect(element, rect);
   document.body.append(element);
   return element;
+}
+
+function mockWindowScrollOffset(): {
+  set: (offset: { x?: number; y?: number }) => void;
+  restore: () => void;
+} {
+  let scrollX = 0;
+  let scrollY = 0;
+  const scrollXSpy = vi
+    .spyOn(window, "scrollX", "get")
+    .mockImplementation(() => scrollX);
+  const scrollYSpy = vi
+    .spyOn(window, "scrollY", "get")
+    .mockImplementation(() => scrollY);
+
+  return {
+    set: (offset) => {
+      scrollX = offset.x ?? scrollX;
+      scrollY = offset.y ?? scrollY;
+    },
+    restore: () => {
+      scrollXSpy.mockRestore();
+      scrollYSpy.mockRestore();
+    },
+  };
 }
 
 function reorderDataWithSortablePlacement(

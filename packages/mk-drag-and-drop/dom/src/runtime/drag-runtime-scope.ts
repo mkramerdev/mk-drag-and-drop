@@ -20,6 +20,7 @@ export type DragRuntimeScope = DomDraggableRuntime &
     configure: (input: DragRuntimeScopeConfigureInput) => void;
     cancelDrag: () => void;
     releaseActiveDragResources: () => void;
+    recomputeActiveDrag: () => void;
     setOverlayRect: (overlayRect: DragRect | null) => void;
   };
 
@@ -38,6 +39,7 @@ export function createDragRuntimeScope(
     configure: (input) => runtime.configure(input),
     cancelDrag: () => runtime.cancelDrag(),
     releaseActiveDragResources: () => runtime.releaseActiveDragResources(),
+    recomputeActiveDrag: () => runtime.recomputeActiveDrag(),
     setOverlayRect: (overlayRect) => runtime.setOverlayRect(overlayRect),
     requestDragStart: (input) => runtime.requestDragStart(input),
     isKeyboardDragEnabled: () => runtime.isKeyboardDragEnabled(),

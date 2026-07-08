@@ -10,6 +10,7 @@ import {
   useDraggable,
   useDroppable,
   useRemeasureDropTargets,
+  useRecomputeActiveDrag,
   useRemeasureOverlay,
   useSortable,
   type SortableDropPlacement,
@@ -140,8 +141,75 @@ describe("React hooks", () => {
     expect(() => render(<UseRemeasureOverlayOutside />)).toThrow(
       "useRemeasureOverlay must be used inside DragProvider",
     );
+    expect(() => render(<UseRecomputeActiveDragOutside />)).toThrow(
+      "useRecomputeActiveDrag must be used inside DragProvider",
+    );
 
     consoleError.mockRestore();
+  });
+
+  it("useRecomputeActiveDrag returns a function inside DragProvider", () => {
+    let recomputeActiveDrag: (() => void) | null = null;
+
+    render(
+      <DragProvider>
+        <RecomputeActiveDragProbe
+          onRecomputeActiveDrag={(nextRecomputeActiveDrag) => {
+            recomputeActiveDrag = nextRecomputeActiveDrag;
+          }}
+        />
+      </DragProvider>,
+    );
+
+    expect(recomputeActiveDrag).toEqual(expect.any(Function));
+  });
+
+  it("useRecomputeActiveDrag recomputes an active drag through the runtime", () => {
+    let recomputeActiveDrag: (() => void) | null = null;
+    const onDragUpdate = vi.fn();
+
+    render(
+      <DragProvider onDragUpdate={onDragUpdate}>
+        <RecomputeActiveDragProbe
+          onRecomputeActiveDrag={(nextRecomputeActiveDrag) => {
+            recomputeActiveDrag = nextRecomputeActiveDrag;
+          }}
+        />
+        <DraggableWithChild />
+      </DragProvider>,
+    );
+    const draggable = screen.getByTestId("draggable");
+    stubBoundingClientRect(draggable, createRect({ width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(draggable, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    expect(onDragUpdate).not.toHaveBeenCalled();
+
+    const currentRecomputeActiveDrag = recomputeActiveDrag;
+    if (!currentRecomputeActiveDrag) {
+      throw new Error("Expected active drag recomputation callback");
+    }
+
+    act(() => {
+      currentRecomputeActiveDrag();
+    });
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+
+    act(() => {
+      dispatchPointerUp(window, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
   });
 
   it("useRemeasureOverlay returns a safe no-op without mounted overlay", () => {
@@ -1034,6 +1102,23 @@ function UseRemeasureOutside() {
 
 function UseRemeasureOverlayOutside() {
   useRemeasureOverlay();
+  return null;
+}
+
+function UseRecomputeActiveDragOutside() {
+  useRecomputeActiveDrag();
+  return null;
+}
+
+function RecomputeActiveDragProbe({
+  onRecomputeActiveDrag,
+}: {
+  onRecomputeActiveDrag: (recomputeActiveDrag: () => void) => void;
+}) {
+  const recomputeActiveDrag = useRecomputeActiveDrag();
+
+  onRecomputeActiveDrag(recomputeActiveDrag);
+
   return null;
 }
 

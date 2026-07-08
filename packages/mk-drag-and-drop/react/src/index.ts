@@ -69,6 +69,7 @@ export {
   type UseDroppableResult,
 } from "./hooks/use-droppable.js";
 export { useRemeasureDropTargets } from "./hooks/use-remeasure-drop-targets.js";
+export { useRecomputeActiveDrag } from "./hooks/use-recompute-active-drag.js";
 export { useRemeasureOverlay } from "./hooks/use-remeasure-overlay.js";
 export {
   useSortable,

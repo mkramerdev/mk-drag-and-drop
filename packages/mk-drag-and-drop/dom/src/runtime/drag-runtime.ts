@@ -311,6 +311,16 @@ export class DragRuntime {
     });
   }
 
+  recomputeActiveDrag(): void {
+    const session = this.getDraggingSession();
+
+    if (!session) {
+      return;
+    }
+
+    this.updatePointerNowOrRelease(session.rawPointerPosition);
+  }
+
   private updatePointerNow(rawPointerPosition: Point): void {
     const session = this.getDraggingSession();
 

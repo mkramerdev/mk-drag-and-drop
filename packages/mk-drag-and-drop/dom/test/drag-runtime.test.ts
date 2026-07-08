@@ -119,6 +119,541 @@ describe("DragRuntime", () => {
     );
   });
 
+  it("no-ops active drag recomputation while idle", () => {
+    const onDragStart = vi.fn();
+    const onDragUpdate = vi.fn();
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    configureRuntime(runtime, {
+      onDragStart,
+      onDragUpdate,
+      onDragEnd,
+      onDrop,
+    });
+
+    expect(() => {
+      runtime.recomputeActiveDrag();
+    }).not.toThrow();
+
+    expect(onDragStart).not.toHaveBeenCalled();
+    expect(onDragUpdate).not.toHaveBeenCalled();
+    expect(onDragEnd).not.toHaveBeenCalled();
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("keeps idle recompute free of update, measurement, and scheduling work", () => {
+    const updateOverlayHost = vi.fn();
+    const targetingAlgorithmMock = vi.fn(() => null);
+    const targetingAlgorithm: TargetingAlgorithm = Object.assign(
+      targetingAlgorithmMock,
+      { mode: "pointer" as const },
+    );
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragStart = vi.fn();
+    const onDragUpdate = vi.fn();
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    const remeasureSpy = vi.spyOn(DropTargetRegistry.prototype, "remeasure");
+    const pruneDisconnectedSpy = vi.spyOn(
+      DropTargetRegistry.prototype,
+      "pruneDisconnected",
+    );
+    runtime = createDragRuntime({ updateOverlayHost });
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragStart, onDragUpdate, onDragEnd, onDrop },
+      targetingAlgorithm,
+    });
+    runtime.registerDropTarget("target-1", target.element, "items");
+    target.getBoundingClientRect.mockClear();
+    remeasureSpy.mockClear();
+    pruneDisconnectedSpy.mockClear();
+
+    try {
+      runtime.recomputeActiveDrag();
+
+      expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+      expect(remeasureSpy).not.toHaveBeenCalled();
+      expect(pruneDisconnectedSpy).not.toHaveBeenCalled();
+      expect(targetingAlgorithmMock).not.toHaveBeenCalled();
+      expect(updateOverlayHost).not.toHaveBeenCalled();
+      expect(onDragStart).not.toHaveBeenCalled();
+      expect(onDragUpdate).not.toHaveBeenCalled();
+      expect(onDragEnd).not.toHaveBeenCalled();
+      expect(onDrop).not.toHaveBeenCalled();
+      expect(raf.pendingCount()).toBe(0);
+    } finally {
+      remeasureSpy.mockRestore();
+      pruneDisconnectedSpy.mockRestore();
+    }
+  });
+
+  it("notifies drag update callbacks when recomputing an active drag", () => {
+    const updateOverlayHost = vi.fn();
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    const onSubscriptionDragUpdate = vi.fn();
+    runtime = createDragRuntime({ updateOverlayHost });
+    configureRuntime(runtime, { onDragUpdate });
+    runtime.subscribe({ onDragUpdate: onSubscriptionDragUpdate });
+
+    startRuntimeDrag(runtime, source);
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+    expect(onSubscriptionDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+        placementPosition: { x: 0, y: 0 },
+      }),
+    );
+    expect(updateOverlayHost).toHaveBeenLastCalledWith({
+      type: "move",
+      dragState: expect.objectContaining({
+        draggableId: "item-1",
+        group: "items",
+        pointerPosition: { x: 0, y: 0 },
+      }),
+    });
+  });
+
+  it("recomputes active drop target without pointer movement", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.remove();
+    onDragUpdate.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(runtime.activeDropTargetId).toBeNull();
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 110, y: 10 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: "target-1",
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("uses the last raw pointer position when recomputing active drags", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 13, clientY: 17 });
+    raf.flush();
+    onDragUpdate.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 13, y: 17 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("matches one flushed pointer update notification without scheduling RAF", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 13, clientY: 17 });
+    expect(raf.pendingCount()).toBe(1);
+    raf.flush();
+    expect(onDragUpdate).toHaveBeenCalledTimes(1);
+
+    onDragUpdate.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(raf.pendingCount()).toBe(0);
+    expect(onDragUpdate).toHaveBeenCalledTimes(1);
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pointerPosition: { x: 13, y: 17 },
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("reapplies modifiers when recomputing active drags", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      modifiers: [lockToXAxis()],
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 12, clientY: 9 });
+    raf.flush();
+    onDragUpdate.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 12, y: 0 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("recomputes keyboard drags from their synthetic pointer position", () => {
+    const source = createElementWithRect(createRect({ width: 40, height: 20 }));
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+
+    runtime.requestKeyboardDragStart({
+      draggableId: "item-1",
+      group: "items",
+      element: source,
+    });
+
+    expect(() => {
+      runtime.recomputeActiveDrag();
+    }).not.toThrow();
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "keyboard",
+        pointerPosition: { x: 20, y: 10 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("does not remeasure drop targets when recomputing active drags", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+    runtime.registerDropTarget("target-1", target.element, "items");
+
+    startRuntimeDrag(runtime, source);
+    target.getBoundingClientRect.mockClear();
+    onDragUpdate.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+        overlayRect: null,
+        activeDropTargetId: "target-1",
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("does not use registry remeasurement or broad target measurements during recompute", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const targets = [
+      createMeasuredElement(createRect({ left: 100, top: 0, width: 20, height: 20 })),
+      createMeasuredElement(createRect({ left: 130, top: 0, width: 20, height: 20 })),
+      createMeasuredElement(createRect({ left: 160, top: 0, width: 20, height: 20 })),
+    ];
+    const remeasureSpy = vi.spyOn(DropTargetRegistry.prototype, "remeasure");
+    configureRuntime(runtime, {});
+
+    try {
+      targets.forEach((target, index) => {
+        runtime.registerDropTarget(`target-${index + 1}`, target.element, "items");
+      });
+      startRuntimeDrag(runtime, source);
+      remeasureSpy.mockClear();
+      targets.forEach((target) => {
+        target.getBoundingClientRect.mockClear();
+      });
+
+      runtime.recomputeActiveDrag();
+
+      expect(remeasureSpy).not.toHaveBeenCalled();
+      for (const target of targets) {
+        expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+      }
+    } finally {
+      remeasureSpy.mockRestore();
+    }
+  });
+
+  it("uses current window scroll offsets during recompute without remeasuring targets", () => {
+    const scrollOffset = mockWindowScrollOffset();
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const firstTarget = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const secondTarget = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntime(runtime, { onDragUpdate });
+    runtime.registerDropTarget("target-1", firstTarget.element, "items");
+    runtime.registerDropTarget("target-2", secondTarget.element, "items");
+
+    try {
+      startRuntimeDrag(runtime, source);
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+      raf.flush();
+      expect(runtime.activeDropTargetId).toBe("target-1");
+
+      firstTarget.getBoundingClientRect.mockClear();
+      secondTarget.getBoundingClientRect.mockClear();
+      onDragUpdate.mockClear();
+      scrollOffset.set({ x: 200, y: 0 });
+
+      runtime.recomputeActiveDrag();
+
+      expect(firstTarget.getBoundingClientRect).not.toHaveBeenCalled();
+      expect(secondTarget.getBoundingClientRect).not.toHaveBeenCalled();
+      expect(runtime.activeDropTargetId).toBe("target-2");
+      expect(onDragUpdate).toHaveBeenCalledWith(
+        {
+          draggableId: "item-1",
+          source: "pointer",
+          pointerPosition: { x: 10, y: 10 },
+          overlayRect: null,
+          activeDropTargetId: "target-2",
+          previousDropTargetId: "target-1",
+        },
+        expect.any(Object),
+      );
+    } finally {
+      scrollOffset.restore();
+    }
+  });
+
+  it("keeps cached target geometry after element-scroll-like movement until explicit remeasure", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createMeasuredElement(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+      scrollContainer,
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      targetingConstraint: isPointerInsideDropTarget,
+    });
+    runtime.registerDropTarget("target-1", target.element, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBeNull();
+
+    target.getBoundingClientRect.mockReturnValue(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }) as DOMRect,
+    );
+    target.getBoundingClientRect.mockClear();
+    onDragUpdate.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(runtime.activeDropTargetId).toBeNull();
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+
+    onDragUpdate.mockClear();
+    runtime.remeasureDropTargets("target-1");
+    expect(target.getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    target.getBoundingClientRect.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: "target-1",
+        previousDropTargetId: null,
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("keeps cached target geometry after layout changes until explicit remeasure", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      targetingConstraint: isPointerInsideDropTarget,
+    });
+    runtime.registerDropTarget("target-1", target.element, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.getBoundingClientRect.mockReturnValue(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }) as DOMRect,
+    );
+    target.getBoundingClientRect.mockClear();
+    onDragUpdate.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: "target-1",
+        previousDropTargetId: "target-1",
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+
+    onDragUpdate.mockClear();
+    runtime.remeasureDropTargets({ group: "items" });
+    expect(target.getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    target.getBoundingClientRect.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(runtime.activeDropTargetId).toBeNull();
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: null,
+        previousDropTargetId: "target-1",
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("uses new target registrations on recompute without additional target measurement", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createMeasuredElement(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      targetingConstraint: isPointerInsideDropTarget,
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBeNull();
+
+    runtime.registerDropTarget("target-1", target.element, "items");
+    expect(target.getBoundingClientRect).toHaveBeenCalledTimes(1);
+    target.getBoundingClientRect.mockClear();
+    onDragUpdate.mockClear();
+
+    runtime.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: "target-1",
+        previousDropTargetId: null,
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("uses existing prune paths for removed targets before recompute", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      targetingConstraint: isPointerInsideDropTarget,
+    });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    expect(runtime.activeDropTargetId).toBe("target-1");
+
+    target.remove();
+    runtime.remeasureDropTargets({ group: "items" });
+    expect(runtime.getDropTargetRegistration("target-1", "items")).toBeNull();
+    expect(runtime.activeDropTargetId).toBeNull();
+
+    onDragUpdate.mockClear();
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+        pointerPosition: { x: 110, y: 10 },
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("does not prune disconnected drop targets during pointer updates", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const target = createElementWithRect(
@@ -840,6 +1375,26 @@ describe("DragRuntime", () => {
     expectPointerWindowListenersReleased(removeListener);
   });
 
+  it("releases active resources and rethrows when recomputed drag update throws", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const error = new Error("drag update failed");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, {
+      onDragUpdate: () => {
+        throw error;
+      },
+    });
+
+    startRuntimeDrag(runtime, source);
+
+    expect(() => {
+      runtime.recomputeActiveDrag();
+    }).toThrow(error);
+
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
   it("releases active resources and rethrows when onDragEnd throws", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const error = new Error("drag end failed");
@@ -1017,11 +1572,13 @@ function configureRuntimeWith(
     hasDragOverlay?: boolean;
     overlayRelease?: "auto" | "manual";
     modifiers?: readonly DragModifierInput[];
+    targetingAlgorithm?: TargetingAlgorithm;
+    targetingConstraint?: TargetingConstraint;
   },
 ): void {
   runtime.configure({
-    targetingAlgorithm: pointerToCenter,
-    targetingConstraint: undefined,
+    targetingAlgorithm: input.targetingAlgorithm ?? pointerToCenter,
+    targetingConstraint: input.targetingConstraint,
     hasDragOverlay: input.hasDragOverlay ?? false,
     overlayRelease: input.overlayRelease ?? "auto",
     lifecycleCallbacks: input.lifecycleCallbacks ?? {},
@@ -1048,14 +1605,56 @@ function createElementWithRect(rect: ReturnType<typeof createRect>): HTMLElement
   return element;
 }
 
-function createMeasuredElement(rect: ReturnType<typeof createRect>) {
+function createMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+  parent: HTMLElement = document.body,
+) {
   const element = document.createElement("div");
-  document.body.append(element);
+  parent.append(element);
   const getBoundingClientRect = vi
     .spyOn(element, "getBoundingClientRect")
     .mockReturnValue(rect as DOMRect);
 
   return { element, getBoundingClientRect };
+}
+
+function isPointerInsideDropTarget({
+  pointerPosition,
+  dropTarget,
+}: Parameters<TargetingConstraint>[0]): boolean {
+  const { dropTargetRect } = dropTarget;
+
+  return (
+    pointerPosition.x >= dropTargetRect.left &&
+    pointerPosition.x <= dropTargetRect.right &&
+    pointerPosition.y >= dropTargetRect.top &&
+    pointerPosition.y <= dropTargetRect.bottom
+  );
+}
+
+function mockWindowScrollOffset(): {
+  set: (offset: { x?: number; y?: number }) => void;
+  restore: () => void;
+} {
+  let scrollX = 0;
+  let scrollY = 0;
+  const scrollXSpy = vi
+    .spyOn(window, "scrollX", "get")
+    .mockImplementation(() => scrollX);
+  const scrollYSpy = vi
+    .spyOn(window, "scrollY", "get")
+    .mockImplementation(() => scrollY);
+
+  return {
+    set: (offset) => {
+      scrollX = offset.x ?? scrollX;
+      scrollY = offset.y ?? scrollY;
+    },
+    restore: () => {
+      scrollXSpy.mockRestore();
+      scrollYSpy.mockRestore();
+    },
+  };
 }
 
 function getTotalIsConnectedCalls(

@@ -32,9 +32,11 @@ describe("DOM public API", () => {
     expect(Object.keys(controller)).toEqual([
       "remeasureDropTargets",
       "remeasureOverlay",
+      "recomputeActiveDrag",
     ]);
     expect(controller).toHaveProperty("remeasureDropTargets");
     expect(controller).toHaveProperty("remeasureOverlay");
+    expect(controller).toHaveProperty("recomputeActiveDrag");
     expect(controller).not.toHaveProperty("cleanup");
     expect(controller).not.toHaveProperty("dispose");
     expect(controller).not.toHaveProperty("update");
@@ -52,6 +54,13 @@ describe("DOM public API", () => {
     expect(integrationApi).toHaveProperty("createDomDroppable");
     expect(integrationApi).toHaveProperty("createDomDropContainer");
     expect(integrationApi).toHaveProperty("createDomSortable");
+  });
+
+  it("exposes recomputeActiveDrag through the integration runtime scope", () => {
+    const runtime = integrationApi.createDragRuntimeScope();
+    const recomputeActiveDrag = runtime.recomputeActiveDrag;
+
+    expect(typeof recomputeActiveDrag).toBe("function");
   });
 
   it("examples do not call removed controller lifecycle or overlay release APIs", () => {

@@ -22,7 +22,7 @@ DOM package release version using a real semver range, for example:
 
 ```json
 {
-  "@mk-drag-and-drop/dom": "^0.3.0"
+  "@mk-drag-and-drop/dom": "^0.4.0"
 }
 ```
 
@@ -89,8 +89,9 @@ Checks:
 
 - Root application APIs must not expose runtime lifecycle controls such as
   `cleanup`, `dispose`, `update`, or broad overlay release methods.
-- Public controller operations are `remeasureDropTargets` and
-  `remeasureOverlay`.
+- Public controller operations are `remeasureDropTargets`,
+  `recomputeActiveDrag`, and `remeasureOverlay`. Keep `recomputeActiveDrag`
+  separate from target remeasurement.
 - DOM binding helpers return `void`; do not add per-binding disposer returns.
 - Manual overlay release is opt-in through `overlayRelease: "manual"` and the
   overlay-owned `removeOverlay` callback.

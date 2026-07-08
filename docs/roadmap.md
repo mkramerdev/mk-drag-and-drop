@@ -21,6 +21,12 @@ Current code shape:
   `overlayRect`, DOM and React `remeasureOverlay` helpers, and React
   `useRemeasureOverlay`. These APIs refresh cached overlay geometry; they do not
   split visual overlay movement from targeting work.
+- Active-drag recomputation APIs are complete: DOM
+  `controller.recomputeActiveDrag()` and React `useRecomputeActiveDrag()` rerun
+  the normal active update and targeting path from the last pointer position.
+  They do not refresh cached target measurements; call
+  `remeasureDropTargets(...)` first when target geometry or registrations
+  changed and those changes should affect targeting.
 - The visual overlay move is still emitted only after modifier application,
   overlay rect calculation, sortable placement input calculation, target
   selection, and session replacement.
@@ -54,6 +60,8 @@ Public API impact:
 - Manual overlay measurement APIs are complete: lifecycle `overlayRect`, DOM
   `controller.remeasureOverlay()`, DOM overlay input `remeasureOverlay`, React
   `useRemeasureOverlay()`, and React overlay input `remeasureOverlay`.
+- Active-drag recomputation APIs are complete: DOM
+  `controller.recomputeActiveDrag()` and React `useRecomputeActiveDrag()`.
 - No additional application-level public API change appears necessary for the
   remaining cheap visual movement split.
 - `dragOverlay`, `DragOverlayInput`, `overlayRelease`, modifiers, targeting

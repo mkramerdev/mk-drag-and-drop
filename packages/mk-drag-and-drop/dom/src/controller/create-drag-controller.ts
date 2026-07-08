@@ -62,6 +62,7 @@ export type DragControllerOptions = {
 export type DragController = {
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
   remeasureOverlay: () => void;
+  recomputeActiveDrag: () => void;
 };
 
 export function createDragController(
@@ -90,6 +91,9 @@ export function createDragController(
       runtime.remeasureDropTargets(input);
     },
     remeasureOverlay,
+    recomputeActiveDrag: () => {
+      runtime.recomputeActiveDrag();
+    },
   };
 
   setControllerRuntime(controller, runtime);

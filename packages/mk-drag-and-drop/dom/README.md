@@ -98,6 +98,9 @@ The returned controller has:
   array of target ids, or `{ group }`
 - `remeasureOverlay()`: remeasures the currently mounted drag overlay element;
   it is a safe no-op when no overlay is mounted or no drag is active
+- `recomputeActiveDrag()`: reruns active targeting and drag update from the
+  last pointer position; it is a safe no-op when no drag is active and does not
+  remeasure drop targets
 
 The controller does not expose runtime teardown, disposal, update, or broad
 overlay removal methods. Runtime objects are ordinary JavaScript objects; DOM
@@ -407,6 +410,36 @@ remeasures. Final sortable placement is derived from the current preview DOM
 order, so app-owned layout changes such as expanding tree rows or changing
 grouped sections during a drag should call the public remeasure API when those
 changes need to affect targeting.
+
+## Active Drag Recompute
+
+`controller.recomputeActiveDrag()` reruns the active drag update path from the
+last stored raw pointer position. It reapplies modifiers, derives the overlay
+rect from cached overlay measurement, recomputes the active drop target from
+cached target measurements, updates the overlay host, and sends the normal drag
+update notifications. This is the same update path used by pointer movement.
+Calling it with no active drag is safe and does nothing.
+
+Use it when something external changes what is under the pointer during an
+active drag without producing a new pointer event.
+
+```ts
+controller.recomputeActiveDrag();
+```
+
+Recompute does not remeasure drop targets. If target geometry or registrations
+changed and those changes should affect targeting, remeasure first and then
+recompute.
+
+```ts
+controller.remeasureDropTargets({ group: "items" });
+controller.recomputeActiveDrag();
+```
+
+```ts
+// Example: after external scrolling changes what is under the pointer
+controller.recomputeActiveDrag();
+```
 
 ## Data Ownership
 

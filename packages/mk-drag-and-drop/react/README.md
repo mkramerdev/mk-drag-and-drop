@@ -52,6 +52,7 @@ The React root export includes:
 - `useSortable`, `UseSortableOptions`, `UseSortableResult`
 - `useDragHandle`, `UseDragHandleResult`
 - `useRemeasureDropTargets`
+- `useRecomputeActiveDrag`
 - `useRemeasureOverlay`
 - `composeRefs`
 - React-friendly `restrictToContainer`, `ReactRestrictToContainerInput`
@@ -402,6 +403,32 @@ every render. Sortable preview movement does not automatically remeasure a
 group; call this function when an app-owned layout change needs to affect
 targeting.
 
+### useRecomputeActiveDrag
+
+`useRecomputeActiveDrag` returns a function for rerunning the active drag update
+path from the last pointer position. It must be used inside `DragProvider` and
+is a thin wrapper over the DOM runtime operation. It follows the same update
+path as DOM pointer movement. Calling the returned function with no active drag
+is safe and does nothing.
+
+```tsx
+const recomputeActiveDrag = useRecomputeActiveDrag();
+
+recomputeActiveDrag();
+```
+
+Use it after external changes that require active targeting to run again without
+a new pointer event. It does not remeasure drop targets. When target
+measurements changed, call `useRemeasureDropTargets()` first.
+
+```tsx
+const remeasureDropTargets = useRemeasureDropTargets();
+const recomputeActiveDrag = useRecomputeActiveDrag();
+
+remeasureDropTargets({ group: "items" });
+recomputeActiveDrag();
+```
+
 ### useRemeasureOverlay
 
 `useRemeasureOverlay` returns a function for manually refreshing the current
@@ -590,9 +617,10 @@ mount/unmount.
 `useDraggable`, `useDroppable`, and `useSortable` rely on React prop/ref updates
 for normal mount, unmount, and element replacement behavior.
 
-`useRemeasureDropTargets` and `useRemeasureOverlay` are for geometry changes,
-not resource release. The runtime also prunes disconnected targets on
-drag-critical paths such as remeasurement.
+`useRemeasureDropTargets`, `useRecomputeActiveDrag`, and `useRemeasureOverlay`
+are for active drag geometry or targeting changes, not resource release. The
+runtime also prunes disconnected targets on drag-critical paths such as
+remeasurement.
 
 ## Examples
 
@@ -626,6 +654,8 @@ React examples live in `apps/react-web/src/react`:
 - `useDragHandle()`: returns the handle attribute props for a handle element.
 - `useRemeasureDropTargets()`: returns a function for remeasuring all targets,
   one target, multiple targets, or a group.
+- `useRecomputeActiveDrag()`: returns a function for rerunning active targeting
+  and drag update from the last pointer position without remeasuring targets.
 - `useRemeasureOverlay()`: returns a function for manually refreshing the
   currently mounted overlay measurement.
 - `composeRefs`: helper for combining the refs returned by hooks with app refs.

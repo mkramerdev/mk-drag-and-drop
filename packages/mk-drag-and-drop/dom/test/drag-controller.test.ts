@@ -59,6 +59,93 @@ describe("createDragController", () => {
     expect(remeasureSpy).toHaveBeenCalledWith(input);
   });
 
+  it("exposes active drag recomputation on the controller", () => {
+    controller = createDragController();
+    const recomputeActiveDrag: DragController["recomputeActiveDrag"] =
+      controller.recomputeActiveDrag;
+
+    expect(typeof recomputeActiveDrag).toBe("function");
+  });
+
+  it("no-ops controller active drag recomputation while idle", () => {
+    const onDragUpdate = vi.fn();
+    controller = createDragController({ onDragUpdate });
+
+    expect(() => {
+      controller?.recomputeActiveDrag();
+    }).not.toThrow();
+    expect(onDragUpdate).not.toHaveBeenCalled();
+  });
+
+  it("delegates active drag recomputation to the runtime", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const recomputeSpy = vi.spyOn(runtime, "recomputeActiveDrag");
+
+    controller.recomputeActiveDrag();
+
+    expect(recomputeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires drag updates when controller recomputes an active drag", () => {
+    const onDragUpdate = vi.fn();
+    controller = createDragController({ onDragUpdate });
+
+    startDrag(controller, createElementWithRect());
+    controller.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+        overlayRect: null,
+        activeDropTargetId: null,
+        previousDropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("does not remeasure drop targets when controller recomputes an active drag", () => {
+    const source = createElementWithRect();
+    const target = createMeasuredElement(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController();
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target.element,
+      "items",
+    );
+
+    startDrag(controller, source);
+    target.getBoundingClientRect.mockClear();
+    controller.recomputeActiveDrag();
+
+    expect(target.getBoundingClientRect).not.toHaveBeenCalled();
+  });
+
+  it("exposes active drag recomputation on the runtime scope", () => {
+    const onDragUpdate = vi.fn();
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    runtime.subscribe({ onDragUpdate });
+
+    expect(typeof runtime.recomputeActiveDrag).toBe("function");
+
+    startDrag(controller, createElementWithRect());
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draggableId: "item",
+        source: "pointer",
+        pointerPosition: { x: 0, y: 0 },
+      }),
+    );
+  });
+
   it("does not throw when manually remeasuring without an active overlay", () => {
     controller = createDragController();
 
@@ -724,6 +811,7 @@ describe("createDragController", () => {
     expect(Object.keys(controller)).toEqual([
       "remeasureDropTargets",
       "remeasureOverlay",
+      "recomputeActiveDrag",
     ]);
     expect(controller).not.toHaveProperty("cleanup");
     expect(controller).not.toHaveProperty("dispose");
@@ -732,6 +820,7 @@ describe("createDragController", () => {
     expect(controller).not.toHaveProperty("finishOverlay");
     expect(controller).toHaveProperty("remeasureDropTargets");
     expect(controller).toHaveProperty("remeasureOverlay");
+    expect(controller).toHaveProperty("recomputeActiveDrag");
   });
 });
 
@@ -756,6 +845,16 @@ function createElementWithRect(
   document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;
+}
+
+function createMeasuredElement(rect: ReturnType<typeof createRect>) {
+  const element = document.createElement("div");
+  document.body.append(element);
+  const getBoundingClientRect = vi
+    .spyOn(element, "getBoundingClientRect")
+    .mockReturnValue(rect as DOMRect);
+
+  return { element, getBoundingClientRect };
 }
 
 function getOverlayChild(): HTMLElement | null {
