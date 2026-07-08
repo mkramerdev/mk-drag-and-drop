@@ -365,6 +365,17 @@ registry may narrow measured candidates to relevant sortable item, neighbor, or
 container entries before the targeting algorithm runs; the algorithm still makes
 the active-target decision from that narrowed measured list.
 
+Same-container sortable preview keeps its movement-responsive first-placement
+behavior: forward movement places after a newly active target, backward movement
+places before, and no sortable-axis movement uses the target midpoint. When a
+sortable item first enters a different DOM container, the initial side is based
+on the target midpoint on the sortable axis: above or left of midpoint places
+before, while below or right of midpoint places after.
+
+`placementBoundary` is used after a preview placement already exists to control
+same-target reversal and hysteresis thresholds. It does not decide the initial
+side for cross-container sortable entry.
+
 ## Modifiers
 
 Modifiers transform pointer movement before drag state updates. Built-ins:

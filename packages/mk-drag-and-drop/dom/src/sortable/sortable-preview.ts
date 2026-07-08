@@ -199,6 +199,9 @@ export function moveSortablePreview(input: {
     return;
   }
 
+  const useMidpointInitialPlacement =
+    draggedElement.parentElement !== listElement;
+
   if (!target.capabilities.sortable) {
     return;
   }
@@ -219,6 +222,7 @@ export function moveSortablePreview(input: {
     movement: input.registry.activeDrag.pointerMovement,
     previewPlacement: input.registry.activeDrag.previewPlacement,
     options: input.options,
+    useMidpointInitialPlacement,
   });
   const placement = placementDecision.placement;
 
@@ -270,6 +274,7 @@ export function getSortablePreviewPlacement(input: {
   movement: SortablePointerMovementState | null;
   previewPlacement: SortablePreviewPlacementState | null;
   options: NormalizedSortableOptions;
+  useMidpointInitialPlacement?: boolean;
 }): SortablePreviewPlacementDecision {
   const axis = input.options.axis;
   const axisPosition = getAxisPosition(input.placementPosition, axis);
@@ -288,12 +293,18 @@ export function getSortablePreviewPlacement(input: {
     previousPlacement.movementDirection === "none"
   ) {
     return {
-      placement: getOptimisticPlacement({
-        axis,
-        axisPosition,
-        currentDirection,
-        targetRect,
-      }),
+      placement: input.useMidpointInitialPlacement
+        ? getPlacementSideFromTargetMidpoint({
+            axis,
+            axisPosition,
+            targetRect,
+          })
+        : getOptimisticPlacement({
+            axis,
+            axisPosition,
+            currentDirection,
+            targetRect,
+          }),
       movementDirection: currentDirection,
     };
   }
@@ -367,6 +378,20 @@ function getOptimisticPlacement(input: {
       endRatio: neutralPlacementBoundaryRatio,
     }),
   );
+}
+
+function getPlacementSideFromTargetMidpoint(input: {
+  axis: SortableAxis;
+  axisPosition: number;
+  targetRect: DOMRect;
+}): SortablePlacementSide {
+  const targetStart =
+    input.axis === "horizontal" ? input.targetRect.left : input.targetRect.top;
+  const targetSize =
+    input.axis === "horizontal" ? input.targetRect.width : input.targetRect.height;
+  const midpoint = targetStart + targetSize / 2;
+
+  return input.axisPosition < midpoint ? "before" : "after";
 }
 
 function getCurrentAxisMovementDirection(input: {

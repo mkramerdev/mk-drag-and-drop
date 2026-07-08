@@ -1708,6 +1708,117 @@ describe("createDomSortable", () => {
     expect(a.dataset.dndDragged).toBeUndefined();
   });
 
+  it("places a kanban-like card before the first destination card from the target top half", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+  });
+
+  it("places a cross-container vertical target after from the target bottom half", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 18 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      right.b,
+      left.a,
+      right.c,
+    ]);
+  });
+
+  it("places a cross-container horizontal target before from the target left half", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      axis: "horizontal",
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+  });
+
+  it("places a cross-container horizontal target after from the target right half", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      axis: "horizontal",
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 140, clientY: 10 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      right.b,
+      left.a,
+      right.c,
+    ]);
+  });
+
+  it("does not use placementBoundary for cross-container initial midpoint placement", () => {
+    const topEntry = createSortableBoard({
+      placementBoundary: { start: 0, end: 0 },
+      rightItems: ["b", "c"],
+    });
+
+    topEntry.behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: topEntry.left.a }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(topEntry.right.container.children)).toEqual([
+      topEntry.left.a,
+      topEntry.right.b,
+      topEntry.right.c,
+    ]);
+
+    dispatchPointerCancel(window, { pointerId: 1 });
+    raf.flush();
+
+    const bottomEntry = createSortableBoard({
+      placementBoundary: { start: 1, end: 1 },
+      rightItems: ["b", "c"],
+    });
+
+    bottomEntry.behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: bottomEntry.left.a }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 18 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(bottomEntry.right.container.children)).toEqual([
+      bottomEntry.right.b,
+      bottomEntry.left.a,
+      bottomEntry.right.c,
+    ]);
+  });
+
   it("returns cross-container drop placement", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b", "c"],
@@ -1761,8 +1872,8 @@ describe("createDomSortable", () => {
     expect(runtime.activeDropTargetId).toBe("c");
     expect(Array.from(right.container.children)).toEqual([
       right.b,
-      right.c,
       left.a,
+      right.c,
     ]);
   });
 
@@ -2446,10 +2557,13 @@ describe("createDomSortable", () => {
 
   function createSortableBoard(input: {
     rightItems: ("b" | "c")[];
+    axis?: SortableAxis;
+    placementBoundary?: SortableTestOptions["placementBoundary"];
     rightContainerRect?: ReturnType<typeof createRect>;
     bRect?: ReturnType<typeof createRect>;
     cRect?: ReturnType<typeof createRect>;
   }) {
+    const axis = input.axis ?? "vertical";
     const leftContainer = createContainer(
       "left",
       createRect({ left: 0, top: 0, width: 50, height: 200 }),
@@ -2457,7 +2571,9 @@ describe("createDomSortable", () => {
     const rightContainer = createContainer(
       "right",
       input.rightContainerRect ??
-        createRect({ left: 100, top: 0, width: 50, height: 200 }),
+        (axis === "horizontal"
+          ? createRect({ left: 100, top: 0, width: 200, height: 50 })
+          : createRect({ left: 100, top: 0, width: 50, height: 200 })),
     );
     const a = createSortableElement(
       "a",
@@ -2469,7 +2585,10 @@ describe("createDomSortable", () => {
     );
     const c = createSortableElement(
       "c",
-      input.cRect ?? createRect({ left: 100, top: 30, width: 50, height: 20 }),
+      input.cRect ??
+        (axis === "horizontal"
+          ? createRect({ left: 160, top: 0, width: 50, height: 20 })
+          : createRect({ left: 100, top: 30, width: 50, height: 20 })),
     );
     const containerLeftBehavior = createDomDropContainer({
       runtime,
@@ -2488,6 +2607,8 @@ describe("createDomSortable", () => {
       draggableId: "a",
       group: "cards",
       containerId: "left",
+      axis,
+      placementBoundary: input.placementBoundary,
       getElement: () => a,
     });
     const behaviorB = createDomSortable({
@@ -2495,6 +2616,8 @@ describe("createDomSortable", () => {
       draggableId: "b",
       group: "cards",
       containerId: "right",
+      axis,
+      placementBoundary: input.placementBoundary,
       getElement: () => b,
     });
     const behaviorC = createDomSortable({
@@ -2502,6 +2625,8 @@ describe("createDomSortable", () => {
       draggableId: "c",
       group: "cards",
       containerId: "right",
+      axis,
+      placementBoundary: input.placementBoundary,
       getElement: () => c,
     });
 
