@@ -12,9 +12,9 @@ API settles.
 - Fixed cross-container sortable preview state so midpoint entry applies to the
   first target in a newly entered list, including container-to-item transitions,
   and subsequent targets in that list return to normal sortable placement.
-- Fixed same-target advancement after midpoint-based cross-container entry so
-  continued movement can move the preview past the active target without waiting
-  for the next target selection.
+- Fixed the first same-target move after midpoint-based cross-container entry so
+  it establishes normal movement-responsive placement instead of being delayed
+  by reversal hysteresis.
 
 ## 0.4.2
 

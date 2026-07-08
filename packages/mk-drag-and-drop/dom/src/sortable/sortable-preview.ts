@@ -318,7 +318,7 @@ export function getSortablePreviewPlacement(input: {
 
       return {
         placement,
-        movementDirection: getMovementDirectionFromPlacementSide(placement),
+        movementDirection: "none",
       };
     }
 
@@ -422,11 +422,6 @@ function getPlacementSideFromTargetMidpoint(input: {
   return input.axisPosition < midpoint ? "before" : "after";
 }
 
-function getMovementDirectionFromPlacementSide(
-  placement: SortablePlacementSide,
-): SortableAxisMovementDirection {
-  return placement === "before" ? "backward" : "forward";
-}
 
 function getCurrentAxisMovementDirection(input: {
   placementPosition: { x: number; y: number };

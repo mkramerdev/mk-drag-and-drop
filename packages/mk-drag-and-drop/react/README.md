@@ -463,7 +463,9 @@ above or left of midpoint places before, while below or right of midpoint places
 after. Pointer-based targeting uses the pointer as that position; rect-based
 targeting such as `centerToCenter` uses the overlay center. `placementBoundary`
 remains a same-target reversal and hysteresis control after preview placement
-exists; it does not decide the initial side for cross-container sortable entry.
+has an established movement direction; it does not decide the initial side for
+cross-container sortable entry or delay the first movement that follows
+midpoint-based entry into a list.
 
 Examples may rerender a full list for simplicity, but granular state management,
 external stores, server commits, and imperative rendering strategies are

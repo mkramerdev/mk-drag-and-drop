@@ -374,9 +374,10 @@ sortable axis: above or left of midpoint places before, while below or right of
 midpoint places after. Pointer-based targeting uses the pointer as that position;
 rect-based targeting such as `centerToCenter` uses the overlay center.
 
-`placementBoundary` is used after a preview placement already exists to control
-same-target reversal and hysteresis thresholds. It does not decide the initial
-side for cross-container sortable entry.
+`placementBoundary` is used after a preview placement already has an established
+movement direction to control same-target reversal and hysteresis thresholds. It
+does not decide the initial side for cross-container sortable entry or delay the
+first movement that follows midpoint-based entry into a list.
 
 ## Modifiers
 

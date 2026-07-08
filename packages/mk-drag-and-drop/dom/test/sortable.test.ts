@@ -1751,7 +1751,7 @@ describe("createDomSortable", () => {
     ]);
   });
 
-  it("advances cross-container midpoint placement on the same target while moving forward", () => {
+  it("uses movement-responsive placement on the first same-target move after midpoint entry", () => {
     configureRuntimeCallbacks(
       {},
       {
@@ -1760,6 +1760,7 @@ describe("createDomSortable", () => {
       },
     );
     const { left, right, behaviors } = createSortableBoard({
+      placementBoundary: { start: 1 },
       rightItems: ["b", "c"],
     });
 
