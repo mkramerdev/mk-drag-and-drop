@@ -20,6 +20,7 @@ export type DragUpdateEvent = {
   draggableId: string;
   source: DragSource;
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
@@ -28,6 +29,7 @@ export type DragEndEvent = {
   draggableId: string;
   source: DragSource;
   result: DragEndResult;
+  overlayRect: DragRect | null;
   dropTargetId: string | null;
 };
 

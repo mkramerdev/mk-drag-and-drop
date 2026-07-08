@@ -52,6 +52,7 @@ The React root export includes:
 - `useSortable`, `UseSortableOptions`, `UseSortableResult`
 - `useDragHandle`, `UseDragHandleResult`
 - `useRemeasureDropTargets`
+- `useRemeasureOverlay`
 - `composeRefs`
 - React-friendly `restrictToContainer`, `ReactRestrictToContainerInput`
 - DOM targeting helpers, modifier helpers, lifecycle/source/result types,
@@ -222,6 +223,7 @@ type DragUpdateEvent = {
   draggableId: string;
   source: DragSource;
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
@@ -231,6 +233,7 @@ type DragEndEvent = {
   source: DragSource;
   result: DragEndResult;
   dropTargetId: string | null;
+  overlayRect: DragRect | null;
 };
 
 type DropEvent = {
@@ -240,6 +243,15 @@ type DropEvent = {
   sortablePlacement?: SortableDropPlacement;
 };
 ```
+
+`DragUpdateEvent.overlayRect` is the current viewport-space rectangle for the
+drag overlay. `DragEndEvent.overlayRect` is the final viewport-space rectangle
+at the moment the drag ends. React receives these DOM lifecycle event types
+unchanged. The field is `null` when no drag overlay is configured. When an
+overlay exists, it is based on cached overlay measurement plus modified pointer
+movement, with the translated source rect as the fallback before overlay content
+has been measured. React does not add overlay DOM measurement on every pointer
+move.
 
 `onDrop` only runs for a valid successful drop. `onDragEnd.result` distinguishes
 successful drops, normal releases with no target, stale/invalid targets, and
@@ -390,6 +402,22 @@ every render. Sortable preview movement does not automatically remeasure a
 group; call this function when an app-owned layout change needs to affect
 targeting.
 
+### useRemeasureOverlay
+
+`useRemeasureOverlay` returns a function for manually refreshing the current
+overlay measurement. It must be used inside `DragProvider`. Calling the returned
+function with no mounted overlay is safe and does nothing.
+
+```tsx
+const remeasureOverlay = useRemeasureOverlay();
+
+remeasureOverlay();
+```
+
+Normal overlay size changes are observed automatically with `ResizeObserver`
+when available. Use this hook when the app knows visual geometry changed outside
+that automatic path, such as after a CSS transform or transition.
+
 ## Sortable Behavior
 
 Sortable preview is transient. The runtime may move DOM temporarily to show
@@ -429,8 +457,10 @@ shape.
 
 ```tsx
 <DragProvider
-  dragOverlay={({ dragState }) => (
-    <div className="dragOverlay">{dragState.draggableId}</div>
+  dragOverlay={({ dragState, remeasureOverlay }) => (
+    <div className="dragOverlay" onTransitionEnd={remeasureOverlay}>
+      {dragState.draggableId}
+    </div>
   )}
 >
   {children}
@@ -441,6 +471,7 @@ The overlay input includes:
 
 - `dragState`: item id, group, source rect, start pointer, and current pointer.
 - `phase`: `"dragging"` or `"released"`.
+- `remeasureOverlay`: manually refreshes the cached overlay measurement.
 - `removeOverlay`: present only for `"released"` overlays in manual release
   mode; call it when app-owned release animation should remove the overlay.
 
@@ -456,10 +487,21 @@ provider, controller, or runtime teardown API.
 
 The package owns overlay hosting, movement, release, and measurement for
 targeting and modifiers. It measures overlay content on mount/replacement and
-uses `ResizeObserver` when available to remeasure content size changes. Dynamic
-overlay content should use overlay-local state, component effects, lifecycle
-callbacks feeding a subscription/external store, or another app-owned update
-path rather than relying on `dragOverlay` being called for every pointer move.
+uses `ResizeObserver` when available to remeasure content size changes. The
+React package mirrors DOM behavior: overlay movement remains package-managed and
+imperative, so pointer movement should not require React state updates on every
+move.
+
+Use the overlay input `remeasureOverlay` helper when overlay-local UI knows its
+visual bounds changed. It uses the same provider/runtime path as
+`useRemeasureOverlay` and avoids reaching into internal runtime or provider
+state. CSS transforms can change visual bounds without necessarily triggering
+`ResizeObserver`.
+
+Dynamic overlay content should use overlay-local state, component effects,
+lifecycle callbacks feeding a subscription/external store, or another app-owned
+update path rather than relying on `dragOverlay` being called for every pointer
+move.
 
 ## Targeting And Modifiers
 
@@ -548,9 +590,9 @@ mount/unmount.
 `useDraggable`, `useDroppable`, and `useSortable` rely on React prop/ref updates
 for normal mount, unmount, and element replacement behavior.
 
-`useRemeasureDropTargets` is for layout changes, not resource release. The
-runtime also prunes disconnected targets on drag-critical paths such as
-remeasurement.
+`useRemeasureDropTargets` and `useRemeasureOverlay` are for geometry changes,
+not resource release. The runtime also prunes disconnected targets on
+drag-critical paths such as remeasurement.
 
 ## Examples
 
@@ -584,6 +626,8 @@ React examples live in `apps/react-web/src/react`:
 - `useDragHandle()`: returns the handle attribute props for a handle element.
 - `useRemeasureDropTargets()`: returns a function for remeasuring all targets,
   one target, multiple targets, or a group.
+- `useRemeasureOverlay()`: returns a function for manually refreshing the
+  currently mounted overlay measurement.
 - `composeRefs`: helper for combining the refs returned by hooks with app refs.
 - `lockToXAxis`, `lockToYAxis`: DOM movement modifiers re-exported by React.
 - `restrictToContainer`: React-friendly container-bound modifier.

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   centerToCenter,
+  lockToXAxis,
   pointerToCenter,
   type DragLifecycleCallbacks,
   type DragModifierInput,
@@ -110,6 +111,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         pointerPosition: { x: 110, y: 10 },
+        overlayRect: null,
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
       },
@@ -170,6 +172,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         pointerPosition: { x: 110, y: 10 },
+        overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: "target-1",
       },
@@ -237,6 +240,81 @@ describe("DragRuntime", () => {
         dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
       },
     });
+  });
+
+  it("includes translated source rect fallback in drag updates with an unmeasured overlay", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      hasDragOverlay: true,
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 5, clientY: 7 });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pointerPosition: { x: 5, y: 7 },
+        overlayRect: createRect({ left: 15, top: 27, width: 30, height: 40 }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("includes cached overlay measurements in drag updates", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      hasDragOverlay: true,
+    });
+
+    startRuntimeDrag(runtime, source);
+    runtime.setOverlayRect(
+      createRect({ left: 12, top: 23, width: 50, height: 60 }),
+    );
+    onDragUpdate.mockClear();
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 7, clientY: 11 });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pointerPosition: { x: 7, y: 11 },
+        overlayRect: createRect({ left: 19, top: 34, width: 50, height: 60 }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("derives overlayRect from modified pointer movement", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      hasDragOverlay: true,
+      modifiers: [lockToXAxis()],
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 5, clientY: 7 });
+    raf.flush();
+
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pointerPosition: { x: 5, y: 0 },
+        overlayRect: createRect({ left: 15, top: 20, width: 30, height: 40 }),
+      }),
+      expect.any(Object),
+    );
   });
 
   it("keeps placementPosition in drag subscriptions for sortable placement", () => {
@@ -351,6 +429,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "dropped",
+        overlayRect: null,
         dropTargetId: "target-1",
       },
       expect.any(Object),
@@ -374,11 +453,98 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "no-target",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
     );
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("includes translated source rect fallback in drag end with an unmeasured overlay", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const onDragEnd = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragEnd },
+      hasDragOverlay: true,
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 5, clientY: 7 });
+    dispatchPointerUp(window, { pointerId: 1, clientX: 5, clientY: 7 });
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "no-target",
+        overlayRect: createRect({ left: 15, top: 27, width: 30, height: 40 }),
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("includes cached overlay measurements in drag end", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const onDragEnd = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragEnd },
+      hasDragOverlay: true,
+    });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    runtime.setOverlayRect(
+      createRect({ left: 12, top: 23, width: 50, height: 60 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "dropped",
+        overlayRect: createRect({ left: 122, top: 33, width: 50, height: 60 }),
+        dropTargetId: "target-1",
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("derives drag end overlayRect from modified pointer movement", () => {
+    const source = createElementWithRect(
+      createRect({ left: 10, top: 20, width: 30, height: 40 }),
+    );
+    const onDragEnd = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragEnd },
+      hasDragOverlay: true,
+      modifiers: [lockToXAxis()],
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 5, clientY: 7 });
+    runtime.cancelDrag();
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "canceled",
+        overlayRect: createRect({ left: 15, top: 20, width: 30, height: 40 }),
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
   });
 
   it("reports invalid-target when the active target is stale on release", () => {
@@ -405,6 +571,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "invalid-target",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -477,6 +644,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "canceled",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -492,6 +660,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "canceled",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -517,6 +686,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "keyboard",
         result: "canceled",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -550,6 +720,7 @@ describe("DragRuntime", () => {
         draggableId: "item-1",
         source: "keyboard",
         result: "invalid-target",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),

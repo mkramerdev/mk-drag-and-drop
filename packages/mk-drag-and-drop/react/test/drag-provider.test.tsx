@@ -429,11 +429,16 @@ describe("DragProvider", () => {
   });
 
   it("removes auto-release overlays on drag end", () => {
+    let draggingOverlayRemeasure: (() => void) | null = null;
     const overlayInputKeys: string[][] = [];
     render(
       <DragProvider
         dragOverlay={(input) => {
           overlayInputKeys.push(Object.keys(input).sort());
+
+          if (input.phase === "dragging") {
+            draggingOverlayRemeasure = input.remeasureOverlay;
+          }
 
           return <div>Overlay item {input.dragState.draggableId}</div>;
         }}
@@ -454,14 +459,24 @@ describe("DragProvider", () => {
       });
     });
 
-    expect(screen.getByText("Overlay item item-1")).toBeInTheDocument();
+    const draggingOverlay = screen.getByText("Overlay item item-1");
+    expect(draggingOverlay).toBeInTheDocument();
+    expect(draggingOverlayRemeasure).toEqual(expect.any(Function));
+
+    act(() => {
+      draggingOverlayRemeasure?.();
+    });
+
+    expect(screen.getByText("Overlay item item-1")).toBe(draggingOverlay);
 
     act(() => {
       dispatchPointerUp(window, { pointerId: 1, clientX: 4, clientY: 4 });
     });
 
     expect(screen.queryByText("Overlay item item-1")).toBeNull();
-    expect(overlayInputKeys).toEqual([["dragState", "phase"]]);
+    expect(overlayInputKeys).toEqual([
+      ["dragState", "phase", "remeasureOverlay"],
+    ]);
   });
 
   it("does not call the overlay render callback on pointer updates", () => {
@@ -617,6 +632,7 @@ describe("DragProvider", () => {
   it("supports manual released overlay removal", () => {
     const raf = installMockRaf();
     let removeReleasedOverlay: (() => void) | null = null;
+    let remeasureReleasedOverlay: (() => void) | null = null;
     const overlayInputKeys: string[][] = [];
     render(
       <DragProvider
@@ -627,6 +643,7 @@ describe("DragProvider", () => {
 
           if (phase === "released") {
             removeReleasedOverlay = input.removeOverlay;
+            remeasureReleasedOverlay = input.remeasureOverlay;
           }
 
           return (
@@ -660,14 +677,21 @@ describe("DragProvider", () => {
       dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
     });
 
-    expect(
-      screen.getByText("released:item-1"),
-    ).toBeInTheDocument();
+    const releasedOverlay = screen.getByText("released:item-1");
+    expect(releasedOverlay).toBeInTheDocument();
+    expect(remeasureReleasedOverlay).toEqual(expect.any(Function));
     expect(overlayInputKeys).toContainEqual([
       "dragState",
       "phase",
+      "remeasureOverlay",
       "removeOverlay",
     ]);
+
+    act(() => {
+      remeasureReleasedOverlay?.();
+    });
+
+    expect(screen.getByText("released:item-1")).toBe(releasedOverlay);
 
     act(() => {
       removeReleasedOverlay?.();
@@ -803,6 +827,7 @@ describe("DragProvider", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "dropped",
+        overlayRect: null,
         dropTargetId: "target-1",
       },
       expect.any(Object),

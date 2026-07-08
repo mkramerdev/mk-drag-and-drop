@@ -36,6 +36,8 @@ The root export includes:
 - `createDropContainer`
 - `createSortable`
 - `createDragHandle`
+- controller types: `DragController`, `DragControllerOptions`,
+  `DragControllerOverlayInput`, `DragControllerAnnouncements`
 - lifecycle types: `DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`,
   `DropEvent`, `DragSource`, `DragEndResult`, `DragLifecycleCallbacks`,
   `DragLifecycleHelpers`
@@ -94,6 +96,8 @@ The returned controller has:
 
 - `remeasureDropTargets(input?)`: remeasures all targets, one target id, an
   array of target ids, or `{ group }`
+- `remeasureOverlay()`: remeasures the currently mounted drag overlay element;
+  it is a safe no-op when no overlay is mounted or no drag is active
 
 The controller does not expose runtime teardown, disposal, update, or broad
 overlay removal methods. Runtime objects are ordinary JavaScript objects; DOM
@@ -108,6 +112,14 @@ controller calls `dragOverlay` once more for the `"released"` phase and passes
 `removeOverlay`; call that function when app-owned release animation is done.
 Pointer movement does not call `dragOverlay`.
 
+The overlay input includes:
+
+- `dragState`: item id, group, source rect, start pointer, and current pointer.
+- `phase`: `"dragging"` or `"released"`.
+- `remeasureOverlay`: manually refreshes the cached overlay measurement.
+- `removeOverlay`: present only for `"released"` overlays in manual release
+  mode; call it when app-owned release animation should remove the overlay.
+
 `removeOverlay` is only present for released overlays in manual release mode.
 Calling it more than once is safe. It removes the overlay host state only; it is
 not a controller or runtime teardown API.
@@ -121,7 +133,31 @@ from the current pointer delta.
 The controller measures the returned overlay element on mount/replacement. When
 `ResizeObserver` is available, it also remeasures when that element changes
 size. The runtime derives the current overlay rect from that cached measurement
-plus pointer movement.
+plus modified pointer movement, and it does not measure overlay DOM on every
+pointer move.
+
+Manual `remeasureOverlay()` is for cases automatic observation cannot cover or
+where the app knows visual geometry changed. CSS transforms can change visual
+bounds without necessarily triggering `ResizeObserver`.
+
+```ts
+controller.remeasureOverlay();
+```
+
+```ts
+const controller = createDragController({
+  dragOverlay({ dragState, remeasureOverlay }) {
+    const element = document.createElement("div");
+    element.textContent = dragState.draggableId;
+
+    element.addEventListener("transitionend", () => {
+      remeasureOverlay();
+    });
+
+    return element;
+  },
+});
+```
 
 For dynamic overlay content, keep a reference to the element and update it from
 lifecycle callbacks or subscriptions:
@@ -164,6 +200,7 @@ type DragUpdateEvent = {
   draggableId: string;
   source: DragSource;
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
@@ -181,6 +218,7 @@ type DragEndEvent = {
   source: DragSource;
   result: DragEndResult;
   dropTargetId: string | null;
+  overlayRect: DragRect | null;
 };
 
 type DropEvent = {
@@ -199,6 +237,14 @@ type SortableDropPlacement = {
   side: "before" | "after" | null;
 };
 ```
+
+`DragUpdateEvent.overlayRect` is the current viewport-space rectangle for the
+drag overlay. `DragEndEvent.overlayRect` is the final viewport-space rectangle
+at the moment the drag ends. Both are `null` when no drag overlay is configured.
+When an overlay is configured, the runtime uses cached overlay measurement plus
+modified pointer movement. Before overlay content has been measured, it uses the
+same translated source-rect fallback as the visual overlay. The drag update and
+drag end paths do not read overlay DOM just to produce this field.
 
 Helpers:
 
@@ -339,8 +385,14 @@ modifier state.
 ## Measurement
 
 Targets are measured when registered and remeasured at drag start. The explicit
-remeasurement entry point is `controller.remeasureDropTargets(input?)`; call it
-when app-owned layout changes during a drag should affect targeting.
+target remeasurement entry point is `controller.remeasureDropTargets(input?)`;
+call it when app-owned layout changes during a drag should affect targeting.
+
+Overlay measurement is separate from target measurement. Overlay content is
+measured on mount/replacement and by `ResizeObserver` when available. Use
+`controller.remeasureOverlay()` when the current overlay geometry should be
+refreshed manually, such as after an app-owned transition or transform that
+changes visual bounds without a normal size-observer notification.
 
 `RemeasureDropTargetsInput` accepts:
 

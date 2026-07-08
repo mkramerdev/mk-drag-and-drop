@@ -37,11 +37,13 @@ export type DragControllerOverlayInput =
   | {
       dragState: DragState;
       phase: "dragging";
+      remeasureOverlay: () => void;
       removeOverlay?: never;
     }
   | {
       dragState: DragState;
       phase: "released";
+      remeasureOverlay: () => void;
       removeOverlay: () => void;
     };
 
@@ -59,6 +61,7 @@ export type DragControllerOptions = {
 
 export type DragController = {
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
+  remeasureOverlay: () => void;
 };
 
 export function createDragController(
@@ -86,6 +89,7 @@ export function createDragController(
     remeasureDropTargets: (input) => {
       runtime.remeasureDropTargets(input);
     },
+    remeasureOverlay,
   };
 
   setControllerRuntime(controller, runtime);
@@ -222,6 +226,10 @@ export function createDragController(
     );
   }
 
+  function remeasureOverlay(): void {
+    measureOverlayElement();
+  }
+
   function disconnectOverlayResizeObserver(): void {
     overlayResizeObserver?.disconnect();
     overlayResizeObserver = null;
@@ -254,6 +262,7 @@ export function createDragController(
       return {
         dragState: overlayState.dragState,
         phase: "released",
+        remeasureOverlay,
         removeOverlay: clearOverlayHost,
       };
     }
@@ -261,6 +270,7 @@ export function createDragController(
     return {
       dragState: overlayState.dragState,
       phase: "dragging",
+      remeasureOverlay,
     };
   }
 

@@ -29,8 +29,12 @@ describe("DOM public API", () => {
   it("createDragController exposes only public drag scope operations", () => {
     const controller = domApi.createDragController();
 
-    expect(Object.keys(controller)).toEqual(["remeasureDropTargets"]);
+    expect(Object.keys(controller)).toEqual([
+      "remeasureDropTargets",
+      "remeasureOverlay",
+    ]);
     expect(controller).toHaveProperty("remeasureDropTargets");
+    expect(controller).toHaveProperty("remeasureOverlay");
     expect(controller).not.toHaveProperty("cleanup");
     expect(controller).not.toHaveProperty("dispose");
     expect(controller).not.toHaveProperty("update");

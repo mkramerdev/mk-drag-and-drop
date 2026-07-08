@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useLayoutEffect,
   useRef,
   type ReactNode,
@@ -16,16 +17,19 @@ export type DragOverlayInput = {
 } & (
   | {
       phase: Extract<DragOverlayPhase, "dragging">;
+      remeasureOverlay: () => void;
       removeOverlay?: never;
     }
   | {
       phase: Extract<DragOverlayPhase, "released">;
+      remeasureOverlay: () => void;
       removeOverlay: () => void;
     }
 );
 
 export type DragOverlayHostHandle = {
   move: (dragState: DragState) => void;
+  remeasure: () => void;
 };
 
 export const DragOverlayHost = memo(function DragOverlayHost({
@@ -43,6 +47,25 @@ export const DragOverlayHost = memo(function DragOverlayHost({
 }) {
   const overlayWrapperRef = useRef<HTMLDivElement | null>(null);
 
+  const measureOverlayElement = useCallback((): void => {
+    const wrapper = overlayWrapperRef.current;
+
+    if (!wrapper) {
+      onOverlayRectChange?.(null);
+      return;
+    }
+
+    const measuredElement = getMeasuredOverlayElement(wrapper);
+
+    if (!measuredElement.isConnected) {
+      return;
+    }
+
+    onOverlayRectChange?.(
+      domRectToDragRect(measuredElement.getBoundingClientRect()),
+    );
+  }, [onOverlayRectChange]);
+
   useLayoutEffect(() => {
     const wrapper = overlayWrapperRef.current;
 
@@ -55,6 +78,7 @@ export const DragOverlayHost = memo(function DragOverlayHost({
       move: (nextDragState: DragState): void => {
         moveOverlayWrapper(wrapper, nextDragState);
       },
+      remeasure: measureOverlayElement,
     };
 
     onHostReady?.(host);
@@ -63,7 +87,7 @@ export const DragOverlayHost = memo(function DragOverlayHost({
     return () => {
       onHostReady?.(null);
     };
-  }, [dragState, onHostReady]);
+  }, [dragState, measureOverlayElement, onHostReady]);
 
   useLayoutEffect(() => {
     const wrapper = overlayWrapperRef.current;
@@ -73,16 +97,7 @@ export const DragOverlayHost = memo(function DragOverlayHost({
       return;
     }
 
-    const measuredElement = wrapper.firstElementChild ?? wrapper;
-    const measureOverlayElement = (): void => {
-      if (!measuredElement.isConnected) {
-        return;
-      }
-
-      onOverlayRectChange?.(
-        domRectToDragRect(measuredElement.getBoundingClientRect()),
-      );
-    };
+    const measuredElement = getMeasuredOverlayElement(wrapper);
 
     measureOverlayElement();
 
@@ -101,7 +116,7 @@ export const DragOverlayHost = memo(function DragOverlayHost({
       resizeObserver.disconnect();
       onOverlayRectChange?.(null);
     };
-  }, [contentId, onOverlayRectChange]);
+  }, [contentId, measureOverlayElement, onOverlayRectChange]);
 
   return (
     <div
@@ -121,6 +136,10 @@ export const DragOverlayHost = memo(function DragOverlayHost({
     </div>
   );
 });
+
+function getMeasuredOverlayElement(wrapper: HTMLElement): Element {
+  return wrapper.firstElementChild ?? wrapper;
+}
 
 function moveOverlayWrapper(wrapper: HTMLElement, dragState: DragState): void {
   wrapper.style.transform = getOverlayTransform(dragState);

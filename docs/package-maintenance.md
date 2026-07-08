@@ -17,16 +17,17 @@ must not be marked `private: true`.
 The React package wraps and depends on the DOM package. Build, pack, and publish
 the DOM package first, then the React package.
 
-The React source manifest can keep the workspace dependency:
+Keep the React package dependency on `@mk-drag-and-drop/dom` aligned with the
+DOM package release version using a real semver range, for example:
 
 ```json
 {
-  "@mk-drag-and-drop/dom": "workspace:*"
+  "@mk-drag-and-drop/dom": "^0.3.0"
 }
 ```
 
-Use pnpm for package packing and publishing. pnpm rewrites workspace
-dependencies to real package versions in the packed manifest.
+pnpm will still link the matching workspace package during local installs when
+the workspace version satisfies the range.
 
 ## Build Workflow
 
@@ -88,7 +89,8 @@ Checks:
 
 - Root application APIs must not expose runtime lifecycle controls such as
   `cleanup`, `dispose`, `update`, or broad overlay release methods.
-- The public controller operation is `remeasureDropTargets`.
+- Public controller operations are `remeasureDropTargets` and
+  `remeasureOverlay`.
 - DOM binding helpers return `void`; do not add per-binding disposer returns.
 - Manual overlay release is opt-in through `overlayRelease: "manual"` and the
   overlay-owned `removeOverlay` callback.
@@ -105,6 +107,12 @@ Each publishable package should have:
 - `repository`
 - `bugs`
 - `keywords`
+- `type`
+- `main`
+- `types`
+- `exports`
+- `files`
+- `sideEffects`
 - `publishConfig.access`
 
 ## Release Checklist

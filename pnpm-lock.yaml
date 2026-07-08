@@ -113,7 +113,7 @@ importers:
   packages/mk-drag-and-drop/react:
     dependencies:
       '@mk-drag-and-drop/dom':
-        specifier: workspace:*
+        specifier: ^0.3.0
         version: link:../dom
     devDependencies:
       '@repo/eslint-config':

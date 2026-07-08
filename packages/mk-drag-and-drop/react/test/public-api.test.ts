@@ -22,5 +22,6 @@ describe("React public API", () => {
     expect(reactApi).toHaveProperty("useDropContainer");
     expect(reactApi).toHaveProperty("useSortable");
     expect(reactApi).toHaveProperty("useRemeasureDropTargets");
+    expect(reactApi).toHaveProperty("useRemeasureOverlay");
   });
 });

@@ -294,6 +294,7 @@ describe("createDroppable", () => {
         draggableId: "item",
         source: "pointer",
         result: "invalid-target",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),

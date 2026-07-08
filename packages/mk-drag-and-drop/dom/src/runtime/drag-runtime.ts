@@ -356,6 +356,7 @@ export class DragRuntime {
       draggableId: nextSession.draggableId,
       source: nextSession.source,
       pointerPosition,
+      overlayRect,
       activeDropTargetId: nextSession.activeDropTargetId,
       previousDropTargetId,
     };
@@ -728,6 +729,10 @@ export class DragRuntime {
             ? "dropped"
             : "invalid-target"
       : null;
+    const overlayRect =
+      session && this.hasDragOverlay
+        ? this.getCurrentDragRectAt(session.pointerPosition)
+        : null;
     const sortablePlacement =
       session && dropTargetId
         ? this.getDropEventSortablePlacement(session, dropTargetId)
@@ -758,6 +763,7 @@ export class DragRuntime {
           draggableId: session.draggableId,
           source: session.source,
           result,
+          overlayRect,
           dropTargetId,
         });
 

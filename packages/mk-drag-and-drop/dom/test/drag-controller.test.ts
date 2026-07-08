@@ -59,6 +59,12 @@ describe("createDragController", () => {
     expect(remeasureSpy).toHaveBeenCalledWith(input);
   });
 
+  it("does not throw when manually remeasuring without an active overlay", () => {
+    controller = createDragController();
+
+    expect(() => controller?.remeasureOverlay()).not.toThrow();
+  });
+
   it("fires lifecycle callbacks through the runtime", () => {
     const raf = installMockRaf();
     const onDragStart = vi.fn();
@@ -91,6 +97,7 @@ describe("createDragController", () => {
         draggableId: "item",
         source: "pointer",
         result: "dropped",
+        overlayRect: null,
         dropTargetId: "target",
       },
       expect.any(Object),
@@ -362,6 +369,88 @@ describe("createDragController", () => {
     raf.restore();
   });
 
+  it("manually remeasures mounted overlay content", () => {
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    const getBoundingClientRect = vi
+      .spyOn(overlayElement, "getBoundingClientRect")
+      .mockReturnValue(createRect({ width: 30, height: 40 }) as DOMRect);
+    controller = createDragController({
+      dragOverlay: () => overlayElement,
+    });
+
+    startDrag(controller, createElementWithRect());
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    controller.remeasureOverlay();
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes overlay remeasurement helper to dragging overlay input", () => {
+    let overlayInput: DragControllerOverlayInput | null = null;
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    const getBoundingClientRect = vi
+      .spyOn(overlayElement, "getBoundingClientRect")
+      .mockReturnValue(createRect({ width: 30, height: 40 }) as DOMRect);
+    controller = createDragController({
+      dragOverlay: (input) => {
+        overlayInput = input;
+        expect(() => input.remeasureOverlay()).not.toThrow();
+        return overlayElement;
+      },
+    });
+
+    startDrag(controller, createElementWithRect());
+    expect(overlayInput).toMatchObject({
+      phase: "dragging",
+      remeasureOverlay: expect.any(Function),
+    });
+    expect(overlayInput).not.toHaveProperty("removeOverlay");
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+
+    overlayInput?.remeasureOverlay();
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates cached overlay geometry after manual overlay remeasurement", () => {
+    const targetingAlgorithm = Object.assign(
+      vi.fn(() => null),
+      { mode: "rect" as const },
+    );
+    const overlayElement = document.createElement("div");
+    overlayElement.className = "drag-overlay-child";
+    const getBoundingClientRect = vi
+      .spyOn(overlayElement, "getBoundingClientRect")
+      .mockReturnValueOnce(createRect({ width: 20, height: 20 }) as DOMRect)
+      .mockReturnValue(createRect({ width: 40, height: 30 }) as DOMRect);
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    controller = createDragController({
+      dragOverlay: () => overlayElement,
+      targetingAlgorithm,
+    });
+    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+
+    startDrag(controller, createElementWithRect());
+    expect(targetingAlgorithm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        overlayRect: createRect({ width: 20, height: 20 }),
+      }),
+    );
+
+    controller.remeasureOverlay();
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(2);
+    expect(targetingAlgorithm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        overlayRect: createRect({ width: 40, height: 30 }),
+      }),
+    );
+  });
   it("remeasures overlay content when ResizeObserver reports a resize", () => {
     const resizeObserver = installMockResizeObserver();
     const targetingAlgorithm = Object.assign(
@@ -453,11 +542,13 @@ describe("createDragController", () => {
   it("keeps manual release overlays until removeOverlay is called", () => {
     const raf = installMockRaf();
     let removeReleasedOverlay: (() => void) | null = null;
+    let remeasureReleasedOverlay: (() => void) | null = null;
     const overlayCalls: Array<{
       phase: DragControllerOverlayInput["phase"];
       draggableId: string;
       group: string;
       hasRemoveOverlay: boolean;
+      hasRemeasureOverlay: boolean;
     }> = [];
     const target = createElementWithRect(
       createRect({ left: 100, width: 20, height: 20 }),
@@ -468,6 +559,7 @@ describe("createDragController", () => {
         const { dragState, phase } = input;
         if (phase === "released") {
           removeReleasedOverlay = input.removeOverlay;
+          remeasureReleasedOverlay = input.remeasureOverlay;
         }
 
         overlayCalls.push({
@@ -475,6 +567,7 @@ describe("createDragController", () => {
           draggableId: dragState.draggableId,
           group: dragState.group,
           hasRemoveOverlay: "removeOverlay" in input,
+          hasRemeasureOverlay: typeof input.remeasureOverlay === "function",
         });
         const element = document.createElement("div");
         element.className = "drag-overlay-child";
@@ -494,15 +587,23 @@ describe("createDragController", () => {
         draggableId: "item",
         group: "items",
         hasRemoveOverlay: false,
+        hasRemeasureOverlay: true,
       },
       {
         phase: "released",
         draggableId: "item",
         group: "items",
         hasRemoveOverlay: true,
+        hasRemeasureOverlay: true,
       },
     ]);
-    expect(getOverlayChild()).not.toBeNull();
+    const releasedOverlay = getOverlayChild();
+    expect(releasedOverlay).not.toBeNull();
+    expect(remeasureReleasedOverlay).toEqual(expect.any(Function));
+
+    remeasureReleasedOverlay?.();
+
+    expect(getOverlayChild()).toBe(releasedOverlay);
 
     removeReleasedOverlay?.();
     removeReleasedOverlay?.();
@@ -620,13 +721,17 @@ describe("createDragController", () => {
       },
     });
 
-    expect(Object.keys(controller)).toEqual(["remeasureDropTargets"]);
+    expect(Object.keys(controller)).toEqual([
+      "remeasureDropTargets",
+      "remeasureOverlay",
+    ]);
     expect(controller).not.toHaveProperty("cleanup");
     expect(controller).not.toHaveProperty("dispose");
     expect(controller).not.toHaveProperty("update");
     expect(controller).not.toHaveProperty("configure");
     expect(controller).not.toHaveProperty("finishOverlay");
     expect(controller).toHaveProperty("remeasureDropTargets");
+    expect(controller).toHaveProperty("remeasureOverlay");
   });
 });
 

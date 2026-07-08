@@ -10,6 +10,7 @@ import {
   useDraggable,
   useDroppable,
   useRemeasureDropTargets,
+  useRemeasureOverlay,
   useSortable,
   type SortableDropPlacement,
 } from "../src/index.js";
@@ -30,6 +31,7 @@ type RuntimeSpyMap = {
   unregisterDropTarget?: DragRuntimeScope["unregisterDropTarget"];
   registerDropContainer?: DragRuntimeScope["registerDropContainer"];
   unregisterDropContainer?: DragRuntimeScope["unregisterDropContainer"];
+  setOverlayRect?: DragRuntimeScope["setOverlayRect"];
 };
 
 function createRuntimeSpyInstaller(
@@ -83,6 +85,16 @@ function createRuntimeSpyInstaller(
         unregisterDropContainer(...args);
       }) as DragRuntimeScope["unregisterDropContainer"];
     }
+
+    if (spies.setOverlayRect) {
+      const setOverlayRect = runtime.setOverlayRect;
+      runtime.setOverlayRect = ((
+        ...args: Parameters<DragRuntimeScope["setOverlayRect"]>
+      ) => {
+        spies.setOverlayRect?.(...args);
+        setOverlayRect(...args);
+      }) as DragRuntimeScope["setOverlayRect"];
+    }
   };
 }
 
@@ -125,8 +137,102 @@ describe("React hooks", () => {
     expect(() => render(<UseRemeasureOutside />)).toThrow(
       "useRemeasureDropTargets must be used inside DragProvider",
     );
+    expect(() => render(<UseRemeasureOverlayOutside />)).toThrow(
+      "useRemeasureOverlay must be used inside DragProvider",
+    );
 
     consoleError.mockRestore();
+  });
+
+  it("useRemeasureOverlay returns a safe no-op without mounted overlay", () => {
+    let remeasureOverlay: (() => void) | null = null;
+
+    render(
+      <DragProvider>
+        <RemeasureOverlayProbe
+          onRemeasureOverlay={(nextRemeasureOverlay) => {
+            remeasureOverlay = nextRemeasureOverlay;
+          }}
+        />
+      </DragProvider>,
+    );
+
+    const currentRemeasureOverlay = remeasureOverlay;
+    expect(currentRemeasureOverlay).toEqual(expect.any(Function));
+    expect(() => currentRemeasureOverlay?.()).not.toThrow();
+  });
+
+  it("useRemeasureOverlay remeasures mounted overlay content", () => {
+    let remeasureOverlay: (() => void) | null = null;
+    let getBoundingClientRect: ReturnType<typeof vi.fn> | null = null;
+    const setOverlayRect = vi.fn();
+    const installRuntimeSpies = createRuntimeSpyInstaller({ setOverlayRect });
+
+    render(
+      <DragProvider
+        dragOverlay={() => (
+          <div
+            data-testid="overlay"
+            ref={(element) => {
+              if (element && !getBoundingClientRect) {
+                getBoundingClientRect = vi
+                  .fn()
+                  .mockReturnValueOnce(
+                    createRect({ width: 20, height: 20 }) as DOMRect,
+                  )
+                  .mockReturnValue(
+                    createRect({ width: 40, height: 30 }) as DOMRect,
+                  );
+                vi.spyOn(element, "getBoundingClientRect").mockImplementation(
+                  getBoundingClientRect,
+                );
+              }
+            }}
+          >
+            Overlay
+          </div>
+        )}
+      >
+        <RuntimeSpyProbe install={installRuntimeSpies} />
+        <RemeasureOverlayProbe
+          onRemeasureOverlay={(nextRemeasureOverlay) => {
+            remeasureOverlay = nextRemeasureOverlay;
+          }}
+        />
+        <DraggableWithChild />
+      </DragProvider>,
+    );
+    stubBoundingClientRect(
+      screen.getByTestId("draggable"),
+      createRect({ width: 20, height: 20 }),
+    );
+
+    act(() => {
+      dispatchPointerDown(screen.getByTestId("draggable"), {
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+      });
+    });
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+    expect(setOverlayRect).toHaveBeenLastCalledWith(
+      createRect({ width: 20, height: 20 }),
+    );
+
+    const currentRemeasureOverlay = remeasureOverlay;
+    if (!currentRemeasureOverlay) {
+      throw new Error("Expected overlay remeasurement callback");
+    }
+
+    act(() => {
+      currentRemeasureOverlay();
+    });
+
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(2);
+    expect(setOverlayRect).toHaveBeenLastCalledWith(
+      createRect({ width: 40, height: 30 }),
+    );
   });
 
   it("hook result types support non-div host elements", () => {
@@ -692,6 +798,7 @@ describe("React integration flows", () => {
         draggableId: "item-1",
         source: "keyboard",
         result: "canceled",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -767,6 +874,7 @@ describe("React integration flows", () => {
         draggableId: "item-1",
         source: "pointer",
         result: "canceled",
+        overlayRect: null,
         dropTargetId: null,
       },
       expect.any(Object),
@@ -921,6 +1029,23 @@ function UseSortableOutside() {
 
 function UseRemeasureOutside() {
   useRemeasureDropTargets();
+  return null;
+}
+
+function UseRemeasureOverlayOutside() {
+  useRemeasureOverlay();
+  return null;
+}
+
+function RemeasureOverlayProbe({
+  onRemeasureOverlay,
+}: {
+  onRemeasureOverlay: (remeasureOverlay: () => void) => void;
+}) {
+  const remeasureOverlay = useRemeasureOverlay();
+
+  onRemeasureOverlay(remeasureOverlay);
+
   return null;
 }
 

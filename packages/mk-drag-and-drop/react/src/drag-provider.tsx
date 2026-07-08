@@ -182,12 +182,17 @@ export function DragProvider({
   }
 
   const runtime = runtimeRef.current;
+  const remeasureOverlay = useCallback((): void => {
+    overlayHostRef.current?.remeasure();
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       runtime,
       keyboardDragEnabled,
+      remeasureOverlay,
     }),
-    [keyboardDragEnabled, runtime],
+    [keyboardDragEnabled, remeasureOverlay, runtime],
   );
 
   useEffect(() => {
@@ -366,6 +371,7 @@ export function DragProvider({
       return {
         dragState: overlayState.dragState,
         phase: "released",
+        remeasureOverlay,
         removeOverlay: clearOverlayHost,
       };
     }
@@ -373,6 +379,7 @@ export function DragProvider({
     return {
       dragState: overlayState.dragState,
       phase: "dragging",
+      remeasureOverlay,
     };
   }
 }
