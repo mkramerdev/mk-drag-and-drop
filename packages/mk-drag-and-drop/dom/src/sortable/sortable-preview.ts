@@ -199,8 +199,10 @@ export function moveSortablePreview(input: {
     return;
   }
 
-  const useMidpointInitialPlacement =
-    draggedElement.parentElement !== listElement;
+  const sourceListElement =
+    input.registry.activeDrag.snapshots.get(input.draggedDraggableId)?.parent ??
+    draggedElement.parentElement;
+  const useMidpointInitialPlacement = sourceListElement !== listElement;
 
   if (!target.capabilities.sortable) {
     return;
@@ -219,6 +221,9 @@ export function moveSortablePreview(input: {
     activeDropTargetId,
     targetElement,
     placementPosition: input.placementPosition,
+    midpointPlacementPosition: useMidpointInitialPlacement
+      ? input.pointerPosition
+      : input.placementPosition,
     movement: input.registry.activeDrag.pointerMovement,
     previewPlacement: input.registry.activeDrag.previewPlacement,
     options: input.options,
@@ -271,6 +276,7 @@ export function getSortablePreviewPlacement(input: {
   activeDropTargetId: string;
   targetElement: HTMLElement;
   placementPosition: { x: number; y: number };
+  midpointPlacementPosition?: { x: number; y: number };
   movement: SortablePointerMovementState | null;
   previewPlacement: SortablePreviewPlacementState | null;
   options: NormalizedSortableOptions;
@@ -278,6 +284,10 @@ export function getSortablePreviewPlacement(input: {
 }): SortablePreviewPlacementDecision {
   const axis = input.options.axis;
   const axisPosition = getAxisPosition(input.placementPosition, axis);
+  const midpointAxisPosition = getAxisPosition(
+    input.midpointPlacementPosition ?? input.placementPosition,
+    axis,
+  );
   const targetRect = input.targetElement.getBoundingClientRect();
   const currentDirection = getCurrentAxisMovementDirection({
     placementPosition: input.placementPosition,
@@ -296,7 +306,7 @@ export function getSortablePreviewPlacement(input: {
       placement: input.useMidpointInitialPlacement
         ? getPlacementSideFromTargetMidpoint({
             axis,
-            axisPosition,
+            axisPosition: midpointAxisPosition,
             targetRect,
           })
         : getOptimisticPlacement({

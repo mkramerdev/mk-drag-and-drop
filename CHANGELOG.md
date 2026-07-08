@@ -5,6 +5,17 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## 0.4.2
+
+### Fixed
+
+- Fixed Kanban-style cross-container sortable preview placement with rect-based
+  targeting such as `centerToCenter` so the initial side uses the pointer
+  position against the target midpoint while active target selection remains
+  overlay-center based.
+- Fixed cross-container detection after a container preview move by comparing
+  against the drag-start source container instead of the live preview parent.
+
 ## 0.4.1
 
 ### Fixed

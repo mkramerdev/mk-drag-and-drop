@@ -1725,6 +1725,53 @@ describe("createDomSortable", () => {
     ]);
   });
 
+  it("places a kanban-like card before the first destination card with center-to-center overlay", () => {
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingAlgorithm: centerToCenter,
+        hasDragOverlay: true,
+      },
+    );
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+  });
+
+  it("uses the source container for cross-container item placement after a container preview move", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: [],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 125, clientY: 1 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("right");
+    expect(Array.from(right.container.children)).toEqual([left.a]);
+
+    right.container.append(right.b);
+    behaviors.b.setElement(right.b);
+    runtime.remeasureDropTargets({ group: "cards" });
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([left.a, right.b]);
+  });
+
   it("places a cross-container vertical target after from the target bottom half", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b", "c"],

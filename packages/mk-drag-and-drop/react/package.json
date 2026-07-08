@@ -1,6 +1,6 @@
 {
   "name": "@mk-drag-and-drop/react",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "React hooks and provider for the mk drag-and-drop DOM runtime.",
   "license": "MIT",
   "homepage": "https://mkramer.dev",
@@ -47,7 +47,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mk-drag-and-drop/dom": "^0.4.1"
+    "@mk-drag-and-drop/dom": "^0.4.2"
   },
   "peerDependencies": {
     "react": "^19.0.0"
