@@ -374,6 +374,10 @@ sortable axis: above or left of midpoint places before, while below or right of
 midpoint places after. Pointer-based targeting uses the pointer as that position;
 rect-based targeting such as `centerToCenter` uses the overlay center.
 
+A container-only preview keeps that cross-container entry state through active
+recomputes until the first item target in the destination list receives a
+before/after placement.
+
 `placementBoundary` is used after a preview placement already has an established
 movement direction to control same-target reversal and hysteresis thresholds. It
 does not decide the initial side for cross-container sortable entry or delay the
@@ -388,7 +392,10 @@ Modifiers transform pointer movement before drag state updates. Built-ins:
 - `restrictToContainer(resolver)`
 
 `restrictToContainer` receives a resolver function with
-`DragModifierSetupInput` and returns an `HTMLElement | null`.
+`DragModifierSetupInput` and returns an `HTMLElement | null`. The resolver runs
+at drag setup to choose the bounds element; the selected element's rect is
+remeasured during movement so growing or shrinking containers keep constraining
+against current bounds.
 
 Custom modifiers can provide:
 

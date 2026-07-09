@@ -461,11 +461,13 @@ enters a different DOM container, the initial side is based on the current
 sortable placement position against the target midpoint on the sortable axis:
 above or left of midpoint places before, while below or right of midpoint places
 after. Pointer-based targeting uses the pointer as that position; rect-based
-targeting such as `centerToCenter` uses the overlay center. `placementBoundary`
-remains a same-target reversal and hysteresis control after preview placement
-has an established movement direction; it does not decide the initial side for
-cross-container sortable entry or delay the first movement that follows
-midpoint-based entry into a list.
+targeting such as `centerToCenter` uses the overlay center. A container-only
+preview keeps that cross-container entry state through active recomputes until
+the first item target in the destination list receives a before/after placement.
+`placementBoundary` remains a same-target reversal and hysteresis control after
+preview placement has an established movement direction; it does not decide the
+initial side for cross-container sortable entry or delay the first movement that
+follows midpoint-based entry into a list.
 
 Examples may rerender a full list for simplicity, but granular state management,
 external stores, server commits, and imperative rendering strategies are
@@ -576,8 +578,10 @@ behavior.
 - `restrictToContainer(refOrResolver)`
 
 `restrictToContainer` accepts either a React ref object or a resolver function.
-Use the DOM package directly when you are building non-React integrations or
-imperative DOM behavior.
+The ref or resolver selects the bounds element at drag setup; the DOM modifier
+remeasures that element during movement so growing or shrinking containers keep
+constraining against current bounds. Use the DOM package directly when you are
+building non-React integrations or imperative DOM behavior.
 
 ### Memoize Modifiers And Composed Refs
 

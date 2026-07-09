@@ -55,12 +55,14 @@ export type DomSortableRuntime = DomDraggableRuntime & {
       source: "pointer" | "keyboard";
       pointerPosition: { x: number; y: number };
       placementPosition?: { x: number; y: number };
+      movementPosition?: { x: number; y: number };
     }) => void;
     onDragUpdate?: (event: {
       draggableId: string;
       source: "pointer" | "keyboard";
       pointerPosition: { x: number; y: number };
       placementPosition?: { x: number; y: number };
+      movementPosition?: { x: number; y: number };
       activeDropTargetId: string | null;
       previousDropTargetId: string | null;
     }) => void;
@@ -144,9 +146,11 @@ export function getSortableRegistry(
 
   runtime.subscribe({
     onDragStart: (event) => {
+      const placementPosition = event.placementPosition ?? event.pointerPosition;
       initializeSortablePointerMovement(
         registry,
-        event.placementPosition ?? event.pointerPosition,
+        event.movementPosition ?? placementPosition,
+        placementPosition,
       );
       snapshotSortableElement(registry, event.draggableId);
     },
@@ -156,21 +160,25 @@ export function getSortableRegistry(
           activeDropTargetId: event.activeDropTargetId,
         })
       ) {
+        const placementPosition = event.placementPosition ?? event.pointerPosition;
         moveSortablePreview({
           registry,
           runtime,
           draggedDraggableId: event.draggableId,
           activeDropTargetId: event.activeDropTargetId,
-          placementPosition: event.placementPosition ?? event.pointerPosition,
+          placementPosition,
+          movementPosition: event.movementPosition ?? placementPosition,
           options: getSortableOptions(registry, event.draggableId),
         });
       } else {
         clearSortablePreviewPlacement(registry);
       }
 
+      const placementPosition = event.placementPosition ?? event.pointerPosition;
       updateSortablePointerMovement(
         registry,
-        event.placementPosition ?? event.pointerPosition,
+        event.movementPosition ?? placementPosition,
+        placementPosition,
       );
     },
     onDragEnd: (event) => {

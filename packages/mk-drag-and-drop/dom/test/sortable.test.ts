@@ -4,6 +4,7 @@ import {
   centerToCenter,
   maxOverlayCenterDistanceToRect,
   pointerToCenter,
+  restrictToContainer,
   type SortableAxis,
   type SortableDropPlacement,
   type TargetingAlgorithm,
@@ -16,6 +17,7 @@ import {
   createDragRuntime,
   type DragRuntime,
 } from "../src/runtime/drag-runtime.js";
+import { getSortablePreviewPlacement } from "../src/sortable/sortable-preview.js";
 import {
   createPointerHandlerEvent,
   createRect,
@@ -1751,7 +1753,7 @@ describe("createDomSortable", () => {
     ]);
   });
 
-  it("uses movement-responsive placement on the first same-target move after midpoint entry", () => {
+  it("uses placementBoundary on the first same-target move after midpoint entry", () => {
     configureRuntimeCallbacks(
       {},
       {
@@ -1782,12 +1784,134 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(right.container.children)).toEqual([
-      right.b,
       left.a,
+      right.b,
       right.c,
     ]);
   });
 
+  it("keeps midpoint entry placement on same-position recompute", () => {
+    const list = document.createElement("div");
+    const target = document.createElement("div");
+
+    list.append(target);
+    document.body.append(list);
+    stubBoundingClientRect(
+      target,
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+
+    const placementDecision = getSortablePreviewPlacement({
+      activeDropTargetId: "b",
+      targetElement: target,
+      placementPosition: { x: 10, y: 80 },
+      movement: { previousPointerPosition: { x: 10, y: 80 } },
+      previewPlacement: {
+        activeDropTargetId: "b",
+        placement: "before",
+        movementDirection: "none",
+        containerElement: list,
+        pendingMidpointInitialPlacement: false,
+      },
+      options: {
+        axis: "vertical",
+        placementBoundary: { start: 0.25, end: 0.75 },
+      },
+    });
+
+    expect(placementDecision).toEqual({
+      placement: "before",
+      movementDirection: "none",
+    });
+  });
+
+  it("keeps midpoint entry placement when only modifier-adjusted placement shifts", () => {
+    const list = document.createElement("div");
+    const target = document.createElement("div");
+
+    list.append(target);
+    document.body.append(list);
+    stubBoundingClientRect(
+      target,
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+
+    const placementDecision = getSortablePreviewPlacement({
+      activeDropTargetId: "b",
+      targetElement: target,
+      placementPosition: { x: 10, y: 12 },
+      movementPosition: { x: 10, y: 80 },
+      movement: {
+        previousPointerPosition: { x: 10, y: 80 },
+        previousPlacementPosition: { x: 10, y: 4 },
+      },
+      previewPlacement: {
+        activeDropTargetId: "b",
+        placement: "before",
+        movementDirection: "none",
+        containerElement: list,
+        pendingMidpointInitialPlacement: false,
+      },
+      options: {
+        axis: "vertical",
+        placementBoundary: { start: 0.25, end: 0.75 },
+      },
+    });
+
+    expect(placementDecision).toEqual({
+      placement: "before",
+      movementDirection: "none",
+    });
+  });
+
+  it("keeps midpoint entry placement when container bounds grow without raw pointer movement", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: ["b", "c"],
+    });
+    const boundsElement = document.createElement("div");
+
+    document.body.append(boundsElement);
+    vi.spyOn(boundsElement, "getBoundingClientRect").mockImplementation(() =>
+      createRect({
+        left: 0,
+        top: -10,
+        width: 200,
+        height: right.container.children.length > 2 ? 32 : 24,
+      }) as DOMRect,
+    );
+    runtime.configure({
+      targetingAlgorithm: pointerToCenter,
+      targetingConstraint: undefined,
+      hasDragOverlay: false,
+      overlayRelease: "auto",
+      lifecycleCallbacks: {},
+      keyboardConfiguration: undefined,
+      modifiers: [restrictToContainer(() => boundsElement)],
+      pointerConfiguration: undefined,
+    });
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: left.a, clientX: 25, clientY: 10 }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 20 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+
+    runtime.recomputeActiveDrag();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([
+      left.a,
+      right.b,
+      right.c,
+    ]);
+  });
 
   it("uses same-container placement after entering a destination list", () => {
     const { left, right, behaviors } = createSortableBoard({
@@ -1816,6 +1940,111 @@ describe("createDomSortable", () => {
     ]);
   });
 
+  it("remeasures shifted sortable items after cross-container preview movement", () => {
+    let leftContainer: HTMLElement;
+    let rightContainer: HTMLElement;
+    const createBoardContainer = (
+      containerId: string,
+      left: number,
+    ): HTMLElement => {
+      const container = document.createElement("div");
+      container.dataset.containerId = containerId;
+      vi.spyOn(container, "getBoundingClientRect").mockImplementation(
+        () =>
+          createRect({
+            left,
+            top: 0,
+            width: 50,
+            height: Math.max(20, container.children.length * 30 - 10),
+          }) as DOMRect,
+      );
+      document.body.append(container);
+      return container;
+    };
+    const createCard = (draggableId: string): HTMLElement => {
+      const element = document.createElement("div");
+      element.dataset.draggableId = draggableId;
+      vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => {
+        const parent = element.parentElement;
+        const childIndex = parent
+          ? (Array.prototype.indexOf.call(parent.children, element) as number)
+          : 0;
+        const index = childIndex < 0 ? 0 : childIndex;
+        const left = parent === rightContainer ? 100 : 0;
+
+        return createRect({
+          left,
+          top: index * 30,
+          width: 50,
+          height: 20,
+        }) as DOMRect;
+      });
+      return element;
+    };
+    const registerCard = (
+      draggableId: string,
+      element: HTMLElement,
+      containerId: string,
+    ) => {
+      const behavior = createDomSortable({
+        runtime,
+        draggableId,
+        group: "cards",
+        containerId,
+        getElement: () => element,
+      });
+
+      behavior.setElement(element);
+      return behavior;
+    };
+
+    leftContainer = createBoardContainer("left", 0);
+    rightContainer = createBoardContainer("right", 100);
+    const a = createCard("a");
+    const x = createCard("x");
+    const y = createCard("y");
+    const b = createCard("b");
+    const c = createCard("c");
+    const d = createCard("d");
+    const leftContainerBehavior = createDomDropContainer({
+      runtime,
+      containerId: "left",
+      group: "cards",
+      getElement: () => leftContainer,
+    });
+    const rightContainerBehavior = createDomDropContainer({
+      runtime,
+      containerId: "right",
+      group: "cards",
+      getElement: () => rightContainer,
+    });
+
+    leftContainer.append(a, x, y);
+    rightContainer.append(b, c, d);
+    leftContainerBehavior.setElement(leftContainer);
+    rightContainerBehavior.setElement(rightContainer);
+    const behaviorA = registerCard("a", a, "left");
+    registerCard("x", x, "left");
+    registerCard("y", y, "left");
+    registerCard("b", b, "right");
+    registerCard("c", c, "right");
+    registerCard("d", d, "right");
+
+    behaviorA.onPointerDown(createPointerHandlerEvent({ target: a }));
+    vi.mocked(y.getBoundingClientRect).mockClear();
+    vi.mocked(d.getBoundingClientRect).mockClear();
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(rightContainer.children)).toEqual([a, b, c, d]);
+    expect(runtime.getDropTargetRect("y")?.top).toBe(30);
+    expect(runtime.getDropTargetRect("d")?.top).toBe(90);
+    expect(y.getBoundingClientRect).toHaveBeenCalled();
+    expect(d.getBoundingClientRect).toHaveBeenCalled();
+  });
+
   it("uses midpoint placement for the first item target after a container preview move", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: [],
@@ -1827,6 +2056,31 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("right");
     expect(Array.from(right.container.children)).toEqual([left.a]);
+
+    right.container.append(right.b);
+    behaviors.b.setElement(right.b);
+    runtime.remeasureDropTargets({ group: "cards" });
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 4 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("b");
+    expect(Array.from(right.container.children)).toEqual([left.a, right.b]);
+  });
+
+  it("keeps midpoint placement for the first item target after a container preview recompute", () => {
+    const { left, right, behaviors } = createSortableBoard({
+      rightItems: [],
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: left.a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 125, clientY: 1 });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("right");
+    expect(Array.from(right.container.children)).toEqual([left.a]);
+
+    runtime.recomputeActiveDrag();
 
     right.container.append(right.b);
     behaviors.b.setElement(right.b);

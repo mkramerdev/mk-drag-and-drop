@@ -90,10 +90,12 @@ type DraggingSession = Extract<DragSession, { status: "dragging" }>;
 
 type DragUpdateSubscriptionEvent = DragUpdateEvent & {
   placementPosition: Point;
+  movementPosition: Point;
 };
 
 type DragStartSubscriptionEvent = DragStartEvent & {
   placementPosition: Point;
+  movementPosition: Point;
 };
 
 export type StaleDomBindingRecord = {
@@ -374,6 +376,7 @@ export class DragRuntime {
     this.notifyDragUpdate(updateEvent, {
       ...updateEvent,
       placementPosition: sortablePlacementPosition,
+      movementPosition: rawPointerPosition,
     });
   }
 
@@ -688,6 +691,7 @@ export class DragRuntime {
           pointerPosition: effectivePointerPosition,
           overlayRect: startOverlayRect,
         }),
+        movementPosition: rawPointerPosition,
       };
 
       this.notifyDragStartSubscriptions(dragStartSubscriptionEvent);

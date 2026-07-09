@@ -44,17 +44,35 @@ const initialKanbanState: KanbanState = {
     {
       id: "column-backlog",
       title: "Backlog",
-      cardIds: ["card-brief", "card-research"],
+      cardIds: [
+        "card-brief",
+        "card-research",
+        "card-empty",
+        "card-keyboard",
+        "card-accessibility",
+      ],
     },
     {
       id: "column-progress",
       title: "In progress",
-      cardIds: ["card-api", "card-preview"],
+      cardIds: [
+        "card-api",
+        "card-preview",
+        "card-autoscroll",
+        "card-measurement",
+        "card-constraints",
+      ],
     },
     {
       id: "column-review",
       title: "Review",
-      cardIds: ["card-docs"],
+      cardIds: [
+        "card-docs",
+        "card-react",
+        "card-regression",
+        "card-release",
+        "card-pack",
+      ],
     },
   ],
   cardsById: {
@@ -68,6 +86,21 @@ const initialKanbanState: KanbanState = {
       title: "Audit empty column behavior",
       label: "Runtime",
     },
+    "card-empty": {
+      id: "card-empty",
+      title: "Verify empty list drop targets",
+      label: "Containers",
+    },
+    "card-keyboard": {
+      id: "card-keyboard",
+      title: "Check keyboard sortable movement",
+      label: "A11y",
+    },
+    "card-accessibility": {
+      id: "card-accessibility",
+      title: "Review drag handle labels",
+      label: "A11y",
+    },
     "card-api": {
       id: "card-api",
       title: "Container-aware placement",
@@ -78,10 +111,45 @@ const initialKanbanState: KanbanState = {
       title: "Cross-parent sortable preview",
       label: "Sortable",
     },
+    "card-autoscroll": {
+      id: "card-autoscroll",
+      title: "Exercise scrolling board updates",
+      label: "Runtime",
+    },
+    "card-measurement": {
+      id: "card-measurement",
+      title: "Refresh target measurements",
+      label: "Geometry",
+    },
+    "card-constraints": {
+      id: "card-constraints",
+      title: "Tune board movement constraints",
+      label: "Modifiers",
+    },
     "card-docs": {
       id: "card-docs",
       title: "React hook surface",
       label: "React",
+    },
+    "card-react": {
+      id: "card-react",
+      title: "Sync React Kanban behavior",
+      label: "React",
+    },
+    "card-regression": {
+      id: "card-regression",
+      title: "Record cross-column preview cases",
+      label: "Tests",
+    },
+    "card-release": {
+      id: "card-release",
+      title: "Prepare patch release notes",
+      label: "Release",
+    },
+    "card-pack": {
+      id: "card-pack",
+      title: "Dry-run package contents",
+      label: "Build",
     },
   },
 };

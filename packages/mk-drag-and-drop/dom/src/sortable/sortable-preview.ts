@@ -16,6 +16,7 @@ export type SortablePlacementSide = "before" | "after";
 export type SortableAxisMovementDirection = "forward" | "backward" | "none";
 export type SortablePointerMovementState = {
   previousPointerPosition: { x: number; y: number };
+  previousPlacementPosition?: { x: number; y: number };
 };
 export type SortablePreviewPlacementState = {
   activeDropTargetId: string | null;
@@ -63,9 +64,11 @@ export function isSortablePreviewTarget(input: {
 export function initializeSortablePointerMovement(
   registry: SortableRegistry,
   pointerPosition: { x: number; y: number },
+  placementPosition: { x: number; y: number } = pointerPosition,
 ): void {
   registry.activeDrag.pointerMovement = {
     previousPointerPosition: { ...pointerPosition },
+    previousPlacementPosition: { ...placementPosition },
   };
   registry.activeDrag.previewPlacement = null;
 }
@@ -73,15 +76,21 @@ export function initializeSortablePointerMovement(
 export function updateSortablePointerMovement(
   registry: SortableRegistry,
   pointerPosition: { x: number; y: number },
+  placementPosition: { x: number; y: number } = pointerPosition,
 ): void {
   const movement = registry.activeDrag.pointerMovement;
 
   if (!movement) {
-    initializeSortablePointerMovement(registry, pointerPosition);
+    initializeSortablePointerMovement(
+      registry,
+      pointerPosition,
+      placementPosition,
+    );
     return;
   }
 
   movement.previousPointerPosition = { ...pointerPosition };
+  movement.previousPlacementPosition = { ...placementPosition };
 }
 
 export function clearSortablePointerMovement(registry: SortableRegistry): void {
@@ -98,6 +107,7 @@ export function moveSortablePreview(input: {
   draggedDraggableId: string;
   activeDropTargetId: string | null;
   placementPosition: { x: number; y: number };
+  movementPosition: { x: number; y: number };
   options: NormalizedSortableOptions;
 }): void {
   if (input.activeDropTargetId === null) {
@@ -160,12 +170,20 @@ export function moveSortablePreview(input: {
   addRegistrationContainerId(measurementIds, target);
 
   if (target.capabilities.container) {
+    const sourceListElement = draggedElement.parentElement;
     measurementIds.add(target.id);
     const previousListElement =
       input.registry.activeDrag.previewPlacement?.containerElement ?? null;
     const pendingMidpointInitialPlacement =
       draggedElement.parentElement !== target.element ||
       (previousListElement !== null && previousListElement !== target.element);
+
+    if (!moveSortablePreviewIntoContainer({
+      draggedElement,
+      targetElement: target.element,
+    })) {
+      return;
+    }
 
     setSortablePreviewPlacementState({
       registry: input.registry,
@@ -175,23 +193,30 @@ export function moveSortablePreview(input: {
       pendingMidpointInitialPlacement,
       movementDirection: getCurrentAxisMovementDirection({
         placementPosition: input.placementPosition,
+        movementPosition: input.movementPosition,
         movement: input.registry.activeDrag.pointerMovement,
         axis: input.options.axis,
       }),
     });
 
-    if (!moveSortablePreviewIntoContainer({
-      draggedElement,
-      targetElement: target.element,
-    })) {
-      return;
+    if (sourceListElement && sourceListElement !== target.element) {
+      addSortableMeasurementIdsInContainer(
+        measurementIds,
+        input.registry,
+        sourceListElement,
+      );
+      addSortableMeasurementIdsInContainer(
+        measurementIds,
+        input.registry,
+        target.element,
+      );
+    } else {
+      addSortableMeasurementIdsAroundElement(
+        measurementIds,
+        input.registry,
+        draggedElement,
+      );
     }
-
-    addSortableMeasurementIdsAroundElement(
-      measurementIds,
-      input.registry,
-      draggedElement,
-    );
     refreshSortableDropTargetMeasurements({
       registry: input.registry,
       runtime: input.runtime,
@@ -203,6 +228,7 @@ export function moveSortablePreview(input: {
 
   const targetElement = target.element;
   const listElement = targetElement.parentElement;
+  const sourceListElement = draggedElement.parentElement;
 
   if (!listElement) {
     return;
@@ -234,6 +260,7 @@ export function moveSortablePreview(input: {
     activeDropTargetId,
     targetElement,
     placementPosition: input.placementPosition,
+    movementPosition: input.movementPosition,
     movement: input.registry.activeDrag.pointerMovement,
     previewPlacement: input.registry.activeDrag.previewPlacement,
     options: input.options,
@@ -266,16 +293,29 @@ export function moveSortablePreview(input: {
     targetElement.before(draggedElement);
   }
 
-  addSortableMeasurementIdsAroundElement(
-    measurementIds,
-    input.registry,
-    draggedElement,
-  );
-  addSortableMeasurementIdsAroundElement(
-    measurementIds,
-    input.registry,
-    targetElement,
-  );
+  if (sourceListElement && sourceListElement !== listElement) {
+    addSortableMeasurementIdsInContainer(
+      measurementIds,
+      input.registry,
+      sourceListElement,
+    );
+    addSortableMeasurementIdsInContainer(
+      measurementIds,
+      input.registry,
+      listElement,
+    );
+  } else {
+    addSortableMeasurementIdsAroundElement(
+      measurementIds,
+      input.registry,
+      draggedElement,
+    );
+    addSortableMeasurementIdsAroundElement(
+      measurementIds,
+      input.registry,
+      targetElement,
+    );
+  }
   refreshSortableDropTargetMeasurements({
     registry: input.registry,
     runtime: input.runtime,
@@ -288,6 +328,7 @@ export function getSortablePreviewPlacement(input: {
   activeDropTargetId: string;
   targetElement: HTMLElement;
   placementPosition: { x: number; y: number };
+  movementPosition?: { x: number; y: number };
   movement: SortablePointerMovementState | null;
   previewPlacement: SortablePreviewPlacementState | null;
   options: NormalizedSortableOptions;
@@ -298,6 +339,7 @@ export function getSortablePreviewPlacement(input: {
   const targetRect = input.targetElement.getBoundingClientRect();
   const currentDirection = getCurrentAxisMovementDirection({
     placementPosition: input.placementPosition,
+    movementPosition: input.movementPosition,
     movement: input.movement,
     axis,
   });
@@ -306,8 +348,7 @@ export function getSortablePreviewPlacement(input: {
   if (
     !previousPlacement ||
     previousPlacement.activeDropTargetId !== input.activeDropTargetId ||
-    previousPlacement.placement === null ||
-    previousPlacement.movementDirection === "none"
+    previousPlacement.placement === null
   ) {
     if (input.useMidpointInitialPlacement) {
       const placement = getPlacementSideFromTargetMidpoint({
@@ -329,6 +370,36 @@ export function getSortablePreviewPlacement(input: {
         currentDirection,
         targetRect,
       }),
+      movementDirection: currentDirection,
+    };
+  }
+
+  if (previousPlacement.movementDirection === "none") {
+    if (currentDirection === "none") {
+      return {
+        placement: previousPlacement.placement,
+        movementDirection: previousPlacement.movementDirection,
+      };
+    }
+
+    const boundary = getPlacementBoundary({
+      targetRect,
+      axis,
+      direction: currentDirection,
+      startRatio: input.options.placementBoundary.start,
+      endRatio: input.options.placementBoundary.end,
+    });
+    const reversalPlacement = getPlacementSideFromBoundary(axisPosition, boundary);
+
+    if (reversalPlacement === previousPlacement.placement) {
+      return {
+        placement: previousPlacement.placement,
+        movementDirection: previousPlacement.movementDirection,
+      };
+    }
+
+    return {
+      placement: reversalPlacement,
       movementDirection: currentDirection,
     };
   }
@@ -425,15 +496,31 @@ function getPlacementSideFromTargetMidpoint(input: {
 
 function getCurrentAxisMovementDirection(input: {
   placementPosition: { x: number; y: number };
+  movementPosition?: { x: number; y: number };
   movement: SortablePointerMovementState | null;
   axis: SortableAxis;
 }): SortableAxisMovementDirection {
-  const axisPosition = getAxisPosition(input.placementPosition, input.axis);
-  const previousAxisPosition = input.movement
-    ? getAxisPosition(input.movement.previousPointerPosition, input.axis)
-    : axisPosition;
+  const movementPosition = input.movementPosition ?? input.placementPosition;
+  const previousMovementPosition =
+    input.movement?.previousPointerPosition ?? movementPosition;
+  const inputDirection = getAxisMovementDirection(
+    getAxisPosition(previousMovementPosition, input.axis),
+    getAxisPosition(movementPosition, input.axis),
+  );
 
-  return getAxisMovementDirection(previousAxisPosition, axisPosition);
+  if (inputDirection === "none") {
+    return "none";
+  }
+
+  const previousPlacementPosition =
+    input.movement?.previousPlacementPosition ??
+    input.movement?.previousPointerPosition ??
+    input.placementPosition;
+
+  return getAxisMovementDirection(
+    getAxisPosition(previousPlacementPosition, input.axis),
+    getAxisPosition(input.placementPosition, input.axis),
+  );
 }
 
 export function isSortablePreviewAlreadyPlaced(input: {
@@ -535,6 +622,20 @@ function addSortableMeasurementIdsAroundElement(
     registry,
     element.nextElementSibling,
   );
+}
+
+function addSortableMeasurementIdsInContainer(
+  dropTargetIds: Set<string>,
+  registry: SortableRegistry,
+  containerElement: HTMLElement,
+): void {
+  for (let index = 0; index < containerElement.children.length; index += 1) {
+    addSortableMeasurementId(
+      dropTargetIds,
+      registry,
+      containerElement.children.item(index),
+    );
+  }
 }
 
 function addSortableMeasurementId(

@@ -5,16 +5,26 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
-## 0.4.3
+## 0.4.4
 
 ### Fixed
 
 - Fixed cross-container sortable preview state so midpoint entry applies to the
-  first target in a newly entered list, including container-to-item transitions,
-  and subsequent targets in that list return to normal sortable placement.
+  first target in a newly entered list, including container-to-item transitions
+  after active-drag recomputes, and subsequent targets in that list return to
+  normal sortable placement.
 - Fixed the first same-target move after midpoint-based cross-container entry so
-  it establishes normal movement-responsive placement instead of being delayed
-  by reversal hysteresis.
+  it holds position during same-position recomputes and establishes normal
+  movement-responsive placement instead of being delayed by reversal hysteresis.
+- Fixed cross-container sortable preview measurement refresh so source and
+  destination list items shifted by a preview move do not keep stale target
+  rects when a column grows or shrinks.
+- Fixed `restrictToContainer` so active drags remeasure the resolved bounds
+  element during movement instead of clamping against stale setup-time bounds
+  when the container grows or shrinks.
+- Fixed sortable preview direction tracking so placement shifts caused only by
+  modifier remeasurement do not move a cross-container midpoint preview down
+  when the raw pointer has not moved.
 
 ## 0.4.2
 

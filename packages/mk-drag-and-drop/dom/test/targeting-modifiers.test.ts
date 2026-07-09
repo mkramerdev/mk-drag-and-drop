@@ -247,7 +247,7 @@ describe("modifiers", () => {
     expect(resolver).toHaveBeenCalledWith(specialSetupInput);
   });
 
-  it("restrictToContainer measures the resolved container once during setup", () => {
+  it("restrictToContainer remeasures the resolved container during transforms", () => {
     const container = document.createElement("div");
     const getBoundingClientRect = vi
       .spyOn(container, "getBoundingClientRect")
@@ -270,6 +270,30 @@ describe("modifiers", () => {
       state,
     });
 
+    expect(getBoundingClientRect).toHaveBeenCalledTimes(3);
+  });
+
+  it("restrictToContainer uses grown container bounds during active transforms", () => {
+    const container = document.createElement("div");
+    let containerRect = createRect({ left: 0, top: 0, width: 100, height: 100 });
+    const getBoundingClientRect = vi
+      .spyOn(container, "getBoundingClientRect")
+      .mockImplementation(() => containerRect as DOMRect);
+    const activeModifiers = createActiveDragModifiers({
+      modifiers: [restrictToContainer(() => container)],
+      setupInput,
+    });
+
+    containerRect = createRect({ left: 0, top: 0, width: 100, height: 160 });
+    getBoundingClientRect.mockClear();
+
+    expect(
+      applyDragModifiers({
+        activeModifiers,
+        ...setupInput,
+        rawPointerPosition: { x: 10, y: 150 },
+      }),
+    ).toEqual({ x: 10, y: 150 });
     expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
   });
 

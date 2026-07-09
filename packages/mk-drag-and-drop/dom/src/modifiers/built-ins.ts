@@ -6,6 +6,8 @@ export type RestrictToContainerResolver = (
   input: DragModifierSetupInput,
 ) => HTMLElement | null;
 
+const restrictToContainerElements = new WeakMap<DragRect, HTMLElement>();
+
 export function lockToXAxis(): DragModifier {
   return {
     transform: (input) => ({
@@ -31,33 +33,47 @@ export function restrictToContainer(
     setup: (input) => {
       const container = getContainer(input);
 
-      return container
-        ? rectToDragRect(container.getBoundingClientRect())
-        : null;
+      if (!container) {
+        return null;
+      }
+
+      const rect = rectToDragRect(container.getBoundingClientRect());
+      restrictToContainerElements.set(rect, container);
+      return rect;
     },
     transform: (input) => {
       if (input.state === null) {
         return input.pointerPosition;
       }
 
+      const containerRect = getRestrictToContainerRect(input.state);
+
       return {
         x: clampPointerAxis({
           pointerPosition: input.pointerPosition.x,
           overlayStart: input.overlayRect.left,
           overlayEnd: input.overlayRect.right,
-          containerStart: input.state.left,
-          containerEnd: input.state.right,
+          containerStart: containerRect.left,
+          containerEnd: containerRect.right,
         }),
         y: clampPointerAxis({
           pointerPosition: input.pointerPosition.y,
           overlayStart: input.overlayRect.top,
           overlayEnd: input.overlayRect.bottom,
-          containerStart: input.state.top,
-          containerEnd: input.state.bottom,
+          containerStart: containerRect.top,
+          containerEnd: containerRect.bottom,
         }),
       };
     },
   };
+}
+
+function getRestrictToContainerRect(state: DragRect): DragRect {
+  const container = restrictToContainerElements.get(state);
+
+  return container
+    ? rectToDragRect(container.getBoundingClientRect())
+    : state;
 }
 
 function clampPointerAxis(input: {
