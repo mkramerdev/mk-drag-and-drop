@@ -5,7 +5,7 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
-## 0.4.4
+## 0.4.5
 
 ### Fixed
 
