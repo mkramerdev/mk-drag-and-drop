@@ -1,0 +1,315 @@
+---
+title: 'Overlays and Modifiers'
+summary: 'Custom drag visuals and movement constraints in mk-drag-and-drop.'
+---
+
+# Overlays and Modifiers
+
+Overlays control what the user sees while dragging. Modifiers control how drag movement is transformed before drag state updates.
+
+Neither overlays nor modifiers are where durable application state should be committed. Use lifecycle callbacks such as `onDrop` and `onDragEnd` for app data changes.
+
+## Drag Overlays
+
+A drag overlay is app-provided visual content that follows the active drag. It is useful when the original element should remain in place, when you want a custom preview, or when sortable movement needs a stable visual representation.
+
+If no overlay is configured, the package does not render a package-owned drag preview. Drag input, targeting, lifecycle callbacks, and registration still work with pointer-based targeting behavior.
+
+Rect-based targeting algorithms, such as `centerToCenter`, require an overlay because they use the overlay rectangle. If you configure a rect-based targeting algorithm without a drag overlay, drag start will fail.
+
+Overlay content is app-owned. Overlay hosting, positioning, movement, release, and measurement are package-owned.
+
+## DOM Overlay Example
+
+In the DOM package, pass `dragOverlay` to `createDragController`.
+
+```ts
+import {
+  createDragController,
+  type DragControllerOverlayInput,
+} from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  dragOverlay(input: DragControllerOverlayInput) {
+    const element = document.createElement("div");
+    element.className =
+      input.phase === "released" ? "dragOverlay released" : "dragOverlay";
+    element.textContent = input.dragState.draggableId;
+
+    return element;
+  },
+});
+```
+
+By default, `overlayRelease` is `"auto"`, so the overlay is removed when the drag finishes.
+
+The DOM controller also accepts `overlayRoot?: HTMLElement`, which changes where the package-owned overlay wrapper is appended. If omitted, the controller uses `document.body`.
+
+## React Overlay Example
+
+In React, pass `dragOverlay` to `DragProvider`.
+
+```tsx
+import { DragProvider } from "@mk-drag-and-drop/react";
+
+export function Board() {
+  return (
+    <DragProvider
+      dragOverlay={({ dragState, phase }) => (
+        <div className={phase === "released" ? "overlay released" : "overlay"}>
+          {dragState.draggableId}
+        </div>
+      )}
+    >
+      <BoardContent />
+    </DragProvider>
+  );
+}
+```
+
+`dragOverlay` returns a React node. The React package renders the overlay host internally inside `DragProvider`.
+
+## Overlay Release Modes
+
+`overlayRelease` supports two values:
+
+```ts
+type OverlayReleaseMode = "auto" | "manual";
+```
+
+With `"auto"`, the overlay is removed automatically when the drag ends.
+
+With `"manual"`, the package calls `dragOverlay` again for the `"released"` phase and passes `removeOverlay`. Call `removeOverlay` when your app-owned release animation is done.
+
+```tsx
+<DragProvider
+  overlayRelease="manual"
+  dragOverlay={(input) => (
+    <ReleasePreview
+      draggableId={input.dragState.draggableId}
+      phase={input.phase}
+      removeOverlay={input.phase === "released" ? input.removeOverlay : null}
+    />
+  )}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+`removeOverlay` exists only when `phase` is `"released"` in manual release mode. It is not available while `phase` is `"dragging"`.
+
+`removeOverlay` removes the overlay host state. It is not a controller, provider, or runtime teardown API.
+
+## Overlay Movement and Measurement
+
+The package moves the overlay. App code should not update React state or recreate DOM nodes on every pointer move just to move the drag preview.
+
+The overlay input includes the drag state:
+
+```ts
+type DragState = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  startPointerPosition: DragPoint;
+  pointerPosition: DragPoint;
+};
+```
+
+The package positions a fixed overlay wrapper at the source rectangle and moves it with a transform derived from pointer movement. In React, pointer movement updates the overlay host imperatively; `dragOverlay` is not called for every movement update.
+
+Overlay content is measured on mount or replacement. When `ResizeObserver` is available, content size changes are measured too. The measured overlay rectangle is used by overlay-aware targeting, constraints, and modifiers.
+
+For example, `centerToCenter` and `maxOverlayCenterDistanceToRect` use the overlay rectangle. `restrictToContainer` also uses the overlay rectangle to keep the dragged visual within bounds.
+
+Expensive overlay content can still be expensive to mount or replace. Keep overlay rendering focused, and use overlay-local state or lifecycle-fed app state only when the displayed content actually needs to change.
+
+## Modifiers
+
+A modifier transforms drag movement.
+
+Modifiers receive the current movement state and return the next `DragPoint`. They do not register targets, choose targets, commit application state, or decide whether a drop succeeds.
+
+Built-in modifiers include:
+
+- `lockToXAxis()`: allows horizontal movement and locks the y coordinate to the initial pointer position.
+- `lockToYAxis()`: allows vertical movement and locks the x coordinate to the initial pointer position.
+- `restrictToContainer(resolver)`: clamps movement so the overlay stays inside a resolved container element.
+
+In the DOM package, configure modifiers on the drag controller.
+
+```ts
+import {
+  createDragController,
+  lockToYAxis,
+} from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  modifiers: [lockToYAxis()],
+});
+```
+
+In React, configure modifiers on `DragProvider`.
+
+```tsx
+import { DragProvider, lockToYAxis } from "@mk-drag-and-drop/react";
+
+const modifiers = [lockToYAxis()] as const;
+
+export function SortableList() {
+  return (
+    <DragProvider modifiers={modifiers}>
+      <ListContent />
+    </DragProvider>
+  );
+}
+```
+
+## Custom Modifiers
+
+Custom modifiers are public API.
+
+```ts
+import type {
+  DragModifier,
+  DragModifierSetupInput,
+  DragModifierTransformInput,
+  DragPoint,
+  DragRect,
+} from "@mk-drag-and-drop/dom";
+
+type DragModifier<State = unknown> = {
+  setup?: (input: DragModifierSetupInput) => State;
+  transform: (input: DragModifierTransformInput<State>) => DragPoint;
+};
+
+type DragModifierSetupInput = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  initialPointerPosition: DragPoint;
+};
+
+type DragModifierTransformInput<State = unknown> = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  initialPointerPosition: DragPoint;
+  rawPointerPosition: DragPoint;
+  pointerPosition: DragPoint;
+  overlayRect: DragRect;
+  state: State;
+};
+```
+
+`setup` is optional. It runs when a drag starts and can return state for that active drag.
+
+`transform` runs when movement is processed. It receives:
+
+- `rawPointerPosition`: the unmodified pointer position for this update.
+- `pointerPosition`: the current position after previous modifiers have run.
+- `overlayRect`: the current overlay rectangle for the current movement state.
+- `state`: the value returned by `setup`.
+
+Use `setup` for one-time measurement such as reading a container rectangle. Keep `transform` fast.
+
+## Combining Modifiers
+
+Multiple modifiers compose in array order. Each modifier receives the position returned by the modifier before it. Later modifiers can further constrain or replace earlier movement.
+
+```tsx
+import { useMemo, useRef } from "react";
+import {
+  DragProvider,
+  lockToYAxis,
+  restrictToContainer,
+} from "@mk-drag-and-drop/react";
+
+export function Board() {
+  const boardRef = useRef<HTMLDivElement | null>(null);
+
+  const modifiers = useMemo(
+    () => [lockToYAxis(), restrictToContainer(boardRef)],
+    []
+  );
+
+  return (
+    <DragProvider modifiers={modifiers}>
+      <div ref={boardRef}>
+        <BoardContent />
+      </div>
+    </DragProvider>
+  );
+}
+```
+
+React modifier arrays should usually be memoized. Modifier factories return objects; creating a new array on every render can cause runtime reconfiguration.
+
+## Overlays With Modifiers
+
+The overlay reflects modified movement.
+
+If a drag is locked to the y axis, the overlay moves only on that axis. If a drag is restricted to a container, the overlay stops at the container bounds.
+
+```tsx
+import {
+  DragProvider,
+  lockToYAxis,
+} from "@mk-drag-and-drop/react";
+
+const modifiers = [lockToYAxis()] as const;
+
+export function SortableList() {
+  return (
+    <DragProvider
+      modifiers={modifiers}
+      dragOverlay={({ dragState }) => (
+        <div className="sortableOverlay">{dragState.draggableId}</div>
+      )}
+    >
+      <ListContent />
+    </DragProvider>
+  );
+}
+```
+
+Targeting receives the movement state after modifiers have been applied. From the app perspective, the active target follows the same constrained movement that the overlay shows.
+
+## DOM And React Comparison
+
+### Overlay Setup
+
+DOM uses `createDragController({ dragOverlay })`. React uses `<DragProvider dragOverlay={...}>`.
+
+### Overlay Return Value
+
+DOM `dragOverlay` returns an `HTMLElement` or `null`. React `dragOverlay` returns a React node.
+
+### Overlay Input
+
+DOM receives `DragControllerOverlayInput`. React receives the corresponding React overlay input from `DragProvider`.
+
+### Release Mode
+
+Both packages support `overlayRelease?: "auto" | "manual"` and expose `input.removeOverlay` during the `"released"` phase in manual release mode.
+
+### Overlay Root
+
+The DOM controller can receive `overlayRoot?: HTMLElement`. React does not expose a public `overlayRoot` prop.
+
+### Modifier Setup
+
+DOM uses `createDragController({ modifiers })`. React uses `<DragProvider modifiers={modifiers}>`.
+
+### Built-In Modifiers
+
+`lockToXAxis()`, `lockToYAxis()`, and `restrictToContainer(...)` are available from the DOM package and re-exported from the React package.
+
+## Common Mistakes
+
+- Do not use overlay rendering to commit list order. Commit durable order in lifecycle callbacks such as `onDrop`.
+- Do not use modifiers as targeting algorithms. Modifiers transform movement; targeting algorithms choose drop targets.
+- Do not rely on `dragOverlay` being called every pointer move. The package moves the overlay host.
+- Do not make modifier transforms expensive. They run during active movement.
+- Do not assume `removeOverlay` always exists. It only exists for `"released"` overlays in manual release mode.
+- Do not configure rect-based targeting without a drag overlay.

@@ -1,0 +1,472 @@
+---
+title: 'Targeting'
+summary: 'How mk-drag-and-drop chooses the active drop target.'
+---
+
+# Targeting
+
+Targeting is the process that chooses the current active drop target during a drag.
+
+The package handles target measurement, group matching, optional constraints, and the configured targeting algorithm. Your app receives the selected target as `activeDropTargetId` in lifecycle callbacks. Durable app state changes should still happen in lifecycle callbacks such as `onDrop` or `onDragEnd`, not inside targeting code.
+
+Targeting does not decide sortable before/after placement. For sortable behavior, targeting first chooses which target is active. Sortable placement then decides where the dragged item belongs relative to that target.
+
+## Targeting Flow
+
+At a high level, targeting follows this flow:
+
+1. A drag starts from a draggable in a group.
+2. Registered drop targets from that same group are considered.
+3. The optional `targetingConstraint` filters candidate targets.
+4. The configured `targetingAlgorithm` chooses one target from the remaining candidates.
+5. Lifecycle callbacks receive the selected target as `activeDropTargetId`.
+
+```ts
+type DragUpdateEvent = {
+  draggableId: string;
+  source: "pointer" | "keyboard";
+  pointerPosition: DragPoint;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
+};
+```
+
+`activeDropTargetId` can be `null` when no target is available or no candidate passes the configured targeting rules.
+
+## Algorithms
+
+A targeting algorithm receives the current movement geometry and a list of measured candidate targets.
+
+```ts
+type DropTarget = {
+  dropTargetId: string;
+  dropTargetRect: DragRect;
+};
+
+type TargetingAlgorithmInput = {
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  dropTargets: readonly DropTarget[];
+};
+
+type TargetingAlgorithm = {
+  (input: TargetingAlgorithmInput): DropTarget | null;
+  mode: "pointer" | "rect";
+};
+```
+
+### `pointerToCenter`
+
+`pointerToCenter` chooses the target whose rectangle center is closest to the current pointer position.
+
+Use it when pointer location should drive targeting and target centers are meaningful.
+
+```ts
+import { pointerToCenter } from "@mk-drag-and-drop/dom";
+```
+
+Tradeoffs:
+
+- It does not require a drag overlay.
+- It can select a nearby target even when the pointer is outside that target.
+- It favors targets by center distance, which may feel less direct for large drop zones.
+
+### `pointerToRectDistance`
+
+`pointerToRectDistance` chooses the target whose rectangle is closest to the current pointer position.
+
+Use it for broad drop zones where distance to the target edge matters more than distance to the target center.
+
+```ts
+import { pointerToRectDistance } from "@mk-drag-and-drop/dom";
+```
+
+Tradeoffs:
+
+- It does not require a drag overlay.
+- A pointer inside a target has zero distance to that target.
+- Without a constraint, it can still choose the nearest target even when the pointer is far away.
+
+### `centerToCenter`
+
+`centerToCenter` chooses the target whose rectangle center is closest to the current overlay center.
+
+Use it when the visual dragged item should drive targeting, especially with sortable lists or card-like overlays.
+
+```ts
+import { centerToCenter } from "@mk-drag-and-drop/dom";
+```
+
+Tradeoffs:
+
+- It requires a drag overlay.
+- It returns no target when no overlay rectangle is available.
+- It is usually a better fit when the dragged visual is larger than a pointer point.
+
+### Custom Algorithms
+
+Custom algorithms are public API. A custom algorithm must return a target from `input.dropTargets` or `null`, and must set `mode` to `"pointer"` or `"rect"`.
+
+```ts
+import type { TargetingAlgorithm } from "@mk-drag-and-drop/dom";
+
+const firstAvailableTarget: TargetingAlgorithm = Object.assign(
+  ({ dropTargets }) => dropTargets[0] ?? null,
+  { mode: "pointer" as const }
+);
+```
+
+## Constraints
+
+A targeting constraint filters candidate targets before the algorithm runs.
+
+```ts
+type TargetingConstraintInput = {
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  dropTarget: DropTarget;
+};
+
+type TargetingConstraint = {
+  (input: TargetingConstraintInput): boolean;
+};
+```
+
+Constraints are not movement modifiers. A constraint rejects targets. A modifier transforms drag movement before targeting receives `pointerPosition` and `overlayRect`.
+
+### `maxPointerDistanceToRect`
+
+`maxPointerDistanceToRect` keeps a target eligible only when the pointer is within the configured distance from that target rectangle.
+
+```ts
+import { maxPointerDistanceToRect } from "@mk-drag-and-drop/dom";
+
+const pointerMustBeNearTarget = maxPointerDistanceToRect({
+  maxDistance: 96,
+});
+```
+
+The options are:
+
+```ts
+type MaxDistanceToRectOptions = {
+  maxDistance?: number;
+  maxXDistance?: number;
+  maxYDistance?: number;
+};
+```
+
+Use it with pointer-based targeting when the pointer should be close to, or inside, the target.
+
+To require the pointer to be inside the target rectangle, use a zero distance:
+
+```ts
+const pointerMustBeInsideTarget = maxPointerDistanceToRect({
+  maxDistance: 0,
+});
+```
+
+### `maxOverlayCenterDistanceToRect`
+
+`maxOverlayCenterDistanceToRect` keeps a target eligible only when the overlay center is within the configured distance from that target rectangle.
+
+```ts
+import { maxOverlayCenterDistanceToRect } from "@mk-drag-and-drop/dom";
+
+const overlayCenterMustBeNearTarget = maxOverlayCenterDistanceToRect({
+  maxDistance: 96,
+});
+```
+
+Use it with overlay-based targeting such as `centerToCenter`.
+
+Tradeoffs:
+
+- It requires an overlay rectangle.
+- It rejects every target when no overlay rectangle is available.
+- It is useful when the dragged visual, not the pointer, should define eligibility.
+
+To require the overlay center to be inside the target rectangle, use a zero distance:
+
+```ts
+const overlayCenterMustBeInsideTarget = maxOverlayCenterDistanceToRect({
+  maxDistance: 0,
+});
+```
+
+`getDistanceToRect(point, rect)` is also exported for custom constraints or custom algorithms that need the same rectangle-distance calculation.
+
+## DOM Configuration
+
+Configure targeting on the DOM controller.
+
+```ts
+import {
+  createDragController,
+  maxPointerDistanceToRect,
+  pointerToRectDistance,
+} from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 96 }),
+  onDragUpdate({ activeDropTargetId }) {
+    setActiveTarget(activeDropTargetId);
+  },
+});
+```
+
+`targetingAlgorithm` defaults to `pointerToCenter` when omitted.
+
+## React Configuration
+
+Configure targeting on `DragProvider`.
+
+```tsx
+import {
+  DragProvider,
+  centerToCenter,
+  maxOverlayCenterDistanceToRect,
+} from "@mk-drag-and-drop/react";
+
+const sortableTargetingConstraint = maxOverlayCenterDistanceToRect({
+  maxDistance: 96,
+});
+
+export function SortableList() {
+  return (
+    <DragProvider
+      targetingAlgorithm={centerToCenter}
+      targetingConstraint={sortableTargetingConstraint}
+      dragOverlay={({ dragState }) => (
+        <div className="dragOverlay">{dragState.draggableId}</div>
+      )}
+      onDragUpdate={({ activeDropTargetId }) => {
+        setActiveTarget(activeDropTargetId);
+      }}
+    >
+      <ListContent />
+    </DragProvider>
+  );
+}
+```
+
+Keep targeting functions stable when possible. Creating new algorithm or constraint functions on every render can cause runtime reconfiguration.
+
+## Groups And IDs
+
+Every draggable has a group. Every droppable, drop container, and sortable target also has a group.
+
+A drag only targets registered targets in the active draggable's group. If no matching group exists, targeting has no candidates and `activeDropTargetId` remains `null`.
+
+DOM helpers default to the `"default"` group when `group` is omitted:
+
+```ts
+createDraggable({
+  controller,
+  element: cardElement,
+  draggableId: "card-1",
+  group: "cards",
+});
+
+createDroppable({
+  controller,
+  element: laneElement,
+  dropTargetId: "lane-a",
+  group: "cards",
+});
+```
+
+React hooks follow the same model:
+
+```tsx
+const draggable = useDraggable<HTMLDivElement>({
+  draggableId: "card-1",
+  group: "cards",
+});
+
+const droppable = useDroppable<HTMLDivElement>({
+  dropTargetId: "lane-a",
+  group: "cards",
+});
+```
+
+Keep ids stable. Targeting, lifecycle events, sortable placement, and app state commits all depend on ids continuing to refer to the same logical item or target.
+
+When a drag ends with no valid target, `onDragEnd` receives `result: "no-target"` or `result: "invalid-target"` depending on whether a candidate existed but became invalid. `onDrop` does not run unless the drop target is valid.
+
+## Containers
+
+A drop container is a valid target region that represents an area rather than a single item.
+
+Use containers for empty lists, board lanes, columns, broad drop zones, and sortable parent regions.
+
+### DOM
+
+```ts
+import { createDropContainer } from "@mk-drag-and-drop/dom";
+
+createDropContainer({
+  controller,
+  element: laneElement,
+  containerId: "lane-a",
+  group: "cards",
+});
+```
+
+### React
+
+```tsx
+import { useDropContainer } from "@mk-drag-and-drop/react";
+
+function EmptyLane({ laneId }: { laneId: string }) {
+  const container = useDropContainer<HTMLDivElement>({
+    containerId: laneId,
+    group: "cards",
+  });
+
+  return <div {...container} className="lane" />;
+}
+```
+
+Containers participate in targeting as registered targets. In public terms, they make an area droppable even when there is no item target inside it.
+
+For sortable groups, containers are also useful as placement destinations. That still does not make placement part of targeting: targeting chooses the active target, then sortable behavior derives placement from the selected target and current preview state.
+
+## Targeting vs Sortable Placement
+
+Targeting and sortable placement are separate concepts.
+
+### Targeting
+
+Targeting chooses which target is active. The public signal is `activeDropTargetId` in `onDragUpdate`.
+
+### Drop Result
+
+The drop result reports whether the drag ended on a valid target. The public signals are `result` and `dropTargetId` in `onDragEnd`.
+
+### Sortable Placement
+
+Sortable placement describes where a sortable item should be committed relative to an item or container. The public signal is `sortablePlacement` in `onDrop`.
+
+Sortable groups may narrow the measured candidates before the configured targeting algorithm runs. This is package behavior, not a separate public targeting API. The configured algorithm still chooses the active target from the candidates it receives.
+
+Do not describe sortable `placementBoundary` values as targeting thresholds. Placement boundaries tune before/after placement behavior for sortable items; targeting still chooses the active target first.
+
+## Remeasurement
+
+Targeting uses measured rectangles.
+
+Targets are measured when registered and remeasured at drag start. If your app changes layout during a drag in a way that should affect targeting, call the public remeasurement API.
+
+DOM:
+
+```ts
+controller.remeasureDropTargets({ group: "cards" });
+```
+
+React:
+
+```tsx
+import { useEffect } from "react";
+import { useRemeasureDropTargets } from "@mk-drag-and-drop/react";
+
+function TreeView({ expandedIds }: { expandedIds: readonly string[] }) {
+  const remeasureDropTargets = useRemeasureDropTargets();
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      remeasureDropTargets({ group: "tree" });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [expandedIds, remeasureDropTargets]);
+
+  return <TreeContent />;
+}
+```
+
+`RemeasureDropTargetsInput` accepts:
+
+```ts
+type RemeasureDropTargetsInput =
+  | string
+  | string[]
+  | { group: string };
+```
+
+Call remeasurement after app-owned layout changes such as expanding a tree row, showing a drop zone, changing grouped sections, or resizing a target area during a drag. Do not call it on every render.
+
+## Common Recipes
+
+### Only Allow Drops When The Pointer Is Inside A Target
+
+Use a pointer-based algorithm with a zero-distance pointer constraint.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 0 }),
+});
+```
+
+### Prefer Pointer-Based Targeting
+
+Use the default `pointerToCenter`, or choose `pointerToRectDistance` when large target rectangles should be easy to hit.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+});
+```
+
+Pointer-based algorithms do not require a drag overlay.
+
+### Prefer Overlay-Center Targeting
+
+Use `centerToCenter` with a drag overlay.
+
+```tsx
+const overlayConstraint = maxOverlayCenterDistanceToRect({
+  maxDistance: 96,
+});
+
+<DragProvider
+  targetingAlgorithm={centerToCenter}
+  targetingConstraint={overlayConstraint}
+  dragOverlay={({ dragState }) => (
+    <div className="dragOverlay">{dragState.draggableId}</div>
+  )}
+>
+  <BoardContent />
+</DragProvider>;
+```
+
+Use this when the dragged visual should determine the active target.
+
+### Empty List Or Dropzone Targeting
+
+Register a drop container for the empty region.
+
+```tsx
+function CardList({ columnId }: { columnId: string }) {
+  const container = useDropContainer<HTMLDivElement>({
+    containerId: columnId,
+    group: "cards",
+  });
+
+  return <div {...container} className="cardList" />;
+}
+```
+
+When the list has no item targets, the container still provides a valid target region for the group.
+
+## Common Mistakes
+
+- Do not use modifiers as targeting. Modifiers transform movement; targeting chooses targets.
+- Do not use sortable placement boundaries as targeting thresholds. Placement happens after an active target is selected.
+- Do not commit app state inside the targeting algorithm. Use lifecycle callbacks.
+- Do not rely on stale measurements after app-owned layout changes. Call `remeasureDropTargets`.
+- Do not use unstable ids. The package reports ids back to your app; changing what an id means during a drag makes results ambiguous.
+- Do not configure `centerToCenter` without `dragOverlay`.
+- Do not assume every drop has sortable placement. Plain droppable and container drops may only provide `dropTargetId`.

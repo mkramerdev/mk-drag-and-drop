@@ -1,0 +1,51 @@
+---
+title: 'Quickstart'
+summary: 'Install mk-drag-and-drop and make one element draggable.'
+---
+
+# Quickstart
+
+`mk-drag-and-drop` is headless. You provide elements and register the behavior you want.
+
+## Installation
+
+```bash
+pnpm add @mk-drag-and-drop/dom
+pnpm add @mk-drag-and-drop/react
+```
+
+## Basic Drag
+
+Start with one draggable element. This example does not use any drop targets.
+
+<BasicDragCodeTabs />
+
+<BasicDragExampleTabs />
+
+## Add One Drop Target
+
+Next, keep the two-container layout simple and register only the destination as droppable.
+On a successful drop, the package reports the target and your app decides to move the item.
+
+<SingleDroppableCodeTabs />
+
+<SingleDroppableExampleTabs />
+
+## Refine Drop Behavior
+
+Once a single drop target works, register both containers as drop targets and decide what your app should do after a successful drop.
+`mk-drag-and-drop` only tells you that a valid drop happened. Your app owns the behavior: move an element,
+set React state, persist data, trigger a command, or do nothing.
+
+This example moves the item between both containers and applies a ghost style to the dragged item while the drag is active.
+The targeting constraint accepts only drops directly on a target.
+
+<DroppableContainerCodeTabs />
+
+<DroppableContainerExampleTabs />
+
+## Next Steps
+
+- [Core Concepts](/projects/mk-drag-and-drop/concepts/core-concepts)
+- [DOM API](/projects/mk-drag-and-drop/dom/dom-api)
+- [React API](/projects/mk-drag-and-drop/react/react-api)

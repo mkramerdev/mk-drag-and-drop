@@ -1,0 +1,610 @@
+---
+title: 'React Sortable'
+summary: 'Building sortable lists and boards with @mk-drag-and-drop/react.'
+---
+
+# React Sortable
+
+React sortable behavior is for reorderable lists, columns, boards, and other UI where items need to move relative to each other. Use `useSortable` when a rendered element should be both a drag source and a drop target.
+
+Use `useDraggable` and `useDroppable` when you only need to drag one item onto a target and do not need sortable preview movement, before/after placement, or sortable placement data.
+
+The React package wraps the DOM package behavior with `DragProvider` and hooks. Your React components own markup, styling, state, and final data commits.
+
+## Minimal Sortable List
+
+```tsx
+import { useState, type ReactElement } from "react";
+import {
+  DragProvider,
+  useSortable,
+  type SortableDropPlacement,
+} from "@mk-drag-and-drop/react";
+
+type Item = {
+  id: string;
+  label: string;
+};
+
+const initialItems: Item[] = [
+  { id: "task-1", label: "Write outline" },
+  { id: "task-2", label: "Review API" },
+  { id: "task-3", label: "Publish notes" },
+];
+
+export function SortableList(): ReactElement {
+  const [items, setItems] = useState(initialItems);
+
+  return (
+    <DragProvider
+      onDrop={({ draggableId, sortablePlacement }) => {
+        if (!sortablePlacement) {
+          return;
+        }
+
+        setItems((currentItems) =>
+          moveItemToSortablePlacement(
+            currentItems,
+            draggableId,
+            sortablePlacement
+          )
+        );
+      }}
+    >
+      <div>
+        {items.map((item) => (
+          <SortableItem key={item.id} item={item} />
+        ))}
+      </div>
+    </DragProvider>
+  );
+}
+
+function SortableItem({ item }: { item: Item }): ReactElement {
+  const sortable = useSortable<HTMLDivElement>({
+    draggableId: item.id,
+    group: "tasks",
+  });
+
+  return <div {...sortable}>{item.label}</div>;
+}
+
+function moveItemToSortablePlacement(
+  items: readonly Item[],
+  draggableId: string,
+  placement: SortableDropPlacement
+): Item[] {
+  const item = items.find((currentItem) => currentItem.id === draggableId);
+
+  if (!item) {
+    return [...items];
+  }
+
+  const withoutItem = items.filter(
+    (currentItem) => currentItem.id !== draggableId
+  );
+  const insertIndex = getPlacementIndex(
+    withoutItem.map((currentItem) => currentItem.id),
+    placement
+  );
+
+  return [
+    ...withoutItem.slice(0, insertIndex),
+    item,
+    ...withoutItem.slice(insertIndex),
+  ];
+}
+
+function getPlacementIndex(
+  ids: readonly string[],
+  placement: SortableDropPlacement
+): number {
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = ids.indexOf(placement.targetDraggableId);
+
+    if (targetIndex !== -1) {
+      return placement.side === "after" ? targetIndex + 1 : targetIndex;
+    }
+  }
+
+  if (placement.previousDraggableId !== null) {
+    const previousIndex = ids.indexOf(placement.previousDraggableId);
+
+    if (previousIndex !== -1) {
+      return previousIndex + 1;
+    }
+  }
+
+  if (placement.nextDraggableId !== null) {
+    const nextIndex = ids.indexOf(placement.nextDraggableId);
+
+    if (nextIndex !== -1) {
+      return nextIndex;
+    }
+  }
+
+  return ids.length;
+}
+```
+
+## `useSortable` Options
+
+`useSortable(options)` must be called inside `DragProvider`.
+
+```ts
+type UseSortableOptions = {
+  draggableId: string;
+  group?: string;
+  containerId?: string | null;
+  axis?: "vertical" | "horizontal";
+  placementBoundary?: {
+    start?: number;
+    end?: number;
+  };
+};
+```
+
+Required options:
+
+- `draggableId`: stable id for the sortable item. This also becomes the sortable item's drop target id.
+
+Optional options:
+
+- `group`: drag-and-drop group. Defaults to `"default"`.
+- `containerId`: logical container containing the item. Defaults to `null`.
+- `axis`: sortable axis used by placement behavior. Defaults to `"vertical"`.
+- `placementBoundary`: reversal placement ratios. Defaults to `{ start: 0.25, end: 0.75 }`.
+
+## `useSortable` Return Value
+
+`useSortable<ElementType>()` is generic over the host element type and defaults to `HTMLElement`.
+
+```ts
+type UseSortableResult<
+  ElementType extends HTMLElement = HTMLElement,
+> = React.HTMLAttributes<ElementType> & {
+  ref: React.RefCallback<ElementType>;
+};
+```
+
+The returned props include `ref`. When pointer dragging is enabled, they include pointer activation handlers. When keyboard dragging is enabled, they include `tabIndex` and keyboard handlers.
+
+Because the result is typed as `HTMLAttributes<ElementType> & { ref: RefCallback<ElementType> }`, spread it onto the rendered sortable element.
+
+```tsx
+const sortable = useSortable<HTMLArticleElement>({
+  draggableId: card.id,
+  group: "cards",
+});
+
+return <article {...sortable}>{card.title}</article>;
+```
+
+## Provider Setup
+
+`DragProvider` creates one drag-and-drop scope for its React subtree. It coordinates registrations, targeting, lifecycle callbacks, overlays, modifiers, keyboard and pointer input, and remeasurement.
+
+```tsx
+<DragProvider
+  onDragUpdate={({ activeDropTargetId }) => {
+    setActiveTargetId(activeDropTargetId);
+  }}
+  onDrop={({ draggableId, sortablePlacement }) => {
+    if (!sortablePlacement) {
+      return;
+    }
+
+    setItems((items) =>
+      moveItemToSortablePlacement(items, draggableId, sortablePlacement)
+    );
+  }}
+>
+  <SortableList />
+</DragProvider>
+```
+
+Use `onDrop` for durable sortable order changes. Use `onDragUpdate` for lightweight UI feedback such as active target styling.
+
+## Targeting vs Placement
+
+Targeting and sortable placement are separate.
+
+### Targeting
+
+Targeting chooses the active drop target from registered targets in the active group. The public signals are `DragUpdateEvent.activeDropTargetId` and `DropEvent.dropTargetId`.
+
+### Placement
+
+Placement decides before/after or container placement for sortable drops. The public signal is `DropEvent.sortablePlacement`.
+
+### Lifecycle
+
+Lifecycle callbacks let the app commit React state and clean up app UI through `onDragStart`, `onDragUpdate`, `onDragEnd`, and `onDrop`.
+
+`placementBoundary` is not a targeting threshold. It affects sortable before/after switching after a target is active.
+
+## Committing Order In React State
+
+Sortable placement is exposed as:
+
+```ts
+type SortableDropPlacement = {
+  sourceContainerId: string | null;
+  containerId: string | null;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
+  targetDraggableId: string | null;
+  side: "before" | "after" | null;
+};
+```
+
+Commit state from `onDrop`:
+
+```tsx
+<DragProvider
+  onDrop={({ draggableId, sortablePlacement }) => {
+    if (!sortablePlacement) {
+      return;
+    }
+
+    setItemIds((ids) => reorderIds(ids, draggableId, sortablePlacement));
+  }}
+>
+  {children}
+</DragProvider>
+```
+
+```ts
+function reorderIds(
+  ids: readonly string[],
+  draggableId: string,
+  placement: SortableDropPlacement
+): string[] {
+  const withoutDragged = ids.filter((id) => id !== draggableId);
+  let insertIndex = withoutDragged.length;
+
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutDragged.indexOf(placement.targetDraggableId);
+
+    if (targetIndex === -1) {
+      return [...ids];
+    }
+
+    insertIndex = placement.side === "after" ? targetIndex + 1 : targetIndex;
+  } else if (placement.previousDraggableId !== null) {
+    const previousIndex = withoutDragged.indexOf(
+      placement.previousDraggableId
+    );
+
+    if (previousIndex === -1) {
+      return [...ids];
+    }
+
+    insertIndex = previousIndex + 1;
+  } else if (placement.nextDraggableId !== null) {
+    const nextIndex = withoutDragged.indexOf(placement.nextDraggableId);
+
+    if (nextIndex === -1) {
+      return [...ids];
+    }
+
+    insertIndex = nextIndex;
+  }
+
+  return [
+    ...withoutDragged.slice(0, insertIndex),
+    draggableId,
+    ...withoutDragged.slice(insertIndex),
+  ];
+}
+```
+
+`sortablePlacement` can be omitted for plain drops or no-op sortable drops. Treat that as no sortable order change.
+
+## Containers And Empty Lists
+
+Use `useDropContainer` for empty lists, lanes, columns, or broad valid drop regions. Give sortable items inside that region the same `containerId`.
+
+```tsx
+import {
+  DragProvider,
+  useDropContainer,
+  useSortable,
+  type SortableDropPlacement,
+} from "@mk-drag-and-drop/react";
+
+type Lane = {
+  id: string;
+  cardIds: string[];
+};
+
+function Board({ lanes }: { lanes: Lane[] }) {
+  return (
+    <DragProvider
+      onDrop={({ draggableId, sortablePlacement }) => {
+        if (!sortablePlacement) {
+          return;
+        }
+
+        setLanes((currentLanes) =>
+          moveCard(currentLanes, draggableId, sortablePlacement)
+        );
+      }}
+    >
+      {lanes.map((lane) => (
+        <LaneView key={lane.id} lane={lane} />
+      ))}
+    </DragProvider>
+  );
+}
+
+function LaneView({ lane }: { lane: Lane }) {
+  const container = useDropContainer<HTMLDivElement>({
+    containerId: lane.id,
+    group: "cards",
+  });
+
+  return (
+    <div {...container}>
+      {lane.cardIds.map((cardId) => (
+        <Card key={cardId} cardId={cardId} laneId={lane.id} />
+      ))}
+    </div>
+  );
+}
+
+function Card({
+  cardId,
+  laneId,
+}: {
+  cardId: string;
+  laneId: string;
+}) {
+  const sortable = useSortable<HTMLElement>({
+    draggableId: cardId,
+    group: "cards",
+    containerId: laneId,
+  });
+
+  return <article {...sortable}>{cardId}</article>;
+}
+
+function moveCard(
+  lanes: readonly Lane[],
+  draggableId: string,
+  placement: SortableDropPlacement
+): Lane[] {
+  if (!placement.containerId) {
+    return [...lanes];
+  }
+
+  return lanes.map((lane) => {
+    const idsWithoutCard = lane.cardIds.filter(
+      (cardId) => cardId !== draggableId
+    );
+
+    if (lane.id !== placement.containerId) {
+      return { ...lane, cardIds: idsWithoutCard };
+    }
+
+    return {
+      ...lane,
+      cardIds: reorderIds(idsWithoutCard, draggableId, placement),
+    };
+  });
+}
+```
+
+An empty container can receive a sortable item when its drop container is registered. In that case placement may have `containerId` set while item anchors such as `previousDraggableId`, `nextDraggableId`, `targetDraggableId`, and `side` are `null`.
+
+## Axis
+
+Sortable supports these axis values:
+
+- `"vertical"`: lists, rows, and stacked menus.
+- `"horizontal"`: columns, tabs, and horizontal boards.
+
+The default axis is `"vertical"`.
+
+```tsx
+const row = useSortable({
+  draggableId: rowId,
+  group: "rows",
+  axis: "vertical",
+});
+```
+
+```tsx
+const column = useSortable({
+  draggableId: columnId,
+  group: "columns",
+  containerId: "board",
+  axis: "horizontal",
+});
+```
+
+Use one axis consistently for items that sort together.
+
+## Placement Boundaries
+
+`placementBoundary` tunes before/after switching when placement reverses over the same active target.
+
+```tsx
+const sortable = useSortable({
+  draggableId: item.id,
+  group: "items",
+  placementBoundary: {
+    start: 0,
+    end: 1,
+  },
+});
+```
+
+The public type is:
+
+```ts
+type SortablePlacementBoundary = {
+  start?: number;
+  end?: number;
+};
+```
+
+Defaults are:
+
+```ts
+{
+  start: 0.25,
+  end: 0.75,
+}
+```
+
+The values are ratios of the active target on the sortable axis. `start` is used for forward movement and `end` is used for backward movement. On first entry into a newly active target, placement is optimistic: forward movement places after, backward movement places before, and no movement falls back to the midpoint.
+
+## Drag Handles With Sortable
+
+Use `useDragHandle` to restrict dragging to a child handle.
+
+```tsx
+import {
+  useDragHandle,
+  useSortable,
+} from "@mk-drag-and-drop/react";
+
+function Row({ id, label }: { id: string; label: string }) {
+  const sortable = useSortable<HTMLDivElement>({
+    draggableId: id,
+    group: "rows",
+  });
+  const handle = useDragHandle<HTMLButtonElement>();
+
+  return (
+    <div {...sortable}>
+      <button {...handle} type="button" aria-label={`Drag ${label}`}>
+        Drag
+      </button>
+      <span>{label}</span>
+    </div>
+  );
+}
+```
+
+Use handles when the sortable item contains buttons, links, inputs, or selectable content.
+
+## Drag Overlays With Sortable
+
+The current React API does not export a public `DragOverlay` component. Use the `dragOverlay` prop on `DragProvider`.
+
+```tsx
+<DragProvider
+  dragOverlay={({ dragState }) => (
+    <div className="dragOverlay">{dragState.draggableId}</div>
+  )}
+>
+  {children}
+</DragProvider>
+```
+
+Overlay movement is handled by the package. App code should not update React state on every pointer move just to move the overlay.
+
+For release animations, set `overlayRelease="manual"` and call `removeOverlay` when the released overlay should be removed.
+
+```tsx
+<DragProvider
+  overlayRelease="manual"
+  dragOverlay={(input) => (
+    <div
+      className={
+        input.phase === "released"
+          ? "overlay overlayReleased"
+          : "overlay"
+      }
+      onAnimationEnd={
+        input.phase === "released" ? input.removeOverlay : undefined
+      }
+    >
+      {input.dragState.draggableId}
+    </div>
+  )}
+>
+  {children}
+</DragProvider>
+```
+
+`removeOverlay` is only present for the `"released"` phase.
+
+## Remeasurement
+
+Targeting uses measured drop target rectangles. Call `useRemeasureDropTargets` after app-owned layout changes that should affect targeting during a drag.
+
+```tsx
+import { useLayoutEffect, useState } from "react";
+import { useRemeasureDropTargets } from "@mk-drag-and-drop/react";
+
+function ExpandableSection({ group }: { group: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const remeasureDropTargets = useRemeasureDropTargets();
+
+  useLayoutEffect(() => {
+    requestAnimationFrame(() => {
+      remeasureDropTargets({ group });
+    });
+  }, [expanded, group, remeasureDropTargets]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setExpanded((value) => !value)}
+    >
+      {expanded ? "Collapse" : "Expand"}
+    </button>
+  );
+}
+```
+
+Supported inputs are:
+
+```ts
+remeasureDropTargets();
+remeasureDropTargets("target-id");
+remeasureDropTargets(["target-a", "target-b"]);
+remeasureDropTargets({ group: "items" });
+```
+
+Normal sortable preview movement does not require app remeasurement. Call it for layout changes your app owns, such as expansion, collapse, loading more items, or changing item sizes.
+
+## Cancel And Cleanup Behavior
+
+Sortable preview movement is temporary. During a drag, the underlying DOM behavior may move the dragged DOM element to preview where it would land. On cancel, no-target release, invalid-target release, active drag reset, and successful drop, preview state is restored or cleared by the package.
+
+React state remains yours. If a drag is canceled, you usually only clear app-owned active styling in `onDragEnd`. Do not manually undo the preview DOM movement.
+
+`onDragEnd` receives:
+
+```ts
+type DragEndResult =
+  | "dropped"
+  | "no-target"
+  | "invalid-target"
+  | "canceled";
+```
+
+`onDrop` only fires for a valid successful drop.
+
+## Performance Notes
+
+- Keep ids stable. Do not use array indexes as `draggableId` values for reorderable lists.
+- Keep `onDragUpdate` cheap. It can run frequently, so avoid expensive state updates there.
+- Commit durable order in `onDrop`, not during every pointer move.
+- Avoid recreating ids, modifier arrays, and callback-heavy item structures unnecessarily.
+- If you create modifier arrays for `DragProvider`, use `useMemo`.
+- For large lists, avoid full React rerenders during drag when possible. The package includes sortable candidate narrowing in the underlying DOM behavior, but this is not a virtualization API.
+- Call `useRemeasureDropTargets` only after layout changes that should affect targeting.
+
+## Common Mistakes
+
+- Do not use unstable ids.
+- Do not treat `placementBoundary` as targeting.
+- Do not commit order on every drag update.
+- Do not forget `useDropContainer` for empty lists or board columns.
+- Do not rely on stale measurements after app-owned layout changes.
+- Do not recreate item ids, modifier arrays, or expensive callbacks unnecessarily.

@@ -1,0 +1,156 @@
+---
+title: 'mk-drag-and-drop'
+summary: 'Headless DOM-first drag-and-drop primitives with a React adapter.'
+---
+
+# mk-drag-and-drop
+
+Headless DOM-first drag-and-drop primitives with a React adapter.
+
+```sh
+pnpm add @mk-drag-and-drop/dom
+pnpm add @mk-drag-and-drop/react
+```
+
+## What It Is
+
+`mk-drag-and-drop` is a small set of headless drag-and-drop primitives. It gives you behavior, measurement, targeting, lifecycle
+events, overlays, modifiers, and sortable placement data. It does not give you prebuilt components.
+
+The DOM package owns the runtime mechanics: pointer and keyboard input, draggable and drop-target registration, target measurement,
+targeting, overlay movement, modifiers, and sortable preview behavior.
+
+Your app owns the rest: markup, styling, layout, application state, persistence, accessibility copy, and the final data commit
+after a drop.
+
+## Package Split
+
+Use `@mk-drag-and-drop/dom` when you are building with vanilla DOM, custom elements, another framework, or an adapter of your own.
+
+Use `@mk-drag-and-drop/react` for React 19 apps. It wraps the DOM runtime with a provider and hooks, and depends on `@mk-drag-and-drop/dom`.
+
+React apps usually import from `@mk-drag-and-drop/react`. Non-React apps should import from `@mk-drag-and-drop/dom`.
+
+## Core Mental Model
+
+1. Register a draggable source.
+2. Register drop targets, drop containers, or sortable items.
+3. Configure targeting, constraints, and modifiers when the default behavior is not enough.
+4. Listen to lifecycle callbacks such as `onDragStart`, `onDragUpdate`, `onDragEnd`, and `onDrop`.
+5. On drop, update your own application data.
+6. Render the final state through your app.
+
+The package reports what happened. It does not permanently mutate your application model.
+
+## Main Capabilities
+
+- **Draggables:** register elements as drag sources with stable ids and optional groups.
+- **Droppables:** register elements as valid drop targets.
+- **Drop containers:** register lists, columns, boards, or empty containers that should accept placement-aware drops.
+- **Sortable lists and boards:** register items as both drag sources and targets. The runtime can move DOM nodes temporarily to
+preview placement, then reports sortable placement data on drop.
+- **Drag handles:** mark a child element as the only drag start region for its draggable or sortable parent.
+- **Drag overlays:** render a visual drag preview. The runtime owns the fixed-position host, movement, cleanup, and overlay
+measurement.
+- **Targeting algorithms:** choose the active target from measured candidates. Built-ins include `pointerToCenter`,
+`centerToCenter`, and `pointerToRectDistance`.
+- **Constraints:** filter candidates before targeting, for example with pointer or overlay-center distance limits.
+- **Modifiers:** transform pointer movement with helpers such as `lockToXAxis`, `lockToYAxis`, and `restrictToContainer`, or
+provide custom modifier functions.
+- **Pointer and keyboard input:** pointer drag supports activation delay and distance. Keyboard drag is enabled by default and can
+be configured.
+- **Lifecycle information:** callbacks include the dragged id, source input (`"pointer"` or `"keyboard"`), active target changes,
+end result, and optional sortable placement.
+- **Explicit remeasurement:** call `remeasureDropTargets` when app-owned layout changes during a drag should affect targeting.
+
+## Small React Example
+
+```tsx
+import { useState, type ReactNode } from "react";
+import {
+DragProvider,
+useDraggable,
+useDroppable,
+} from "@mk-drag-and-drop/react";
+
+type ColumnId = "todo" | "done";
+
+export function TaskMoveExample() {
+const [column, setColumn] = useState<ColumnId>("todo");
+
+return (
+    <DragProvider
+    onDrop={({ draggableId, dropTargetId }) => {
+        if (
+        draggableId === "task-1" &&
+        (dropTargetId === "todo" || dropTargetId === "done")
+        ) {
+        setColumn(dropTargetId);
+        }
+    }}
+    >
+    <div className="columns">
+        <Column id="todo">{column === "todo" ? <TaskCard /> : null}</Column>
+        <Column id="done">{column === "done" ? <TaskCard /> : null}</Column>
+    </div>
+    </DragProvider>
+);
+}
+
+function TaskCard() {
+const draggable = useDraggable({
+    draggableId: "task-1",
+    group: "tasks",
+});
+
+return <article {...draggable}>Write overview page</article>;
+}
+
+function Column({ id, children }: { id: ColumnId; children: ReactNode }) {
+const droppable = useDroppable({
+    dropTargetId: id,
+    group: "tasks",
+});
+
+return <section {...droppable}>{children}</section>;
+}
+```
+
+This example registers one draggable and two droppable targets. `onDrop` commits the change by updating React state. The package
+does not move the task in application data by itself.
+
+## Design Philosophy
+
+`mk-drag-and-drop` is headless by design. It does not impose a DOM structure, CSS model, component library, animation system, or
+data shape.
+
+Ids are the contract between the runtime and your app. A draggable id, drop target id, group id, or container id only has meaning
+because your application maps it to its own model.
+
+Sortable behavior uses physical DOM preview movement during the active drag. That preview is temporary. Your app still reads
+`sortablePlacement` on drop and commits the final order itself.
+
+The runtime favors explicit lifecycle events over hidden state management. Use lifecycle callbacks for side effects and commits.
+Use explicit remeasurement when your app changes layout during a drag and targeting should account for the new geometry.
+
+Keyboard support and optional live-region announcements are provided, but complete accessibility still depends on your markup,
+labels, instructions, and domain-specific interaction design.
+
+## Where To Go Next
+
+- [Quickstart](#)
+- [Core Concepts](#)
+- [DOM API](#)
+- [React API](#)
+- [Sortable](#)
+- [Examples](#)
+
+Note:
+
+1. Sources inspected: both package READMEs, both package.json files, root and integration exports, DOM controller/runtime/
+    registration/input/sortable/targeting/modifier/measurement source, and React provider/overlay/hooks/modifier utilities.
+
+2. Assumptions made: placeholder links remain #; install commands assume the packages are available from a registry or workspace;
+    the page avoids custom MDX components because none were provided.
+
+3. Recommended next pages: Quickstart, Core Concepts, DOM API, React API, Sortable, Examples.

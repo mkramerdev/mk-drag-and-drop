@@ -1,0 +1,415 @@
+---
+title: 'Lifecycle'
+summary: 'How drag events flow through mk-drag-and-drop.'
+---
+
+# Lifecycle
+
+Lifecycle callbacks are the boundary between `mk-drag-and-drop` and your application state.
+
+The package handles pointer input, keyboard input, movement, target measurement, target selection, sortable preview behavior, and overlay positioning. Your app decides what state changes when a drag starts, updates, ends, or successfully drops.
+
+Lifecycle events are separate from element registration. Registering a draggable, droppable, drop container, sortable item, or drag handle tells the drag-and-drop scope what exists. Lifecycle callbacks describe what happens during one active drag.
+
+Lifecycle events are also separate from the lifetime of a controller or provider. A DOM controller or React `DragProvider` may live for the lifetime of a screen, while many independent drags can start and finish inside that scope.
+
+## Lifecycle Flow
+
+A normal successful drag follows this order:
+
+1. Drag starts.
+2. Drag updates while the pointer or keyboard position changes.
+3. Drag ends.
+4. Drop fires if the final active target is valid.
+5. Overlay release behavior runs.
+
+```text
+start drag
+-> onDragStart
+move drag
+-> onDragUpdate
+finish drag
+-> onDragEnd
+-> onDrop, only when result is "dropped"
+release overlay
+```
+
+`onDragEnd` always represents the drag finishing. `onDrop` represents a valid successful drop and only runs when the drag result is `"dropped"`.
+
+## Event Reference
+
+### `onDragStart`
+
+Fires when a pointer or keyboard drag starts. The event includes `draggableId`, `source`, `pointerPosition`, and `sourceRect`.
+
+Use it to mark the item as active, close transient UI, and initialize drag-related app state. Do not commit reorder or move state here.
+
+### `onDragUpdate`
+
+Fires when the active drag position changes. The event includes `draggableId`, `source`, `pointerPosition`, `activeDropTargetId`, and `previousDropTargetId`.
+
+Use it for lightweight UI feedback, such as active target styling. Avoid expensive state commits on every movement update.
+
+### `onDragEnd`
+
+Fires when a drag finishes for any reason. The event includes `draggableId`, `source`, `result`, and `dropTargetId`.
+
+Use it to clean up app drag state and distinguish dropped, canceled, no-target, and invalid-target outcomes. Do not assume a successful drop; check `result`.
+
+### `onDrop`
+
+Fires when a drag finishes over a valid target. The event includes `draggableId`, `source`, `dropTargetId`, and optional `sortablePlacement`.
+
+Use it to commit durable app state for moves and reorders. Do not assume every droppable is sortable or list-shaped.
+
+Each lifecycle callback receives a second helpers argument:
+
+```ts
+type DragLifecycleHelpers = {
+  getDropTargetRect: (dropTargetId: string) => DragRect | null;
+};
+```
+
+Use `getDropTargetRect` when app-level behavior needs the measured rectangle for a target, such as coordinating release animation state. Targeting itself is already handled by the package.
+
+## Drag Start
+
+`onDragStart` fires after a drag has been accepted and the scope has measured the relevant drop targets.
+
+The event includes:
+
+```ts
+type DragStartEvent = {
+  draggableId: string;
+  source: "pointer" | "keyboard";
+  pointerPosition: DragPoint;
+  sourceRect: DragRect;
+};
+```
+
+`source` tells you whether the drag was started by pointer or keyboard input. App behavior should usually be the same for both sources.
+
+### DOM
+
+```ts
+import { createDragController } from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  onDragStart(event) {
+    setActiveDrag({
+      draggableId: event.draggableId,
+      source: event.source,
+    });
+  },
+});
+```
+
+### React
+
+```tsx
+import { DragProvider } from "@mk-drag-and-drop/react";
+
+export function Board() {
+  return (
+    <DragProvider
+      onDragStart={({ draggableId, source }) => {
+        setActiveDrag({ draggableId, source });
+      }}
+    >
+      <BoardContent />
+    </DragProvider>
+  );
+}
+```
+
+## Drag Update
+
+`onDragUpdate` fires as the active drag position changes.
+
+The event includes:
+
+```ts
+type DragUpdateEvent = {
+  draggableId: string;
+  source: "pointer" | "keyboard";
+  pointerPosition: DragPoint;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
+};
+```
+
+`activeDropTargetId` is selected by the configured targeting behavior. Lifecycle callbacks receive the selected target, but they do not choose it.
+
+`previousDropTargetId` is useful for updating UI efficiently when the active target changes.
+
+```tsx
+<DragProvider
+  onDragUpdate={({ activeDropTargetId, previousDropTargetId }) => {
+    if (previousDropTargetId) {
+      setTargetActive(previousDropTargetId, false);
+    }
+
+    if (activeDropTargetId) {
+      setTargetActive(activeDropTargetId, true);
+    }
+  }}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+Use update callbacks for lightweight feedback. Avoid committing durable list order, sending network requests, or doing expensive layout work on every update.
+
+## Drop
+
+`onDrop` fires only for a valid successful drop.
+
+The event includes:
+
+```ts
+type DropEvent = {
+  draggableId: string;
+  source: "pointer" | "keyboard";
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
+};
+```
+
+For normal droppables, `draggableId` identifies the dragged item and `dropTargetId` identifies the valid target.
+
+```tsx
+<DragProvider
+  onDrop={({ draggableId, dropTargetId }) => {
+    moveCardToLane(draggableId, dropTargetId);
+  }}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+`sortablePlacement` is optional and is only relevant when the successful target is part of sortable behavior. Do not treat every droppable as a sortable list item.
+
+## Drag End
+
+`onDragEnd` fires whenever a drag finishes, whether or not it successfully drops.
+
+The event includes:
+
+```ts
+type DragEndEvent = {
+  draggableId: string;
+  source: "pointer" | "keyboard";
+  result: "dropped" | "no-target" | "invalid-target" | "canceled";
+  dropTargetId: string | null;
+};
+```
+
+`result` describes why the drag finished:
+
+### `"dropped"`
+
+The drag ended on a valid target. `onDrop` also runs.
+
+### `"no-target"`
+
+The drag ended normally without an active target.
+
+### `"invalid-target"`
+
+There was an active target id, but it was no longer valid by the time the drag finished.
+
+### `"canceled"`
+
+The drag was canceled, such as by Escape or pointer cancellation.
+
+Use `onDragEnd` for cleanup that must happen for every drag.
+
+```ts
+const controller = createDragController({
+  onDragEnd(event) {
+    clearActiveDrag();
+
+    if (event.result !== "dropped") {
+      clearPendingDropPreview();
+    }
+  },
+});
+```
+
+If you commit application state in `onDragEnd`, check `event.result` first. A drag ending is not the same thing as a successful drop.
+
+## Keyboard vs Pointer
+
+Lifecycle events identify the input source with:
+
+```ts
+type DragSource = "pointer" | "keyboard";
+```
+
+Pointer and keyboard drags should usually commit the same app state. The source is most useful for input-specific UI, analytics, or behavior that must account for keyboard-driven movement.
+
+```tsx
+<DragProvider
+  onDragStart={({ source }) => {
+    setInputMode(source);
+  }}
+  onDrop={({ draggableId, dropTargetId }) => {
+    moveItem(draggableId, dropTargetId);
+  }}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+## Overlay Release Timing
+
+The drag overlay is positioned by the package during the drag. Your app should not update overlay position on every pointer move.
+
+Overlay release happens after the lifecycle finish callbacks. On a successful drop, `onDragEnd` runs, then `onDrop` runs, and then the overlay is released or removed.
+
+The `overlayRelease` option controls release behavior:
+
+```tsx
+<DragProvider
+  overlayRelease="manual"
+  dragOverlay={(input) => (
+    <DragPreview
+      draggableId={input.draggableId}
+      phase={input.phase}
+      onDone={input.phase === "released" ? input.removeOverlay : undefined}
+    />
+  )}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+Use manual release when the overlay needs to remain mounted briefly for an app-controlled release animation. Use automatic behavior when no custom release timing is needed.
+
+## Sortable Lifecycle
+
+Sortable behavior builds on the same lifecycle callbacks.
+
+During a sortable drag, the package may move DOM temporarily to preview where an item would land. That preview movement is not your durable application order. It is released when the drag finishes.
+
+Commit the real order in a lifecycle callback, usually `onDrop`, using `event.sortablePlacement` when it is present.
+
+```tsx
+<DragProvider
+  onDrop={({ draggableId, sortablePlacement }) => {
+    if (!sortablePlacement) {
+      return;
+    }
+
+    setItems((items) =>
+      moveItemToSortablePlacement(items, draggableId, sortablePlacement)
+    );
+  }}
+>
+  <SortableList />
+</DragProvider>
+```
+
+Targeting and sortable placement are related but distinct:
+
+### Targeting
+
+Selects the active drop target.
+
+### Sortable Placement
+
+Decides where the dragged item belongs relative to that sortable target.
+
+### Lifecycle
+
+Lets the app commit durable state after the drag result is known.
+
+## DOM And React Usage
+
+The DOM package configures lifecycle callbacks on the drag controller.
+
+```ts
+import {
+  createDragController,
+  createDraggable,
+  createDroppable,
+} from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  onDrop({ draggableId, dropTargetId }) {
+    moveItem(draggableId, dropTargetId);
+  },
+});
+
+createDraggable({
+  controller,
+  element: itemElement,
+  draggableId: "card-1",
+  group: "cards",
+});
+
+createDroppable({
+  controller,
+  element: laneElement,
+  dropTargetId: "lane-a",
+  group: "cards",
+});
+```
+
+The React package configures lifecycle callbacks on `DragProvider`. Hooks register elements inside the provider scope.
+
+```tsx
+import {
+  DragProvider,
+  useDraggable,
+  useDroppable,
+} from "@mk-drag-and-drop/react";
+
+function Card({ id }: { id: string }) {
+  const draggable = useDraggable<HTMLDivElement>({
+    draggableId: id,
+    group: "cards",
+  });
+
+  return <div {...draggable}>Card</div>;
+}
+
+function Lane({ id }: { id: string }) {
+  const droppable = useDroppable<HTMLDivElement>({
+    dropTargetId: id,
+    group: "cards",
+  });
+
+  return <div {...droppable} />;
+}
+
+export function Board() {
+  return (
+    <DragProvider
+      onDrop={({ draggableId, dropTargetId }) => {
+        moveItem(draggableId, dropTargetId);
+      }}
+      onDragEnd={({ result }) => {
+        if (result !== "dropped") {
+          clearDropIntent();
+        }
+      }}
+    >
+      <Lane id="lane-a" />
+      <Card id="card-1" />
+    </DragProvider>
+  );
+}
+```
+
+## Practical Guidance
+
+- Keep lifecycle handlers fast.
+- Use `onDragUpdate` for active styling and lightweight feedback.
+- Commit durable state in `onDrop`, or in `onDragEnd` only after checking `result`.
+- Distinguish drag end from successful drop.
+- Use `sortablePlacement` only when handling sortable drops.
+- Do not commit sortable order on every movement update.
+- Remeasure after app-owned layout changes outside the drag lifecycle when those changes should affect targeting.
+- Keep draggable and drop target ids stable across renders.
+- Use `source` only when behavior needs to differ between pointer and keyboard input.

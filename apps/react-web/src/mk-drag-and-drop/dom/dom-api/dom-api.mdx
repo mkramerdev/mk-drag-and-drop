@@ -1,0 +1,1231 @@
+---
+title: 'DOM API Reference'
+summary: 'Public API reference for @mk-drag-and-drop/dom.'
+---
+
+# DOM API Reference
+
+This is the API reference for `@mk-drag-and-drop/dom`.
+
+For conceptual background, pair this page with the concepts, lifecycle, targeting, overlay, modifier, and sortable documentation. This page focuses on exported DOM APIs, option objects, event shapes, and low-level integration exports.
+
+## Imports
+
+Main DOM APIs are imported from `@mk-drag-and-drop/dom`.
+
+```ts
+import {
+  createDragController,
+  createDraggable,
+  createDroppable,
+  createDropContainer,
+  createSortable,
+  createDragHandle,
+  pointerToCenter,
+  centerToCenter,
+  pointerToRectDistance,
+  maxPointerDistanceToRect,
+  maxOverlayCenterDistanceToRect,
+  lockToXAxis,
+  lockToYAxis,
+  restrictToContainer,
+} from "@mk-drag-and-drop/dom";
+```
+
+Types are exported from the same entrypoint.
+
+```ts
+import type {
+  DragController,
+  DragStartEvent,
+  DragUpdateEvent,
+  DropEvent,
+  DragEndEvent,
+  SortableDropPlacement,
+  TargetingAlgorithm,
+  TargetingConstraint,
+  DragModifier,
+  KeyboardConfiguration,
+  PointerConfiguration,
+  DragPoint,
+  DragRect,
+} from "@mk-drag-and-drop/dom";
+```
+
+Low-level adapter APIs are imported from `@mk-drag-and-drop/dom/integration`.
+
+```ts
+import {
+  createDragRuntimeScope,
+  createDomDraggable,
+} from "@mk-drag-and-drop/dom/integration";
+```
+
+Use the integration entrypoint only when building a wrapper or adapter. Ordinary DOM usage should use the main entrypoint.
+
+## Controller
+
+### `createDragController`
+
+Creates one DOM drag-and-drop scope.
+
+```ts
+function createDragController(
+  options?: DragControllerOptions
+): DragController;
+```
+
+A controller coordinates registered elements, targeting, lifecycle callbacks, overlays, modifiers, keyboard input, pointer input, and explicit target remeasurement.
+
+```ts
+import {
+  createDragController,
+  pointerToRectDistance,
+  maxPointerDistanceToRect,
+} from "@mk-drag-and-drop/dom";
+
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 96 }),
+  onDrop({ draggableId, dropTargetId }) {
+    moveItem(draggableId, dropTargetId);
+  },
+});
+```
+
+### `DragControllerOptions`
+
+```ts
+type DragControllerOptions = {
+  announcements?: DragControllerAnnouncements;
+  dragOverlay?: (input: DragControllerOverlayInput) => HTMLElement | null;
+  keyboardConfiguration?: KeyboardConfiguration;
+  modifiers?: readonly DragModifierInput[];
+  overlayRelease?: "auto" | "manual";
+  overlayRoot?: HTMLElement;
+  pointerConfiguration?: PointerConfiguration;
+  targetingAlgorithm?: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
+  onDragStart?: (
+    event: DragStartEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDragUpdate?: (
+    event: DragUpdateEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDragEnd?: (
+    event: DragEndEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDrop?: (
+    event: DropEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+};
+```
+
+Defaults:
+
+- `keyboardConfiguration` uses the default keyboard commands.
+- `modifiers` defaults to an empty array.
+- `overlayRelease` defaults to `"auto"`.
+- `overlayRoot` defaults to `document.body`.
+- `pointerConfiguration` defaults to no activation delay and no activation distance.
+- `targetingAlgorithm` defaults to `pointerToCenter`.
+- `targetingConstraint` defaults to no constraint.
+
+### `DragControllerAnnouncements`
+
+```ts
+type DragControllerAnnouncements = {
+  onDragStart?: (event: DragStartEvent) => string | null;
+  onDragUpdate?: (event: DragUpdateEvent) => string | null;
+  onDragEnd?: (event: DragEndEvent) => string | null;
+  onDrop?: (event: DropEvent) => string | null;
+};
+```
+
+Announcement callbacks return text for a polite live region. `onDragUpdate` announcements are emitted only when `activeDropTargetId` changes.
+
+### `DragController`
+
+```ts
+type DragController = {
+  remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
+};
+```
+
+The controller intentionally exposes only public drag scope operations. Registration helpers do not return per-element disposers.
+
+## Element Registration
+
+### `createDraggable`
+
+Registers an element as a drag source.
+
+```ts
+function createDraggable(input: CreateDraggableInput): void;
+
+type CreateDraggableInput = {
+  controller: DragController;
+  element: HTMLElement;
+  draggableId: string;
+  group?: string;
+};
+```
+
+```ts
+createDraggable({
+  controller,
+  element: itemElement,
+  draggableId: "card-1",
+  group: "cards",
+});
+```
+
+`group` defaults to `"default"` and is used to match compatible drop targets.
+
+### `createDroppable`
+
+Registers an element as a drop target.
+
+```ts
+function createDroppable(input: CreateDroppableInput): void;
+
+type CreateDroppableInput = {
+  controller: DragController;
+  element: HTMLElement;
+  dropTargetId: string;
+  containerId?: string | null;
+  group?: string;
+};
+```
+
+```ts
+createDroppable({
+  controller,
+  element: laneElement,
+  dropTargetId: "lane-a",
+  group: "cards",
+});
+```
+
+`containerId` is optional placement-aware container identity. `group` defaults to `"default"`.
+
+### `createDropContainer`
+
+Registers an element as a drop container.
+
+```ts
+function createDropContainer(input: CreateDropContainerInput): void;
+
+type CreateDropContainerInput = {
+  controller: DragController;
+  element: HTMLElement;
+  containerId: string;
+  group?: string;
+};
+```
+
+```ts
+createDropContainer({
+  controller,
+  element: listElement,
+  containerId: "backlog",
+  group: "cards",
+});
+```
+
+Containers are useful for empty lists, lanes, boards, and broad valid drop regions.
+
+## Sortable
+
+### `createSortable`
+
+Registers an element as both draggable and droppable for reorderable behavior.
+
+```ts
+function createSortable(input: CreateSortableInput): void;
+
+type CreateSortableInput = {
+  controller: DragController;
+  element: HTMLElement;
+  draggableId: string;
+  group?: string;
+  containerId?: string | null;
+  axis?: "vertical" | "horizontal";
+  placementBoundary?: SortablePlacementBoundary;
+};
+```
+
+```ts
+createSortable({
+  controller,
+  element: itemElement,
+  draggableId: "item-1",
+  group: "items",
+  axis: "vertical",
+});
+```
+
+`group` defaults to `"default"`, `containerId` defaults to `null`, `axis` defaults to `"vertical"`, and `placementBoundary` defaults to `{ start: 0.25, end: 0.75 }`.
+
+### `SortableAxis`
+
+```ts
+type SortableAxis = "vertical" | "horizontal";
+```
+
+### `SortablePlacementBoundary`
+
+```ts
+type SortablePlacementBoundary = {
+  start?: number;
+  end?: number;
+};
+```
+
+`start` and `end` are ratios clamped to `0..1`. Non-finite values fall back to defaults.
+
+### `SortableDropPlacement`
+
+Sortable drops may include `event.sortablePlacement`.
+
+```ts
+type SortableDropPlacement = {
+  sourceContainerId: string | null;
+  containerId: string | null;
+  previousDraggableId: string | null;
+  nextDraggableId: string | null;
+  targetDraggableId: string | null;
+  side: "before" | "after" | null;
+};
+```
+
+`sortablePlacement` is omitted for plain droppable drops and may be omitted for no-op sortable drops.
+
+## Drag Handles
+
+### `createDragHandle`
+
+Marks an element as the drag handle for the nearest draggable or sortable element.
+
+```ts
+function createDragHandle(input: CreateDragHandleInput): void;
+
+type CreateDragHandleInput = {
+  element: HTMLElement;
+};
+```
+
+```ts
+const handle = document.createElement("button");
+handle.type = "button";
+handle.textContent = "Drag";
+
+createDragHandle({ element: handle });
+```
+
+When a draggable or sortable contains a drag handle, pointer and keyboard dragging are handled from the handle rather than unrelated descendants.
+
+## Lifecycle
+
+Lifecycle callbacks are configured on `createDragController`.
+
+```ts
+type DragLifecycleCallbacks = {
+  onDragStart?: (
+    event: DragStartEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDragUpdate?: (
+    event: DragUpdateEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDragEnd?: (
+    event: DragEndEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+  onDrop?: (
+    event: DropEvent,
+    helpers: DragLifecycleHelpers
+  ) => void;
+};
+```
+
+### `DragSource`
+
+```ts
+type DragSource = "pointer" | "keyboard";
+```
+
+### `DragStartEvent`
+
+```ts
+type DragStartEvent = {
+  draggableId: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  sourceRect: DragRect;
+};
+```
+
+### `DragUpdateEvent`
+
+```ts
+type DragUpdateEvent = {
+  draggableId: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
+};
+```
+
+`pointerPosition` is the current effective pointer position after modifiers.
+
+### `DropEvent`
+
+```ts
+type DropEvent = {
+  draggableId: string;
+  source: DragSource;
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
+};
+```
+
+### `DragEndResult`
+
+```ts
+type DragEndResult =
+  | "dropped"
+  | "no-target"
+  | "invalid-target"
+  | "canceled";
+```
+
+### `DragEndEvent`
+
+```ts
+type DragEndEvent = {
+  draggableId: string;
+  source: DragSource;
+  result: DragEndResult;
+  dropTargetId: string | null;
+};
+```
+
+`dropTargetId` is the final valid target for `"dropped"`, otherwise usually `null`.
+
+### `DragLifecycleHelpers`
+
+```ts
+type DragLifecycleHelpers = {
+  getDropTargetRect: (dropTargetId: string) => DragRect | null;
+};
+```
+
+Use `getDropTargetRect` when lifecycle code needs target geometry, such as overlay release animation setup.
+
+## Overlays
+
+### `OverlayReleaseMode`
+
+```ts
+type OverlayReleaseMode = "auto" | "manual";
+```
+
+`"auto"` removes the overlay after drag finish. `"manual"` calls `dragOverlay` again with `phase: "released"` and passes `removeOverlay`.
+
+### `DragControllerOverlayInput`
+
+```ts
+type DragControllerOverlayInput =
+  | {
+      dragState: DragState;
+      phase: "dragging";
+      removeOverlay?: never;
+    }
+  | {
+      dragState: DragState;
+      phase: "released";
+      removeOverlay: () => void;
+    };
+
+type DragState = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  startPointerPosition: DragPoint;
+  pointerPosition: DragPoint;
+};
+```
+
+```ts
+const controller = createDragController({
+  overlayRelease: "manual",
+  dragOverlay(input) {
+    const element = document.createElement("div");
+    element.textContent = input.dragState.draggableId;
+
+    if (input.phase === "released") {
+      element.addEventListener("transitionend", input.removeOverlay, {
+        once: true,
+      });
+    }
+
+    return element;
+  },
+});
+```
+
+`overlayRoot` changes where the package-owned overlay wrapper is appended. It defaults to `document.body`.
+
+## Remeasurement
+
+### `RemeasureDropTargetsInput`
+
+```ts
+type RemeasureDropTargetsInput =
+  | string
+  | string[]
+  | { group: string };
+```
+
+Supported inputs:
+
+- `undefined`: remeasures all registered targets.
+- `string`: remeasures targets with that id across groups.
+- `string[]`: remeasures targets with those ids across groups.
+- `{ group: string }`: remeasures all targets in one group.
+
+```ts
+controller.remeasureDropTargets();
+controller.remeasureDropTargets("target-1");
+controller.remeasureDropTargets(["target-1", "target-2"]);
+controller.remeasureDropTargets({ group: "cards" });
+```
+
+Call this after app-owned layout changes that should affect targeting.
+
+## Targeting
+
+Targeting APIs choose and filter active drop targets.
+
+```ts
+type DropTarget = {
+  dropTargetId: string;
+  dropTargetRect: DragRect;
+};
+
+type TargetingAlgorithmInput = {
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  dropTargets: readonly DropTarget[];
+};
+
+type TargetingAlgorithm = {
+  (input: TargetingAlgorithmInput): DropTarget | null;
+  mode: "pointer" | "rect";
+};
+
+type TargetingConstraintInput = {
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  dropTarget: DropTarget;
+};
+
+type TargetingConstraint = {
+  (input: TargetingConstraintInput): boolean;
+};
+```
+
+### `pointerToCenter`
+
+Chooses the target whose center is closest to `pointerPosition`.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: pointerToCenter,
+});
+```
+
+Use it for general pointer-driven targeting. It is the controller default.
+
+### `pointerToRectDistance`
+
+Chooses the target whose rectangle is closest to `pointerPosition`.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+});
+```
+
+Use it for large drop regions where distance to the rectangle edge matters.
+
+### `centerToCenter`
+
+Chooses the target whose center is closest to the overlay center.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: centerToCenter,
+  dragOverlay({ dragState }) {
+    const element = document.createElement("div");
+    element.textContent = dragState.draggableId;
+    return element;
+  },
+});
+```
+
+Use it when the dragged visual should drive targeting. It requires a drag overlay.
+
+### `getDistanceToRect`
+
+```ts
+function getDistanceToRect(
+  point: DragPoint,
+  rect: DragRect
+): {
+  x: number;
+  y: number;
+  distance: number;
+};
+```
+
+Returns axis distances and Euclidean distance from a point to a rectangle.
+
+### `maxPointerDistanceToRect`
+
+```ts
+function maxPointerDistanceToRect(options: {
+  maxDistance?: number;
+  maxXDistance?: number;
+  maxYDistance?: number;
+}): TargetingConstraint;
+```
+
+Keeps a target eligible only when the pointer is within the configured distance from the target rectangle.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: pointerToRectDistance,
+  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 96 }),
+});
+```
+
+### `maxOverlayCenterDistanceToRect`
+
+```ts
+function maxOverlayCenterDistanceToRect(options: {
+  maxDistance?: number;
+  maxXDistance?: number;
+  maxYDistance?: number;
+}): TargetingConstraint;
+```
+
+Keeps a target eligible only when the overlay center is within the configured distance from the target rectangle.
+
+```ts
+const controller = createDragController({
+  targetingAlgorithm: centerToCenter,
+  targetingConstraint: maxOverlayCenterDistanceToRect({
+    maxDistance: 96,
+  }),
+  dragOverlay: createOverlay,
+});
+```
+
+## Modifiers
+
+Modifiers transform drag movement before targeting and lifecycle update state use the effective position.
+
+### Built-ins
+
+```ts
+function lockToXAxis(): DragModifier;
+function lockToYAxis(): DragModifier;
+```
+
+`lockToXAxis` locks y movement to the initial pointer y coordinate. `lockToYAxis` locks x movement to the initial pointer x coordinate.
+
+```ts
+const controller = createDragController({
+  modifiers: [lockToYAxis()],
+});
+```
+
+### `restrictToContainer`
+
+```ts
+type RestrictToContainerResolver = (
+  input: DragModifierSetupInput
+) => HTMLElement | null;
+
+function restrictToContainer(
+  getContainer: RestrictToContainerResolver
+): DragModifier<DragRect | null>;
+```
+
+Restricts movement so the overlay rectangle stays inside the resolved container.
+
+```ts
+const controller = createDragController({
+  modifiers: [
+    restrictToContainer(() => boardElement),
+  ],
+});
+```
+
+### Modifier Types
+
+```ts
+type DragModifierSetupInput = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  initialPointerPosition: DragPoint;
+};
+
+type DragModifierTransformInput<State = unknown> = {
+  draggableId: string;
+  group: string;
+  sourceRect: DragRect;
+  initialPointerPosition: DragPoint;
+  rawPointerPosition: DragPoint;
+  pointerPosition: DragPoint;
+  overlayRect: DragRect;
+  state: State;
+};
+
+type DragModifier<State = unknown> = {
+  setup?: (input: DragModifierSetupInput) => State;
+  transform: (input: DragModifierTransformInput<State>) => DragPoint;
+};
+
+type DragModifierInput = {
+  setup?: (input: DragModifierSetupInput) => unknown;
+  transform: (input: DragModifierTransformInput<unknown>) => DragPoint;
+};
+```
+
+```ts
+const snapToGrid: DragModifier = {
+  transform({ pointerPosition }) {
+    return {
+      x: Math.round(pointerPosition.x / 8) * 8,
+      y: Math.round(pointerPosition.y / 8) * 8,
+    };
+  },
+};
+
+const controller = createDragController({
+  modifiers: [snapToGrid],
+});
+```
+
+Modifiers should not commit app state or choose drop targets.
+
+## Input Configuration
+
+### `PointerConfiguration`
+
+```ts
+type PointerConfiguration = {
+  activationDelay?: number | null;
+  activationDistance?: number | null;
+};
+```
+
+`activationDelay` is the delay before pointer activation. `activationDistance` is the movement distance before pointer activation. Non-positive or non-finite values normalize to `null`.
+
+```ts
+const controller = createDragController({
+  pointerConfiguration: {
+    activationDelay: 100,
+    activationDistance: 4,
+  },
+});
+```
+
+### `KeyboardCommand`
+
+```ts
+type KeyboardCommand = string | readonly string[];
+```
+
+A single key or list of keys. `" "` is normalized to `"Space"`.
+
+### `KeyboardConfiguration`
+
+```ts
+type KeyboardConfiguration = {
+  enabled?: boolean;
+  start?: KeyboardCommand;
+  drop?: KeyboardCommand;
+  cancel?: KeyboardCommand;
+  moveUp?: KeyboardCommand;
+  moveDown?: KeyboardCommand;
+  moveLeft?: KeyboardCommand;
+  moveRight?: KeyboardCommand;
+  moveDistance?: number;
+};
+```
+
+Defaults:
+
+- `enabled`: `true`
+- `start`: `["Space", "Enter"]`
+- `drop`: `["Space", "Enter"]`
+- `cancel`: `["Escape"]`
+- `moveUp`: `["ArrowUp"]`
+- `moveDown`: `["ArrowDown"]`
+- `moveLeft`: `["ArrowLeft"]`
+- `moveRight`: `["ArrowRight"]`
+- `moveDistance`: `24`
+
+```ts
+const controller = createDragController({
+  keyboardConfiguration: {
+    start: "Enter",
+    drop: "Enter",
+    cancel: "Escape",
+    moveDistance: 32,
+  },
+});
+```
+
+## Geometry
+
+### `DragPoint`
+
+```ts
+type DragPoint = {
+  x: number;
+  y: number;
+};
+```
+
+### `DragRect`
+
+```ts
+type DragRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+```
+
+Geometry values use viewport coordinates unless otherwise documented by a specific callback.
+
+## Low-Level Integration API
+
+The `@mk-drag-and-drop/dom/integration` entrypoint is for framework adapters and custom wrappers. Normal DOM usage should prefer `createDragController` and the root registration helpers.
+
+### Integration Imports
+
+```ts
+import {
+  createDragRuntimeScope,
+  createDomDraggable,
+  createDomDroppable,
+  createDomDropContainer,
+  createDomSortable,
+  domDragHandleAttribute,
+} from "@mk-drag-and-drop/dom/integration";
+```
+
+### `createDragRuntimeScope`
+
+```ts
+function createDragRuntimeScope(
+  options?: DragRuntimeScopeOptions
+): DragRuntimeScope;
+
+type DragRuntimeScopeOptions = {
+  updateOverlayHost?: (update: DragOverlayHostUpdate) => void;
+  targetingAlgorithm?: TargetingAlgorithm;
+  targetingConstraint?: TargetingConstraint;
+  hasDragOverlay?: boolean;
+  overlayRelease?: OverlayReleaseMode;
+};
+```
+
+Defaults mirror the controller defaults: `targetingAlgorithm` starts as `pointerToCenter`, `targetingConstraint` starts empty, `hasDragOverlay` starts as `false`, and `overlayRelease` starts as `"auto"`.
+
+### `DragRuntimeScopeConfigureInput`
+
+```ts
+type DragRuntimeScopeConfigureInput = {
+  targetingAlgorithm: TargetingAlgorithm;
+  targetingConstraint: TargetingConstraint | undefined;
+  hasDragOverlay: boolean;
+  overlayRelease: OverlayReleaseMode;
+  lifecycleCallbacks: DragLifecycleCallbacks;
+  keyboardConfiguration?: KeyboardConfiguration;
+  modifiers?: readonly DragModifierInput[];
+  pointerConfiguration?: PointerConfiguration;
+};
+```
+
+### `DragRuntimeScope`
+
+Adapter-facing runtime scope. It includes draggable, droppable, drop-container, and sortable runtime methods plus:
+
+- `configure(input)`: reconfigures runtime behavior.
+- `cancelDrag()`: cancels the active drag.
+- `releaseActiveDragResources()`: releases active drag resources.
+- `setOverlayRect(overlayRect)`: supplies adapter-measured overlay geometry.
+- `remeasureDropTargets(input?)`: remeasures targets.
+- `subscribe(subscription)`: subscribes to low-level drag events.
+
+### Overlay Integration Types
+
+```ts
+type DragOverlayPhase = "dragging" | "released";
+
+type DragOverlayRenderState = {
+  dragState: DragState;
+  phase: DragOverlayPhase;
+};
+
+type DragOverlayHostUpdate =
+  | { type: "mount"; state: DragOverlayRenderState }
+  | { type: "move"; dragState: DragState }
+  | { type: "release"; state: DragOverlayRenderState }
+  | { type: "unmount" };
+```
+
+### `DragRuntimeSubscription`
+
+```ts
+type DragRuntimeSubscription = {
+  onDragStart?: (event: DragStartEvent) => void;
+  onDragUpdate?: (event: DragUpdateEvent) => void;
+  onDragEnd?: (event: DragEndEvent) => void;
+  onDrop?: (event: DropEvent) => void;
+  onActiveDragReset?: (event: {
+    draggableId: string;
+    source: "pointer" | "keyboard";
+  }) => void;
+};
+```
+
+`onActiveDragReset` is adapter-facing. It is not part of the root controller lifecycle callback API.
+
+### `createDomDraggable`
+
+Creates low-level draggable behavior for wrappers.
+
+```ts
+function createDomDraggable(
+  input: CreateDomDraggableInput
+): DomDraggableBehavior;
+
+type CreateDomDraggableInput = {
+  runtime: DomDraggableRuntime;
+  draggableId: string;
+  group: string;
+  getElement: () => HTMLElement | null;
+  keyboardDragEnabled?: boolean;
+};
+
+type DomDraggableBehavior = {
+  onPointerDown: (event: DomDraggablePointerDownEvent) => void;
+  onKeyDown: (event: DomDraggableKeyDownEvent) => void;
+  tabIndex: 0 | undefined;
+};
+```
+
+### DOM Adapter Events
+
+```ts
+type DomDraggablePointerDownEvent = {
+  target: EventTarget | null;
+  preventDefault: () => void;
+  stopPropagation: () => void;
+  pointerId: number;
+  button?: number;
+  isPrimary?: boolean;
+  clientX: number;
+  clientY: number;
+};
+
+type DomDraggableKeyDownEvent = {
+  target: EventTarget | null;
+  preventDefault: () => void;
+  stopPropagation: () => void;
+  key: string;
+};
+```
+
+### `DomDraggableRuntime`
+
+```ts
+type DomDraggableRuntime = {
+  requestDragStart: (input: {
+    draggableId: string;
+    group: string;
+    element: HTMLElement;
+    pointerId: number;
+    pointerPosition: DragPoint;
+  }) => void;
+  isKeyboardDragEnabled: () => boolean;
+  handleSourceKeyboardKeyDown: (input: {
+    draggableId: string;
+    group: string;
+    element: HTMLElement;
+    key: string;
+  }) => boolean;
+};
+```
+
+### `createDomDroppable`
+
+Creates low-level droppable behavior.
+
+```ts
+function createDomDroppable(
+  input: CreateDomDroppableInput
+): DomDroppableBehavior;
+
+type CreateDomDroppableInput = {
+  runtime: DomDroppableRuntime;
+  dropTargetId: string;
+  containerId?: string | null;
+  group: string;
+};
+
+type DomDroppableBehavior = {
+  setElement: (element: HTMLElement | null) => void;
+  releaseRegistration: () => void;
+};
+
+type DomDroppableRuntime = {
+  registerDropTarget: (
+    dropTargetId: string,
+    element: HTMLElement,
+    group: string,
+    options?: { containerId?: string | null }
+  ) => void;
+  unregisterDropTarget: (
+    dropTargetId: string,
+    element?: HTMLElement
+  ) => void;
+};
+```
+
+### `createDomDropContainer`
+
+Creates low-level drop-container behavior.
+
+```ts
+function createDomDropContainer(
+  input: CreateDomDropContainerInput
+): DomDropContainerBehavior;
+
+type CreateDomDropContainerInput = {
+  runtime: DomDropContainerRuntime;
+  containerId: string;
+  group: string;
+  getElement: () => HTMLElement | null;
+};
+
+type DomDropContainerBehavior = {
+  setElement: (element: HTMLElement | null) => void;
+  releaseRegistration: () => void;
+};
+
+type DomDropContainerRuntime = {
+  registerDropContainer: (
+    containerId: string,
+    element: HTMLElement,
+    group: string,
+    options?: {
+      containerId?: string | null;
+      container?: boolean;
+    }
+  ) => void;
+  unregisterDropContainer: (
+    containerId: string,
+    element?: HTMLElement
+  ) => void;
+};
+```
+
+### `createDomSortable`
+
+Creates low-level sortable behavior.
+
+```ts
+function createDomSortable(
+  input: CreateDomSortableInput
+): DomSortableBehavior;
+
+type CreateDomSortableInput = {
+  runtime: DomSortableRuntime;
+  draggableId: string;
+  group?: string;
+  containerId?: string | null;
+  getElement: () => HTMLElement | null;
+  keyboardDragEnabled?: boolean;
+  axis?: "vertical" | "horizontal";
+  placementBoundary?: SortablePlacementBoundary;
+};
+
+type DomSortableBehavior = {
+  setElement: (element: HTMLElement | null) => void;
+  releaseRegistration: () => void;
+  onPointerDown: (event: DomDraggablePointerDownEvent) => void;
+  onKeyDown: (event: DomDraggableKeyDownEvent) => void;
+  tabIndex: 0 | undefined;
+};
+```
+
+### `DomSortableRuntime`
+
+```ts
+type DomSortableRuntime = DomDraggableRuntime & {
+  registerDropTarget: (
+    draggableId: string,
+    element: HTMLElement,
+    group: string,
+    options?: {
+      containerId?: string | null;
+      sortable?: boolean;
+      sortableAxis?: "vertical" | "horizontal";
+    }
+  ) => void;
+  registerDropContainer?: (
+    containerId: string,
+    element: HTMLElement,
+    group: string
+  ) => void;
+  unregisterDropTarget: (
+    draggableId: string,
+    element?: HTMLElement
+  ) => void;
+  getDropTargetRegistration: (
+    dropTargetId: string,
+    group?: string
+  ) => {
+    id: string;
+    element: HTMLElement;
+    group: string;
+    containerId: string | null;
+    capabilities: {
+      container: boolean;
+      sortable: boolean;
+    };
+  } | null;
+  subscribe: (subscription: DragRuntimeSubscription) => () => void;
+  remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
+};
+```
+
+### `domDragHandleAttribute`
+
+```ts
+const domDragHandleAttribute = "data-dnd-drag-handle";
+```
+
+Adapter-facing attribute name used for drag handles.
+
+## Full API Index
+
+### Main DOM API
+
+- `createDragController`
+- `DragController`
+- `DragControllerAnnouncements`
+- `DragControllerOptions`
+- `DragControllerOverlayInput`
+- `createDraggable`
+- `CreateDraggableInput`
+- `createDroppable`
+- `CreateDroppableInput`
+- `createDropContainer`
+- `CreateDropContainerInput`
+- `createSortable`
+- `CreateSortableInput`
+- `SortableAxis`
+- `SortablePlacementBoundary`
+- `createDragHandle`
+- `CreateDragHandleInput`
+- `DragEndResult`
+- `DragEndEvent`
+- `DragLifecycleCallbacks`
+- `DragLifecycleHelpers`
+- `DragSource`
+- `DragStartEvent`
+- `DragUpdateEvent`
+- `DropEvent`
+- `RemeasureDropTargetsInput`
+- `SortableDropPlacement`
+- `OverlayReleaseMode`
+- `centerToCenter`
+- `pointerToCenter`
+- `pointerToRectDistance`
+- `getDistanceToRect`
+- `maxOverlayCenterDistanceToRect`
+- `maxPointerDistanceToRect`
+- `DropTarget`
+- `TargetingAlgorithm`
+- `TargetingAlgorithmInput`
+- `TargetingConstraint`
+- `TargetingConstraintInput`
+- `lockToXAxis`
+- `lockToYAxis`
+- `restrictToContainer`
+- `RestrictToContainerResolver`
+- `DragModifier`
+- `DragModifierInput`
+- `DragModifierSetupInput`
+- `DragModifierTransformInput`
+- `KeyboardCommand`
+- `KeyboardConfiguration`
+- `PointerConfiguration`
+- `DragPoint`
+- `DragRect`
+
+### Low-Level Integration API
+
+- `createDragRuntimeScope`
+- `DragRuntimeScope`
+- `DragRuntimeScopeConfigureInput`
+- `DragRuntimeScopeOptions`
+- `DragOverlayHostUpdate`
+- `DragOverlayPhase`
+- `DragOverlayRenderState`
+- `DragState`
+- `OverlayReleaseMode`
+- `DragRuntimeSubscription`
+- `createDomDraggable`
+- `CreateDomDraggableInput`
+- `DomDraggableBehavior`
+- `DomDraggableKeyDownEvent`
+- `DomDraggablePointerDownEvent`
+- `DomDraggableRuntime`
+- `createDomDroppable`
+- `CreateDomDroppableInput`
+- `DomDroppableBehavior`
+- `DomDroppableRuntime`
+- `createDomDropContainer`
+- `CreateDomDropContainerInput`
+- `DomDropContainerBehavior`
+- `DomDropContainerRuntime`
+- `createDomSortable`
+- `CreateDomSortableInput`
+- `DomSortableBehavior`
+- `DomSortableRuntime`
+- `SortableAxis`
+- `SortablePlacementBoundary`
+- `domDragHandleAttribute`
