@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { CustomMDX } from "@/app/components/ui/mdx"
 import { getProjectDoc, getProjectDocSlugs } from "../docs"
+import { OverviewMoveCodeTabs } from "../components/overview-code-tabs"
 import {
   BasicDragCodeTabs,
   BasicDragExampleTabs,
@@ -65,6 +66,7 @@ export default async function Page({ params }: PageProps) {
       <CustomMDX
         source={doc.content}
         components={{
+          OverviewMoveCodeTabs,
           BasicDragCodeTabs,
           BasicDragExampleTabs,
           SingleDroppableCodeTabs,

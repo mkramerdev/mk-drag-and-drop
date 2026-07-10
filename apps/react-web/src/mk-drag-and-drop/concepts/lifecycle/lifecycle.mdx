@@ -7,18 +7,20 @@ summary: 'How drag events flow through mk-drag-and-drop.'
 
 Lifecycle callbacks are the boundary between `mk-drag-and-drop` and your application state.
 
-The package handles pointer input, keyboard input, movement, target measurement, target selection, sortable preview behavior, and overlay positioning. Your app decides what state changes when a drag starts, updates, ends, or successfully drops.
+The package handles pointer input, keyboard input, movement, target measurement, target selection, sortable preview behavior, overlay measurement, and overlay positioning. Your app decides what state changes when a drag starts, updates, ends, or successfully drops.
 
 Lifecycle events are separate from element registration. Registering a draggable, droppable, drop container, sortable item, or drag handle tells the drag-and-drop scope what exists. Lifecycle callbacks describe what happens during one active drag.
 
 Lifecycle events are also separate from the lifetime of a controller or provider. A DOM controller or React `DragProvider` may live for the lifetime of a screen, while many independent drags can start and finish inside that scope.
+
+Lifecycle event rectangles, such as `sourceRect` and `overlayRect`, are viewport-space rectangles. They are useful when app code needs measured geometry for previews, release animation state, or target-aware UI.
 
 ## Lifecycle Flow
 
 A normal successful drag follows this order:
 
 1. Drag starts.
-2. Drag updates while the pointer or keyboard position changes.
+2. Drag updates while the pointer or keyboard position changes, or when the active drag is recomputed after external geometry changes.
 3. Drag ends.
 4. Drop fires if the final active target is valid.
 5. Overlay release behavior runs.
@@ -46,13 +48,13 @@ Use it to mark the item as active, close transient UI, and initialize drag-relat
 
 ### `onDragUpdate`
 
-Fires when the active drag position changes. The event includes `draggableId`, `source`, `pointerPosition`, `activeDropTargetId`, and `previousDropTargetId`.
+Fires when the active drag position changes or is recomputed. The event includes `draggableId`, `source`, `pointerPosition`, `overlayRect`, `activeDropTargetId`, and `previousDropTargetId`.
 
 Use it for lightweight UI feedback, such as active target styling. Avoid expensive state commits on every movement update.
 
 ### `onDragEnd`
 
-Fires when a drag finishes for any reason. The event includes `draggableId`, `source`, `result`, and `dropTargetId`.
+Fires when a drag finishes for any reason. The event includes `draggableId`, `source`, `result`, `overlayRect`, and `dropTargetId`.
 
 Use it to clean up app drag state and distinguish dropped, canceled, no-target, and invalid-target outcomes. Do not assume a successful drop; check `result`.
 
@@ -124,7 +126,7 @@ export function Board() {
 
 ## Drag Update
 
-`onDragUpdate` fires as the active drag position changes.
+`onDragUpdate` fires as the active drag position changes. It can also fire after an explicit active-drag recompute when target geometry changed but the pointer has not moved.
 
 The event includes:
 
@@ -133,10 +135,13 @@ type DragUpdateEvent = {
   draggableId: string;
   source: "pointer" | "keyboard";
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
 ```
+
+`overlayRect` is the current viewport-space rectangle for the drag overlay. It is `null` when no overlay is configured or measured.
 
 `activeDropTargetId` is selected by the configured targeting behavior. Lifecycle callbacks receive the selected target, but they do not choose it.
 
@@ -159,6 +164,40 @@ type DragUpdateEvent = {
 ```
 
 Use update callbacks for lightweight feedback. Avoid committing durable list order, sending network requests, or doing expensive layout work on every update.
+
+## Remeasuring During A Drag
+
+The package measures targets when a drag starts and observes many size changes. App-owned layout changes can still require an explicit refresh, especially when expanding rows, filtering items, virtualizing content, or changing container bounds during an active drag.
+
+Remeasuring refreshes cached target geometry. Recomputing reruns targeting and `onDragUpdate` from the latest drag position. If you need an external layout change to affect the active target before the next pointer or keyboard movement, remeasure first and then recompute.
+
+### DOM
+
+```ts
+controller.remeasureDropTargets({ group: "tree" });
+controller.recomputeActiveDrag();
+```
+
+### React
+
+```tsx
+import {
+  useRecomputeActiveDrag,
+  useRemeasureDropTargets,
+} from "@mk-drag-and-drop/react";
+
+function useRefreshTreeDragGeometry() {
+  const remeasureDropTargets = useRemeasureDropTargets();
+  const recomputeActiveDrag = useRecomputeActiveDrag();
+
+  return () => {
+    remeasureDropTargets({ group: "tree" });
+    recomputeActiveDrag();
+  };
+}
+```
+
+Call the React hooks from a component rendered inside `DragProvider`. `recomputeActiveDrag` is safe to call when no drag is active; it just has nothing to recompute.
 
 ## Drop
 
@@ -200,9 +239,12 @@ type DragEndEvent = {
   draggableId: string;
   source: "pointer" | "keyboard";
   result: "dropped" | "no-target" | "invalid-target" | "canceled";
+  overlayRect: DragRect | null;
   dropTargetId: string | null;
 };
 ```
+
+`overlayRect` is the final viewport-space rectangle for the drag overlay. It is `null` when no overlay is configured or measured. Use it when app state needs to coordinate with the final overlay position, such as release animation setup.
 
 `result` describes why the drag finished:
 
@@ -274,9 +316,12 @@ The `overlayRelease` option controls release behavior:
   overlayRelease="manual"
   dragOverlay={(input) => (
     <DragPreview
-      draggableId={input.draggableId}
+      draggableId={input.dragState.draggableId}
       phase={input.phase}
-      onDone={input.phase === "released" ? input.removeOverlay : undefined}
+      remeasureOverlay={input.remeasureOverlay}
+      removeOverlay={
+        input.phase === "released" ? input.removeOverlay : undefined
+      }
     />
   )}
 >
@@ -285,6 +330,8 @@ The `overlayRelease` option controls release behavior:
 ```
 
 Use manual release when the overlay needs to remain mounted briefly for an app-controlled release animation. Use automatic behavior when no custom release timing is needed.
+
+`removeOverlay` is only available during the `"released"` phase. `remeasureOverlay` is available in both overlay phases and refreshes overlay geometry after app-owned visual changes that automatic measurement cannot observe.
 
 ## Sortable Lifecycle
 
@@ -408,8 +455,10 @@ export function Board() {
 - Use `onDragUpdate` for active styling and lightweight feedback.
 - Commit durable state in `onDrop`, or in `onDragEnd` only after checking `result`.
 - Distinguish drag end from successful drop.
+- Use `overlayRect` when lifecycle code needs overlay geometry, and expect `null` when no overlay is configured.
 - Use `sortablePlacement` only when handling sortable drops.
 - Do not commit sortable order on every movement update.
-- Remeasure after app-owned layout changes outside the drag lifecycle when those changes should affect targeting.
+- After app-owned target layout changes during a drag, remeasure targets and call `recomputeActiveDrag` when targeting should update before the next movement.
+- Use `remeasureOverlay` after app-owned overlay visual changes that automatic measurement cannot observe.
 - Keep draggable and drop target ids stable across renders.
 - Use `source` only when behavior needs to differ between pointer and keyboard input.

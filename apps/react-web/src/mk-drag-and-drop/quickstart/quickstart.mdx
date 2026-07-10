@@ -1,51 +1,75 @@
 ---
 title: 'Quickstart'
-summary: 'Install mk-drag-and-drop and make one element draggable.'
+summary: 'Install mk-drag-and-drop, register a draggable, and commit simple drops.'
 ---
 
 # Quickstart
 
-`mk-drag-and-drop` is headless. You provide elements and register the behavior you want.
+`mk-drag-and-drop` is headless. You provide the elements, styling, state, and final drop behavior. The package wires those elements into a drag runtime and reports what happened.
+
+Each example has DOM and React tabs. The DOM tab uses `@mk-drag-and-drop/dom` directly. The React tab uses `DragProvider` and hooks from `@mk-drag-and-drop/react`, which adapt the same DOM runtime to React refs.
 
 ## Installation
 
+Install the package for the surface you use.
+
 ```bash
 pnpm add @mk-drag-and-drop/dom
+```
+
+```bash
 pnpm add @mk-drag-and-drop/react
 ```
 
-## Basic Drag
+Most React app code imports from `@mk-drag-and-drop/react`. Non-React code imports from `@mk-drag-and-drop/dom`.
 
-Start with one draggable element. This example does not use any drop targets.
+## 1. Make An Element Draggable
+
+Start with one draggable element and no drop targets. This proves the drag lifecycle is wired up: the item can be picked up, the app-provided overlay follows the drag, and releasing it does not change app data.
+
+Look for the stable `draggableId`. In DOM, `createDraggable` registers an existing element. In React, `useDraggable` returns props and a ref for the rendered element.
 
 <BasicDragCodeTabs />
 
 <BasicDragExampleTabs />
 
-## Add One Drop Target
+## 2. Add One Drop Target
 
-Next, keep the two-container layout simple and register only the destination as droppable.
-On a successful drop, the package reports the target and your app decides to move the item.
+Next, register the destination as a droppable target. A successful drop calls `onDrop` with `dropTargetId`, then your app decides what to do.
+
+The DOM tab moves the DOM node in the callback. The React tab updates state and rerenders. The package does not move the item in your application model by itself.
+
+Only the destination is droppable in this step, so the item can move there but cannot move back yet.
 
 <SingleDroppableCodeTabs />
 
 <SingleDroppableExampleTabs />
 
-## Refine Drop Behavior
+## 3. Make Both Containers Valid
 
-Once a single drop target works, register both containers as drop targets and decide what your app should do after a successful drop.
-`mk-drag-and-drop` only tells you that a valid drop happened. Your app owns the behavior: move an element,
-set React state, persist data, trigger a command, or do nothing.
+Now register both containers as drop targets and interpret both ids in `onDrop`. This is the same ownership model as before: the package reports a valid target, and your app commits the result.
 
-This example moves the item between both containers and applies a ghost style to the dragged item while the drag is active.
-The targeting constraint accepts only drops directly on a target.
+This example also adds two common refinements:
+
+- `onDragStart` and `onDragEnd` apply a ghost style to the original item while the overlay is being dragged.
+- `maxOverlayCenterDistanceToRect({ maxDistance: 0 })` accepts a target only when the overlay center is inside that target.
+
+Those refinements are optional. The important step is registering every container that should be a valid drop target.
 
 <DroppableContainerCodeTabs />
 
 <DroppableContainerExampleTabs />
 
+## What To Remember
+
+- Draggables and drop targets are connected by stable string ids.
+- The package owns drag behavior, targeting, overlays, and lifecycle events.
+- Your app owns rendering, state, persistence, and the final data commit.
+- Use `onDrop` for successful commits and `onDragEnd` for cleanup that must run after every drag.
+
 ## Next Steps
 
 - [Core Concepts](/projects/mk-drag-and-drop/concepts/core-concepts)
+- [Lifecycle](/projects/mk-drag-and-drop/concepts/lifecycle)
 - [DOM API](/projects/mk-drag-and-drop/dom/dom-api)
 - [React API](/projects/mk-drag-and-drop/react/react-api)

@@ -213,6 +213,8 @@ Targeting chooses the active drop target from registered targets in the active g
 
 Placement decides before/after or container placement relative to the active target. The public signal is `DropEvent.sortablePlacement`.
 
+`dropTargetId` is the active target that won targeting. In a sortable board, that target can be an item id or a container id. Use `sortablePlacement.containerId` as the destination container when sortable placement is present.
+
 ### Lifecycle
 
 Lifecycle callbacks let the app observe the drag and commit state through `onDragStart`, `onDragUpdate`, `onDragEnd`, and `onDrop`.
@@ -237,7 +239,7 @@ type SortableDropPlacement = {
 Field meanings:
 
 - `sourceContainerId`: dragged item's container at drag start.
-- `containerId`: destination container.
+- `containerId`: destination container. This can be `null` for sortable sets that do not use containers.
 - `previousDraggableId`: nearest sortable item before the final position, when available.
 - `nextDraggableId`: nearest sortable item after the final position, when available.
 - `targetDraggableId`: active sortable item anchor when the drop lands relative to an item.
@@ -255,33 +257,34 @@ function reorderIds(
 ): string[] {
   const withoutDragged = ids.filter((id) => id !== draggableId);
   let insertIndex = withoutDragged.length;
+  let resolvedPlacement = false;
 
   if (placement.targetDraggableId !== null && placement.side !== null) {
     const targetIndex = withoutDragged.indexOf(placement.targetDraggableId);
 
-    if (targetIndex === -1) {
-      return [...ids];
+    if (targetIndex !== -1) {
+      insertIndex = placement.side === "after" ? targetIndex + 1 : targetIndex;
+      resolvedPlacement = true;
     }
+  }
 
-    insertIndex = placement.side === "after" ? targetIndex + 1 : targetIndex;
-  } else if (placement.previousDraggableId !== null) {
+  if (!resolvedPlacement && placement.previousDraggableId !== null) {
     const previousIndex = withoutDragged.indexOf(
       placement.previousDraggableId
     );
 
-    if (previousIndex === -1) {
-      return [...ids];
+    if (previousIndex !== -1) {
+      insertIndex = previousIndex + 1;
+      resolvedPlacement = true;
     }
+  }
 
-    insertIndex = previousIndex + 1;
-  } else if (placement.nextDraggableId !== null) {
+  if (!resolvedPlacement && placement.nextDraggableId !== null) {
     const nextIndex = withoutDragged.indexOf(placement.nextDraggableId);
 
-    if (nextIndex === -1) {
-      return [...ids];
+    if (nextIndex !== -1) {
+      insertIndex = nextIndex;
     }
-
-    insertIndex = nextIndex;
   }
 
   return [
@@ -297,6 +300,8 @@ function reorderIds(
 ## Containers And Empty Lists
 
 For one simple list, `containerId` can be omitted. For boards, lanes, columns, or empty lists, register containers with `createDropContainer` and give sortable items a matching `containerId`.
+
+In multi-container sortables, treat `sortablePlacement.containerId` as the destination and `sortablePlacement.sourceContainerId` as the drag-start source. Remove the dragged id from every container first, then insert it into the destination using `targetDraggableId`, `previousDraggableId`, and `nextDraggableId`.
 
 ```ts
 import {
@@ -360,7 +365,7 @@ function moveCard(
   draggableId: string,
   placement: SortableDropPlacement
 ): Lane[] {
-  if (!placement.containerId) {
+  if (placement.containerId === null) {
     return [...currentLanes];
   }
 
@@ -384,6 +389,8 @@ function renderBoard(): void {
 ```
 
 Empty containers can become valid drop regions when registered with `createDropContainer`. A drop into an empty container can produce a placement where `previousDraggableId`, `nextDraggableId`, `targetDraggableId`, and `side` are all `null`; use `containerId` to append the item to that container.
+
+For non-empty destination containers, the active target may be a child sortable item. For broad or empty destination regions, the active target may be the container itself. In both cases, the commit path should read the normalized destination from `sortablePlacement.containerId`.
 
 ## Axis
 
@@ -459,7 +466,7 @@ The values are ratios of the active target on the sortable axis:
 - `start`: used when movement is forward on the sortable axis. Placement can switch after the position crosses the start ratio.
 - `end`: used when movement is backward on the sortable axis. Placement can switch before the position crosses the end ratio.
 
-On first entry into a newly active target, sortable placement is optimistic: forward movement places after, backward movement places before, and no movement falls back to the midpoint. Boundaries are mainly a reversal control, not the first target selection rule.
+On first entry into a newly active target in the same container, sortable placement remains movement-responsive: forward movement places after, backward movement places before, and no movement falls back to the midpoint. When entering a different DOM container, the initial side is midpoint-based using the current sortable placement position. Pointer-based targeting uses the pointer as that position; rect-based targeting such as `centerToCenter` uses the overlay center. Boundaries are same-target reversal and hysteresis controls; they do not decide the initial cross-container side or delay the first movement after midpoint-based entry.
 
 Compact rows often work well with defaults. Large targets may benefit from wider hysteresis so placement does not flip too easily during small pointer reversals.
 
@@ -508,6 +515,7 @@ function toggleExpanded(): void {
 
   requestAnimationFrame(() => {
     controller.remeasureDropTargets({ group: "items" });
+    controller.recomputeActiveDrag();
   });
 }
 ```
@@ -521,7 +529,7 @@ controller.remeasureDropTargets(["item-1", "item-2"]);
 controller.remeasureDropTargets({ group: "items" });
 ```
 
-Use the narrowest input that matches the layout change.
+Use the narrowest input that matches the layout change. Remeasurement updates cached target rectangles; it does not send a drag update by itself. If the active target or sortable preview should update before the next pointer or keyboard movement, call `controller.recomputeActiveDrag()` after remeasurement.
 
 ## Cancel And Cleanup Behavior
 
@@ -541,7 +549,7 @@ type DragEndResult =
 
 `onDrop` only fires for a valid successful drop. Use `onDragEnd` for cleanup such as clearing active styling. Use `onDrop` for sortable order commits.
 
-Root DOM bindings such as `createSortable` return `void`; they do not expose a per-item disposer. If you remove or replace DOM elements, keep ids stable and let future drag or remeasurement paths observe the current DOM.
+Root DOM bindings such as `createSortable` return `void`; they do not expose a per-item disposer. If you remove or replace DOM elements, keep ids stable. Disconnected bindings are pruned on later drag start and remeasurement paths; if elements change during an active drag and that should affect targeting, call `controller.remeasureDropTargets` and then `controller.recomputeActiveDrag`.
 
 ## Performance Notes
 
@@ -549,7 +557,7 @@ Root DOM bindings such as `createSortable` return `void`; they do not expose a p
 - Keep lifecycle handlers fast. `onDragUpdate` can run frequently, so use it for lightweight visual state, not full data commits.
 - Commit durable order in `onDrop`, not on every pointer move. The sortable preview already handles temporary visual movement.
 - For large vanilla DOM lists, reuse DOM nodes when practical. Replacing thousands of elements after every small state change also re-registers thousands of sortable bindings.
-- Remeasure only after layout changes that should affect targeting.
+- Remeasure only after layout changes that should affect targeting, then recompute when the active target should update immediately.
 - The package includes sortable candidate narrowing for large simple sortable sets, but that is an implementation optimization. Do not treat it as a virtualization API.
 
 ## Common Mistakes
@@ -558,5 +566,6 @@ Root DOM bindings such as `createSortable` return `void`; they do not expose a p
 - Do not treat `placementBoundary` as a targeting threshold. Targeting chooses the active drop target; placement chooses before or after relative to that target.
 - Do not commit order in `onDragUpdate`. Use `onDrop` and `event.sortablePlacement`.
 - Do not forget containers for empty lists. Without a registered drop container, an empty list has no sortable item target.
-- Do not rely on stale measurements after app-owned layout changes. Call `controller.remeasureDropTargets` after layout changes that should affect targeting.
+- Do not infer the destination container from `dropTargetId`. Use `sortablePlacement.containerId` when sortable placement is present.
+- Do not rely on stale measurements after app-owned layout changes. Call `controller.remeasureDropTargets` after layout changes that should affect targeting, and call `controller.recomputeActiveDrag` when the active target should update immediately.
 - Do not re-register unnecessarily in vanilla code. Re-rendering from data is fine for small examples, but large lists should preserve elements where possible.

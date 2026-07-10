@@ -13,9 +13,9 @@ Neither overlays nor modifiers are where durable application state should be com
 
 A drag overlay is app-provided visual content that follows the active drag. It is useful when the original element should remain in place, when you want a custom preview, or when sortable movement needs a stable visual representation.
 
-If no overlay is configured, the package does not render a package-owned drag preview. Drag input, targeting, lifecycle callbacks, and registration still work with pointer-based targeting behavior.
+If no overlay is configured, the package does not render a package-owned drag preview. Drag input, pointer-based targeting, lifecycle callbacks, registration, and modifiers still work.
 
-Rect-based targeting algorithms, such as `centerToCenter`, require an overlay because they use the overlay rectangle. If you configure a rect-based targeting algorithm without a drag overlay, drag start will fail.
+Rect-based targeting algorithms, such as `centerToCenter`, require an overlay because they use the overlay rectangle. If you configure a rect-based targeting algorithm without a drag overlay, drag start will fail. Overlay-based constraints, such as `maxOverlayCenterDistanceToRect`, receive `overlayRect` too and reject targets when no overlay rectangle is available.
 
 Overlay content is app-owned. Overlay hosting, positioning, movement, release, and measurement are package-owned.
 
@@ -35,6 +35,7 @@ const controller = createDragController({
     element.className =
       input.phase === "released" ? "dragOverlay released" : "dragOverlay";
     element.textContent = input.dragState.draggableId;
+    element.ontransitionend = input.remeasureOverlay;
 
     return element;
   },
@@ -55,8 +56,11 @@ import { DragProvider } from "@mk-drag-and-drop/react";
 export function Board() {
   return (
     <DragProvider
-      dragOverlay={({ dragState, phase }) => (
-        <div className={phase === "released" ? "overlay released" : "overlay"}>
+      dragOverlay={({ dragState, phase, remeasureOverlay }) => (
+        <div
+          className={phase === "released" ? "overlay released" : "overlay"}
+          onTransitionEnd={remeasureOverlay}
+        >
           {dragState.draggableId}
         </div>
       )}
@@ -88,7 +92,10 @@ With `"manual"`, the package calls `dragOverlay` again for the `"released"` phas
     <ReleasePreview
       draggableId={input.dragState.draggableId}
       phase={input.phase}
-      removeOverlay={input.phase === "released" ? input.removeOverlay : null}
+      remeasureOverlay={input.remeasureOverlay}
+      removeOverlay={
+        input.phase === "released" ? input.removeOverlay : undefined
+      }
     />
   )}
 >
@@ -98,9 +105,9 @@ With `"manual"`, the package calls `dragOverlay` again for the `"released"` phas
 
 `removeOverlay` exists only when `phase` is `"released"` in manual release mode. It is not available while `phase` is `"dragging"`.
 
-`removeOverlay` removes the overlay host state. It is not a controller, provider, or runtime teardown API.
+`removeOverlay` removes the overlay host state. It is idempotent and belongs only to overlay release; it is not a controller, provider, or runtime teardown API.
 
-## Overlay Movement and Measurement
+## Overlay Movement And Measurement
 
 The package moves the overlay. App code should not update React state or recreate DOM nodes on every pointer move just to move the drag preview.
 
@@ -116,13 +123,55 @@ type DragState = {
 };
 ```
 
-The package positions a fixed overlay wrapper at the source rectangle and moves it with a transform derived from pointer movement. In React, pointer movement updates the overlay host imperatively; `dragOverlay` is not called for every movement update.
+The package positions a fixed overlay wrapper at the source rectangle and moves it with a transform derived from the current drag movement. In React, pointer movement updates the overlay host imperatively; `dragOverlay` is not called for every movement update.
 
-Overlay content is measured on mount or replacement. When `ResizeObserver` is available, content size changes are measured too. The measured overlay rectangle is used by overlay-aware targeting, constraints, and modifiers.
+Overlay content is measured on mount or replacement. When `ResizeObserver` is available, content size changes are measured too. In React, the measured element is the first element inside the overlay host, or the host wrapper when there is no child element. Return a single element when overlay geometry matters.
+
+The measured overlay rectangle is used by overlay-aware targeting algorithms, overlay-aware targeting constraints, lifecycle `overlayRect` data, and movement modifiers. Modifier `overlayRect` is always a rectangle for the current movement; when no overlay measurement exists, it falls back to the translated `sourceRect`.
 
 For example, `centerToCenter` and `maxOverlayCenterDistanceToRect` use the overlay rectangle. `restrictToContainer` also uses the overlay rectangle to keep the dragged visual within bounds.
 
 Expensive overlay content can still be expensive to mount or replace. Keep overlay rendering focused, and use overlay-local state or lifecycle-fed app state only when the displayed content actually needs to change.
+
+## Manual Overlay Remeasurement
+
+Use `remeasureOverlay` when app-owned overlay visuals change bounds in a way automatic measurement cannot observe, such as a CSS transform, transition, font swap, or image load that affects the visual box you care about.
+
+Inside `dragOverlay`, prefer the helper from the overlay input:
+
+```tsx
+<DragProvider
+  dragOverlay={({ dragState, remeasureOverlay }) => (
+    <Preview onTransitionEnd={remeasureOverlay}>
+      {dragState.draggableId}
+    </Preview>
+  )}
+>
+  <BoardContent />
+</DragProvider>
+```
+
+Outside the overlay renderer, use the package-level entry point for your integration:
+
+### DOM
+
+```ts
+controller.remeasureOverlay();
+```
+
+### React
+
+```tsx
+import { useRemeasureOverlay } from "@mk-drag-and-drop/react";
+
+function RefreshOverlayButton() {
+  const remeasureOverlay = useRemeasureOverlay();
+
+  return <button onClick={remeasureOverlay}>Refresh overlay</button>;
+}
+```
+
+`useRemeasureOverlay` must be called inside `DragProvider`. It is safe when no overlay is mounted; there is simply nothing to remeasure.
 
 ## Modifiers
 
@@ -134,7 +183,9 @@ Built-in modifiers include:
 
 - `lockToXAxis()`: allows horizontal movement and locks the y coordinate to the initial pointer position.
 - `lockToYAxis()`: allows vertical movement and locks the x coordinate to the initial pointer position.
-- `restrictToContainer(resolver)`: clamps movement so the overlay stays inside a resolved container element.
+- `restrictToContainer(resolver)`: clamps movement so the dragged visual stays inside a resolved container element.
+
+`restrictToContainer` resolves the bounds element at drag setup. During movement, it remeasures that same element before clamping, so growing or shrinking containers keep constraining against current bounds instead of setup-time bounds.
 
 In the DOM package, configure modifiers on the drag controller.
 
@@ -208,10 +259,10 @@ type DragModifierTransformInput<State = unknown> = {
 
 - `rawPointerPosition`: the unmodified pointer position for this update.
 - `pointerPosition`: the current position after previous modifiers have run.
-- `overlayRect`: the current overlay rectangle for the current movement state.
+- `overlayRect`: the current dragged-visual rectangle for the current movement state.
 - `state`: the value returned by `setup`.
 
-Use `setup` for one-time measurement such as reading a container rectangle. Keep `transform` fast.
+Use `setup` for one-time setup such as choosing a bounds element or building active-drag state. Keep `transform` fast. If bounds can change during a drag, store an element or resolver and read current geometry inside `transform` instead of relying only on a setup-time rectangle.
 
 ## Combining Modifiers
 
@@ -287,15 +338,19 @@ DOM `dragOverlay` returns an `HTMLElement` or `null`. React `dragOverlay` return
 
 ### Overlay Input
 
-DOM receives `DragControllerOverlayInput`. React receives the corresponding React overlay input from `DragProvider`.
+Both packages receive `dragState`, `phase`, and `remeasureOverlay`. Both receive `removeOverlay` only during the `"released"` phase in manual release mode.
 
 ### Release Mode
 
-Both packages support `overlayRelease?: "auto" | "manual"` and expose `input.removeOverlay` during the `"released"` phase in manual release mode.
+Both packages support `overlayRelease?: "auto" | "manual"`.
 
 ### Overlay Root
 
 The DOM controller can receive `overlayRoot?: HTMLElement`. React does not expose a public `overlayRoot` prop.
+
+### Overlay Remeasurement
+
+DOM exposes `controller.remeasureOverlay()`. React exposes `useRemeasureOverlay()` and the `remeasureOverlay` helper passed to `dragOverlay`.
 
 ### Modifier Setup
 
@@ -303,13 +358,15 @@ DOM uses `createDragController({ modifiers })`. React uses `<DragProvider modifi
 
 ### Built-In Modifiers
 
-`lockToXAxis()`, `lockToYAxis()`, and `restrictToContainer(...)` are available from the DOM package and re-exported from the React package.
+`lockToXAxis()`, `lockToYAxis()`, and `restrictToContainer(...)` are available from the DOM package and re-exported from the React package. React `restrictToContainer` accepts either a ref object or a resolver function.
 
 ## Common Mistakes
 
 - Do not use overlay rendering to commit list order. Commit durable order in lifecycle callbacks such as `onDrop`.
 - Do not use modifiers as targeting algorithms. Modifiers transform movement; targeting algorithms choose drop targets.
 - Do not rely on `dragOverlay` being called every pointer move. The package moves the overlay host.
+- Do not assume automatic overlay measurement catches every visual change. Call `remeasureOverlay` after app-owned transforms or transitions that change the bounds you need.
 - Do not make modifier transforms expensive. They run during active movement.
+- Do not cache setup-time bounds in custom modifiers when the bounds can change during a drag.
 - Do not assume `removeOverlay` always exists. It only exists for `"released"` overlays in manual release mode.
 - Do not configure rect-based targeting without a drag overlay.

@@ -22,11 +22,15 @@ import {
   useSortable,
   useDragHandle,
   useRemeasureDropTargets,
+  useRemeasureOverlay,
+  useRecomputeActiveDrag,
   composeRefs,
 } from "@mk-drag-and-drop/react";
 ```
 
-React also re-exports DOM targeting helpers, modifier helpers, event types, configuration types, sortable types, and geometry types.
+React also re-exports DOM targeting helpers, modifier helpers, lifecycle event
+and helper types, overlay state and release types, configuration types, sortable
+types, and geometry types.
 
 ```tsx
 import {
@@ -38,7 +42,12 @@ import {
   lockToYAxis,
   restrictToContainer,
   type DragStartEvent,
+  type DragUpdateEvent,
+  type DragEndEvent,
   type DropEvent,
+  type DragLifecycleHelpers,
+  type OverlayReleaseMode,
+  type RemeasureDropTargetsInput,
   type SortableDropPlacement,
 } from "@mk-drag-and-drop/react";
 ```
@@ -146,10 +155,12 @@ type DragOverlayInput = {
 } & (
   | {
       phase: "dragging";
+      remeasureOverlay: () => void;
       removeOverlay?: never;
     }
   | {
       phase: "released";
+      remeasureOverlay: () => void;
       removeOverlay: () => void;
     }
 );
@@ -199,6 +210,10 @@ With `overlayRelease="manual"`, `dragOverlay` is called for the `"released"` pha
 ```
 
 `removeOverlay` exists only for `"released"` overlays in manual release mode.
+`remeasureOverlay` exists in both phases. Call it when overlay-local UI changes
+visual bounds outside the automatic resize observation path, such as after a CSS
+transform or transition. React measures the first rendered overlay child when one
+exists; otherwise it measures the wrapper.
 
 ## Draggable Hook
 
@@ -418,7 +433,7 @@ type UseDragHandleResult<
 
 The hook returns a stable props object containing the handle marker attribute. The current value is `"true"`.
 
-## Remeasurement Hook
+## Remeasurement And Recompute Hooks
 
 ### `useRemeasureDropTargets`
 
@@ -427,10 +442,12 @@ Returns a function that remeasures drop target geometry.
 ```tsx
 function TreeControls() {
   const remeasureDropTargets = useRemeasureDropTargets();
+  const recomputeActiveDrag = useRecomputeActiveDrag();
 
   function afterExpand() {
     requestAnimationFrame(() => {
       remeasureDropTargets({ group: "tree" });
+      recomputeActiveDrag();
     });
   }
 
@@ -459,6 +476,34 @@ remeasureDropTargets({ group: "cards" });
 ```
 
 Use this after app-owned layout changes that should affect targeting.
+Remeasurement updates cached target rectangles. It does not send a drag update by
+itself. If the active target should update immediately, remeasure first and then
+call the function returned by `useRecomputeActiveDrag`.
+
+### `useRecomputeActiveDrag`
+
+Returns a function that reruns the active drag update path from the last pointer
+position.
+
+```ts
+function useRecomputeActiveDrag(): () => void;
+```
+
+Calling the returned function with no active drag is safe. It does not remeasure
+drop targets or overlay geometry; call the relevant remeasurement hook first
+when layout changed.
+
+### `useRemeasureOverlay`
+
+Returns a function that manually refreshes current overlay geometry.
+
+```ts
+function useRemeasureOverlay(): () => void;
+```
+
+Calling the returned function with no mounted overlay is safe. Normal overlay
+size changes are observed automatically when `ResizeObserver` is available. Use
+this hook when the app knows visual bounds changed outside that automatic path.
 
 ## Modifiers
 
@@ -500,7 +545,9 @@ function restrictToContainer(
 ): DragModifier<DragRect | null>;
 ```
 
-The React version accepts either a React ref object or a resolver function.
+The React version accepts either a React ref object or a resolver function. It
+uses the DOM modifier under the hood; the resolved container is remeasured during
+movement so resizing during a drag is respected.
 
 ```tsx
 function Board() {
@@ -581,6 +628,7 @@ type DragUpdateEvent = {
   draggableId: string;
   source: DragSource;
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
@@ -590,6 +638,7 @@ type DragEndEvent = {
   source: DragSource;
   result: DragEndResult;
   dropTargetId: string | null;
+  overlayRect: DragRect | null;
 };
 
 type DropEvent = {
@@ -622,6 +671,10 @@ type DragLifecycleCallbacks = {
   ) => void;
 };
 ```
+
+`DragUpdateEvent.overlayRect` is the current viewport-space overlay rectangle.
+`DragEndEvent.overlayRect` is the final overlay rectangle at the moment the drag
+ends. Both are `null` when no drag overlay is configured.
 
 ### Sortable Drop Placement
 
@@ -660,7 +713,8 @@ Exported algorithms:
 
 - `pointerToCenter`: chooses the target whose center is closest to the pointer.
 - `pointerToRectDistance`: chooses the target whose rectangle is closest to the pointer.
-- `centerToCenter`: chooses the target whose center is closest to the overlay center and requires an overlay.
+- `centerToCenter`: chooses the target whose center is closest to the overlay center. Because its mode is
+  `"rect"`, it requires `dragOverlay`.
 
 ### Targeting Constraints
 
@@ -680,7 +734,8 @@ Exported helpers:
 
 - `getDistanceToRect(point, rect)`: returns `{ x, y, distance }` from a point to a rect.
 - `maxPointerDistanceToRect(options)`: keeps targets eligible only when the pointer is within configured distance.
-- `maxOverlayCenterDistanceToRect(options)`: keeps targets eligible only when the overlay center is within configured distance.
+- `maxOverlayCenterDistanceToRect(options)`: keeps targets eligible only when the overlay center is within
+  configured distance. It rejects every target when no overlay rectangle is available.
 
 `maxPointerDistanceToRect` and `maxOverlayCenterDistanceToRect` accept:
 
@@ -847,6 +902,8 @@ There is no public `DragOverlay` component export.
 - `useDragHandle`
 - `UseDragHandleResult`
 - `useRemeasureDropTargets`
+- `useRecomputeActiveDrag`
+- `useRemeasureOverlay`
 
 ### React Utilities
 

@@ -37,10 +37,14 @@ Types are exported from the same entrypoint.
 ```ts
 import type {
   DragController,
+  DragControllerOverlayInput,
+  DragEndEvent,
+  DragLifecycleHelpers,
   DragStartEvent,
   DragUpdateEvent,
   DropEvent,
-  DragEndEvent,
+  OverlayReleaseMode,
+  RemeasureDropTargetsInput,
   SortableDropPlacement,
   TargetingAlgorithm,
   TargetingConstraint,
@@ -75,7 +79,7 @@ function createDragController(
 ): DragController;
 ```
 
-A controller coordinates registered elements, targeting, lifecycle callbacks, overlays, modifiers, keyboard input, pointer input, and explicit target remeasurement.
+A controller coordinates registered elements, targeting, lifecycle callbacks, overlays, modifiers, keyboard input, pointer input, explicit target and overlay remeasurement, and active-drag recompute.
 
 ```ts
 import {
@@ -153,8 +157,12 @@ Announcement callbacks return text for a polite live region. `onDragUpdate` anno
 ```ts
 type DragController = {
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
+  remeasureOverlay: () => void;
+  recomputeActiveDrag: () => void;
 };
 ```
+
+`remeasureDropTargets` refreshes cached target geometry. `remeasureOverlay` refreshes the currently mounted overlay measurement. `recomputeActiveDrag` reruns targeting and drag update notifications from the last stored pointer position without remeasuring targets or the overlay.
 
 The controller intentionally exposes only public drag scope operations. Registration helpers do not return per-element disposers.
 
@@ -378,12 +386,13 @@ type DragUpdateEvent = {
   draggableId: string;
   source: DragSource;
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
 ```
 
-`pointerPosition` is the current effective pointer position after modifiers.
+`pointerPosition` is the current effective pointer position after modifiers. `overlayRect` is the current viewport-space overlay rectangle, or `null` when the drag has no overlay.
 
 ### `DropEvent`
 
@@ -413,11 +422,12 @@ type DragEndEvent = {
   draggableId: string;
   source: DragSource;
   result: DragEndResult;
+  overlayRect: DragRect | null;
   dropTargetId: string | null;
 };
 ```
 
-`dropTargetId` is the final valid target for `"dropped"`, otherwise usually `null`.
+`overlayRect` is the final viewport-space overlay rectangle, or `null` when the drag had no overlay. `dropTargetId` is the final valid target for `"dropped"`, otherwise usually `null`.
 
 ### `DragLifecycleHelpers`
 
@@ -446,11 +456,13 @@ type DragControllerOverlayInput =
   | {
       dragState: DragState;
       phase: "dragging";
+      remeasureOverlay: () => void;
       removeOverlay?: never;
     }
   | {
       dragState: DragState;
       phase: "released";
+      remeasureOverlay: () => void;
       removeOverlay: () => void;
     };
 
@@ -481,9 +493,11 @@ const controller = createDragController({
 });
 ```
 
+`remeasureOverlay` is available in both phases. Call it when overlay content changes in a way automatic resize observation does not catch.
+
 `overlayRoot` changes where the package-owned overlay wrapper is appended. It defaults to `document.body`.
 
-## Remeasurement
+## Remeasurement And Recompute
 
 ### `RemeasureDropTargetsInput`
 
@@ -501,6 +515,8 @@ Supported inputs:
 - `string[]`: remeasures targets with those ids across groups.
 - `{ group: string }`: remeasures all targets in one group.
 
+### `controller.remeasureDropTargets`
+
 ```ts
 controller.remeasureDropTargets();
 controller.remeasureDropTargets("target-1");
@@ -509,6 +525,22 @@ controller.remeasureDropTargets({ group: "cards" });
 ```
 
 Call this after app-owned layout changes that should affect targeting.
+
+### `controller.remeasureOverlay`
+
+```ts
+controller.remeasureOverlay();
+```
+
+Refreshes the currently mounted overlay measurement. It is a safe no-op when no overlay is mounted or no drag is active.
+
+### `controller.recomputeActiveDrag`
+
+```ts
+controller.recomputeActiveDrag();
+```
+
+Reruns active targeting and drag update notifications from the last stored pointer position. Recompute does not remeasure drop targets or the overlay; call the relevant remeasurement method first when geometry changed.
 
 ## Targeting
 
@@ -581,7 +613,7 @@ const controller = createDragController({
 });
 ```
 
-Use it when the dragged visual should drive targeting. It requires a drag overlay.
+Use it when the dragged visual should drive targeting. It requires a configured drag overlay because its mode is `"rect"`; the runtime prevents a rect-mode drag from starting without one.
 
 ### `getDistanceToRect`
 
@@ -627,7 +659,7 @@ function maxOverlayCenterDistanceToRect(options: {
 }): TargetingConstraint;
 ```
 
-Keeps a target eligible only when the overlay center is within the configured distance from the target rectangle.
+Keeps a target eligible only when the overlay center is within the configured distance from the target rectangle. It rejects every target when no overlay rectangle is available.
 
 ```ts
 const controller = createDragController({
@@ -670,7 +702,7 @@ function restrictToContainer(
 ): DragModifier<DragRect | null>;
 ```
 
-Restricts movement so the overlay rectangle stays inside the resolved container.
+Restricts movement so the overlay rectangle stays inside the resolved container. The resolver runs at drag setup; the modifier remeasures the resolved element during movement, so container resizing during a drag is respected.
 
 ```ts
 const controller = createDragController({
@@ -883,7 +915,8 @@ Adapter-facing runtime scope. It includes draggable, droppable, drop-container, 
 - `configure(input)`: reconfigures runtime behavior.
 - `cancelDrag()`: cancels the active drag.
 - `releaseActiveDragResources()`: releases active drag resources.
-- `setOverlayRect(overlayRect)`: supplies adapter-measured overlay geometry.
+- `recomputeActiveDrag()`: reruns active targeting and update notifications from the last pointer position.
+- `setOverlayRect(overlayRect)`: supplies adapter-measured overlay geometry (`DragRect | null`).
 - `remeasureDropTargets(input?)`: remeasures targets.
 - `subscribe(subscription)`: subscribes to low-level drag events.
 

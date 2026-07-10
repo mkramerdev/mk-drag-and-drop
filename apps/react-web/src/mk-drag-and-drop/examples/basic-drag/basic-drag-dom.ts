@@ -57,10 +57,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     },
     onDrop({ draggableId: droppedItemId, dropTargetId }) {
       // Example drop behavior: commit valid drops into app-owned DOM state.
-      if (
-        droppedItemId !== "draggable" ||
-        !isKnownDropTarget(dropTargetId)
-      ) {
+      if (droppedItemId !== "draggable" || !isKnownDropTarget(dropTargetId)) {
         return;
       }
 
@@ -113,7 +110,9 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   };
 
   // Example rendering: overlay markup is app-owned.
-  function createDragOverlay({ dragState }: DragControllerOverlayInput): HTMLElement {
+  function createDragOverlay({
+    dragState,
+  }: DragControllerOverlayInput): HTMLElement {
     const overlay = document.createElement("div");
     overlay.className = "sortableOverlay";
     appendItemContents(overlay, dragState.draggableId, false);
@@ -153,7 +152,10 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     activeDropTargetId = nextDropTarget;
   }
 
-  function setDropzoneActive(dropTargetId: string | null, active: boolean): void {
+  function setDropzoneActive(
+    dropTargetId: string | null,
+    active: boolean,
+  ): void {
     if (!dropTargetId) {
       return;
     }
@@ -266,4 +268,3 @@ function isKnownDropTarget(dropTargetId: string): boolean {
     dropTargetId === droppableContainer.dropTargetId
   );
 }
-

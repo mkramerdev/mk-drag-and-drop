@@ -386,7 +386,7 @@ function moveKanbanCard(
   state: KanbanState,
   placement: PlacementInput,
 ): KanbanState {
-  if (!placement.containerId) {
+  if (placement.containerId === null) {
     return state;
   }
 
@@ -418,7 +418,8 @@ function moveByPlacement<T>(input: {
   placement: PlacementInput;
 }): T[] {
   const item = input.items.find(
-    (currentItem) => input.getItemId(currentItem) === input.placement.draggableId,
+    (currentItem) =>
+      input.getItemId(currentItem) === input.placement.draggableId,
   );
 
   if (!item) {
@@ -426,7 +427,8 @@ function moveByPlacement<T>(input: {
   }
 
   const itemsWithoutMovedItem = input.items.filter(
-    (currentItem) => input.getItemId(currentItem) !== input.placement.draggableId,
+    (currentItem) =>
+      input.getItemId(currentItem) !== input.placement.draggableId,
   );
   const insertIndex = getPlacementIndex({
     ids: itemsWithoutMovedItem.map(input.getItemId),
@@ -453,15 +455,28 @@ function getPlacementIndex(input: {
   ids: readonly string[];
   placement: PlacementInput;
 }): number {
-  if (input.placement.previousDraggableId) {
-    const previousIndex = input.ids.indexOf(input.placement.previousDraggableId);
+  if (
+    input.placement.targetDraggableId !== null &&
+    input.placement.side !== null
+  ) {
+    const targetIndex = input.ids.indexOf(input.placement.targetDraggableId);
+
+    if (targetIndex !== -1) {
+      return input.placement.side === "after" ? targetIndex + 1 : targetIndex;
+    }
+  }
+
+  if (input.placement.previousDraggableId !== null) {
+    const previousIndex = input.ids.indexOf(
+      input.placement.previousDraggableId,
+    );
 
     if (previousIndex !== -1) {
       return previousIndex + 1;
     }
   }
 
-  if (input.placement.nextDraggableId) {
+  if (input.placement.nextDraggableId !== null) {
     const nextIndex = input.ids.indexOf(input.placement.nextDraggableId);
 
     if (nextIndex !== -1) {

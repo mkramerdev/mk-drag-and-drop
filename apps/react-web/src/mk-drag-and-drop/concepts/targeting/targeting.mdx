@@ -7,7 +7,7 @@ summary: 'How mk-drag-and-drop chooses the active drop target.'
 
 Targeting is the process that chooses the current active drop target during a drag.
 
-The package handles target measurement, group matching, optional constraints, and the configured targeting algorithm. Your app receives the selected target as `activeDropTargetId` in lifecycle callbacks. Durable app state changes should still happen in lifecycle callbacks such as `onDrop` or `onDragEnd`, not inside targeting code.
+The package handles target measurement, group matching, sortable candidate narrowing, optional constraints, and the configured targeting algorithm. Your app receives the selected target as `activeDropTargetId` in lifecycle callbacks. Durable app state changes should still happen in lifecycle callbacks such as `onDrop` or `onDragEnd`, not inside targeting code.
 
 Targeting does not decide sortable before/after placement. For sortable behavior, targeting first chooses which target is active. Sortable placement then decides where the dragged item belongs relative to that target.
 
@@ -16,22 +16,28 @@ Targeting does not decide sortable before/after placement. For sortable behavior
 At a high level, targeting follows this flow:
 
 1. A drag starts from a draggable in a group.
-2. Registered drop targets from that same group are considered.
-3. The optional `targetingConstraint` filters candidate targets.
-4. The configured `targetingAlgorithm` chooses one target from the remaining candidates.
-5. Lifecycle callbacks receive the selected target as `activeDropTargetId`.
+2. Modifiers transform the current movement, then the runtime derives `pointerPosition` and `overlayRect`.
+3. Registered targets from the same group are considered; sortable groups may narrow candidates before the algorithm runs.
+4. The optional `targetingConstraint` filters candidate targets.
+5. The configured `targetingAlgorithm` chooses one target from the remaining candidates.
+6. Lifecycle callbacks receive the selected target as `activeDropTargetId`.
 
 ```ts
 type DragUpdateEvent = {
   draggableId: string;
   source: "pointer" | "keyboard";
   pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
 };
 ```
 
 `activeDropTargetId` can be `null` when no target is available or no candidate passes the configured targeting rules.
+
+`overlayRect` is the current viewport-space rectangle for the drag overlay. It is `null` when the drag has no overlay.
+
+Targeting normally reruns on pointer movement. If app-owned layout or state changes what is under the pointer without a pointer event, `recomputeActiveDrag()` can rerun targeting from the last pointer position.
 
 ## Algorithms
 
@@ -99,9 +105,11 @@ import { centerToCenter } from "@mk-drag-and-drop/dom";
 
 Tradeoffs:
 
-- It requires a drag overlay.
-- It returns no target when no overlay rectangle is available.
+- It requires a configured drag overlay because its mode is `"rect"`.
+- It uses the overlay center for target selection.
 - It is usually a better fit when the dragged visual is larger than a pointer point.
+
+The runtime prevents a rect-mode drag from starting without an overlay. If `centerToCenter` is called directly with `overlayRect: null`, it returns no target.
 
 ### Custom Algorithms
 
@@ -115,6 +123,10 @@ const firstAvailableTarget: TargetingAlgorithm = Object.assign(
   { mode: "pointer" as const }
 );
 ```
+
+Use `mode: "pointer"` when the algorithm only needs `pointerPosition`. Use `mode: "rect"` when the algorithm depends on `overlayRect`; rect-mode algorithms require `dragOverlay`.
+
+Keep algorithms pure and choose from the supplied `dropTargets` list. The runtime owns measurement, group filtering, sortable candidate narrowing, and constraint filtering before your algorithm runs.
 
 ## Constraints
 
@@ -133,6 +145,8 @@ type TargetingConstraint = {
 ```
 
 Constraints are not movement modifiers. A constraint rejects targets. A modifier transforms drag movement before targeting receives `pointerPosition` and `overlayRect`.
+
+A constraint runs once for each measured candidate target. Rejected targets are not passed to the targeting algorithm.
 
 ### `maxPointerDistanceToRect`
 
@@ -251,7 +265,7 @@ export function SortableList() {
 }
 ```
 
-Keep targeting functions stable when possible. Creating new algorithm or constraint functions on every render can cause runtime reconfiguration.
+Keep targeting functions stable when possible. Define algorithms and constraints outside components, or memoize custom functions. Creating new algorithm or constraint functions on every render can cause runtime reconfiguration.
 
 ## Groups And IDs
 
@@ -331,6 +345,8 @@ function EmptyLane({ laneId }: { laneId: string }) {
 
 Containers participate in targeting as registered targets. In public terms, they make an area droppable even when there is no item target inside it.
 
+A container candidate is considered when the pointer is inside the container rectangle. If the container wraps another registered target in the same candidate set, the child target takes precedence and the broad parent container is not offered as a candidate. This keeps item targets from being shadowed by their parent container.
+
 For sortable groups, containers are also useful as placement destinations. That still does not make placement part of targeting: targeting chooses the active target, then sortable behavior derives placement from the selected target and current preview state.
 
 ## Targeting vs Sortable Placement
@@ -351,6 +367,8 @@ Sortable placement describes where a sortable item should be committed relative 
 
 Sortable groups may narrow the measured candidates before the configured targeting algorithm runs. This is package behavior, not a separate public targeting API. The configured algorithm still chooses the active target from the candidates it receives.
 
+For rect-based targeting such as `centerToCenter`, active target selection uses the overlay center. Sortable placement also uses a placement position: pointer-based algorithms use the pointer, while rect-based algorithms use the overlay center when an overlay rectangle is available.
+
 Do not describe sortable `placementBoundary` values as targeting thresholds. Placement boundaries tune before/after placement behavior for sortable items; targeting still chooses the active target first.
 
 ## Remeasurement
@@ -363,24 +381,30 @@ DOM:
 
 ```ts
 controller.remeasureDropTargets({ group: "cards" });
+controller.recomputeActiveDrag();
 ```
 
 React:
 
 ```tsx
 import { useEffect } from "react";
-import { useRemeasureDropTargets } from "@mk-drag-and-drop/react";
+import {
+  useRecomputeActiveDrag,
+  useRemeasureDropTargets,
+} from "@mk-drag-and-drop/react";
 
 function TreeView({ expandedIds }: { expandedIds: readonly string[] }) {
   const remeasureDropTargets = useRemeasureDropTargets();
+  const recomputeActiveDrag = useRecomputeActiveDrag();
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       remeasureDropTargets({ group: "tree" });
+      recomputeActiveDrag();
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [expandedIds, remeasureDropTargets]);
+  }, [expandedIds, remeasureDropTargets, recomputeActiveDrag]);
 
   return <TreeContent />;
 }
@@ -396,6 +420,8 @@ type RemeasureDropTargetsInput =
 ```
 
 Call remeasurement after app-owned layout changes such as expanding a tree row, showing a drop zone, changing grouped sections, or resizing a target area during a drag. Do not call it on every render.
+
+Remeasurement updates cached target rectangles. It does not send a drag update by itself. If the active target should update immediately, call `recomputeActiveDrag()` after remeasurement; otherwise the next pointer movement will use the new measurements.
 
 ## Common Recipes
 
@@ -467,6 +493,8 @@ When the list has no item targets, the container still provides a valid target r
 - Do not use sortable placement boundaries as targeting thresholds. Placement happens after an active target is selected.
 - Do not commit app state inside the targeting algorithm. Use lifecycle callbacks.
 - Do not rely on stale measurements after app-owned layout changes. Call `remeasureDropTargets`.
+- Do not expect `remeasureDropTargets` to send a drag update by itself. Call `recomputeActiveDrag` when targeting should update immediately.
 - Do not use unstable ids. The package reports ids back to your app; changing what an id means during a drag makes results ambiguous.
-- Do not configure `centerToCenter` without `dragOverlay`.
+- Do not configure `centerToCenter` or any rect-mode custom algorithm without `dragOverlay`.
+- Do not infer a sortable destination container from `dropTargetId`. Use `sortablePlacement.containerId` when sortable placement is present.
 - Do not assume every drop has sortable placement. Plain droppable and container drops may only provide `dropTargetId`.

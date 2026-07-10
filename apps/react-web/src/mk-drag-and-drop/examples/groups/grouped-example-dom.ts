@@ -715,25 +715,36 @@ function reorderParentOrder(
     (parentId) => parentId !== draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
+  let resolvedPlacement = false;
 
-  if (placement.previousDraggableId) {
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutDraggedParent.indexOf(
+      placement.targetDraggableId,
+    );
+
+    if (targetIndex !== -1) {
+      insertIndex = placement.side === "after" ? targetIndex + 1 : targetIndex;
+      resolvedPlacement = true;
+    }
+  }
+
+  if (!resolvedPlacement && placement.previousDraggableId !== null) {
     const previousIndex = withoutDraggedParent.indexOf(
       placement.previousDraggableId,
     );
 
-    if (previousIndex === -1) {
-      return parentOrder;
+    if (previousIndex !== -1) {
+      insertIndex = previousIndex + 1;
+      resolvedPlacement = true;
     }
+  }
 
-    insertIndex = previousIndex + 1;
-  } else if (placement.nextDraggableId) {
+  if (!resolvedPlacement && placement.nextDraggableId !== null) {
     const nextIndex = withoutDraggedParent.indexOf(placement.nextDraggableId);
 
-    if (nextIndex === -1) {
-      return parentOrder;
+    if (nextIndex !== -1) {
+      insertIndex = nextIndex;
     }
-
-    insertIndex = nextIndex;
   }
 
   return insertIntoArray(withoutDraggedParent, insertIndex, draggableId);
@@ -847,6 +858,7 @@ function insertIntoArray<T>(items: T[], index: number, item: T): T[] {
 function remeasureGroupedTargets(controller: DragController): void {
   controller.remeasureDropTargets({ group: groupedParentGroup });
   controller.remeasureDropTargets({ group: groupedChildGroup });
+  controller.recomputeActiveDrag();
 }
 
 function cloneChildrenById(
@@ -859,4 +871,3 @@ function cloneChildrenById(
     ]),
   );
 }
-

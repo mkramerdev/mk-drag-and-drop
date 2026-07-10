@@ -126,15 +126,19 @@ Targeting and sortable placement are related, but they are separate concepts.
 
 Targeting chooses the active target from registered targets in the active group. The public signal is `activeDropTargetId` in `onDragUpdate`.
 
+For sortable groups, the package may narrow the measured candidates before the configured targeting algorithm runs. That narrowing keeps targeting focused on relevant sortable items, nearby siblings, and container targets. The targeting algorithm still chooses the active target from that measured candidate list.
+
 ### Placement
 
-Placement chooses before or after relative to the active sortable target. The public signal is `sortablePlacement` in `onDrop`.
+Placement chooses where the dragged item would land relative to the active sortable item or active container. The public signal is `sortablePlacement` in `onDrop`.
+
+A sortable item target can produce a `targetDraggableId` with `side: "before" | "after"`. A drop container target can produce container-only placement where `targetDraggableId` and `side` are `null`, but `containerId`, `previousDraggableId`, and `nextDraggableId` still describe the destination.
 
 ### Lifecycle
 
 Lifecycle callbacks let the app commit durable state. For sortable data changes, this is usually `onDrop`.
 
-Placement boundaries are not targeting thresholds. They do not decide which target becomes active. They only tune when sortable preview placement switches before or after the active target.
+Placement boundaries are not targeting thresholds. They do not decide which target becomes active. They only tune before/after switching after sortable placement already has an active target and movement direction.
 
 ## Axis
 
@@ -212,13 +216,14 @@ const sortable = useSortable<HTMLDivElement>({
 });
 ```
 
-The implementation uses movement direction to reduce flicker:
+The implementation uses movement direction and target midpoint rules to reduce flicker:
 
-- Initial placement favors the current movement direction.
-- With no movement direction, the midpoint is used.
-- When movement reverses over the same active target, `start` or `end` is used to decide when to switch sides.
+- First entry into a same-container item target is movement-responsive: forward movement places after, backward movement places before, and no sortable-axis movement uses the target midpoint.
+- First entry into a different DOM container is midpoint-based: the current sortable placement position is compared with the active target midpoint.
+- Pointer-based targeting uses the pointer as the sortable placement position; rect-based targeting such as `centerToCenter` uses the overlay center.
+- After placement has an established movement direction, reversing over the same active target uses `start` or `end` as the hysteresis threshold for switching sides.
 
-For compact targets, small movement can cross a boundary quickly. For large targets, the same ratio creates a larger physical region. Tune boundaries based on how early or late the preview should switch when reversing over an item.
+`placementBoundary` does not decide the initial side for cross-container entry, and it does not delay the first movement that follows midpoint-based entry into a list. For compact targets, small movement can cross a boundary quickly. For large targets, the same ratio creates a larger physical region. Tune boundaries based on how early or late the preview should switch when reversing over an item.
 
 ## Sortable Containers
 
@@ -299,6 +304,12 @@ function Card({
 Containers are useful for empty lists, board columns, lanes, parent regions that accept sortable children, and moving sortable items between containers.
 
 When a drop lands on a container rather than a sortable item, `sortablePlacement.targetDraggableId` and `sortablePlacement.side` are `null`. Use `containerId`, `previousDraggableId`, and `nextDraggableId` to commit the item into your data model.
+
+When a sortable item enters a different DOM container, the first item-relative placement uses the active target midpoint instead of optimistic movement direction. This keeps Kanban-style boards and other multi-container layouts from jumping to the wrong side just because the pointer was moving down or right while crossing into a new list.
+
+If a drag first lands on a container and then moves onto an item inside that same destination list, the package preserves that cross-container midpoint-entry state through active-drag recomputes until the first item target receives a before/after placement.
+
+Normal sortable preview movement refreshes the target measurements it shifts around the source and destination lists. App-owned layout changes, such as expanding a row, rendering new items, or changing a container outside the preview movement, still need explicit remeasurement when they should affect targeting.
 
 ## Committing Order
 
@@ -395,7 +406,9 @@ export function SortableList() {
 }
 ```
 
-For multiple containers, use `sortablePlacement.containerId` as the destination and `sortablePlacement.sourceContainerId` as the origin.
+For multiple containers, use `sortablePlacement.containerId` as the destination and `sortablePlacement.sourceContainerId` as the origin. Do not infer the destination from `dropTargetId`; a drop can land on an item target while the final sortable placement belongs to that item's container.
+
+`sortablePlacement.previousDraggableId` and `sortablePlacement.nextDraggableId` describe the final preview order in the destination container. `targetDraggableId` and `side` preserve the active item anchor when the drop is item-relative, and are `null` for container-only placement.
 
 `sortablePlacement` may be omitted when the drop is not a sortable placement or when the sortable drop is a no-op relative to the source placement.
 
@@ -419,7 +432,7 @@ Avoid expensive `onDragUpdate` work. Use update callbacks for active styling, no
 
 Commit order once in `onDrop`.
 
-Call `remeasureDropTargets` after app-owned layout changes that should affect targeting, such as expanding a tree section or showing new drop regions during a drag.
+Call `remeasureDropTargets` after app-owned layout changes that should affect targeting, such as expanding a tree section or showing new drop regions during a drag. If the active target should update before the next pointer or keyboard movement, remeasure first and then call `recomputeActiveDrag`.
 
 For large lists, avoid rerendering the entire list on every movement update. Let the package handle preview movement and update durable data after the drop.
 
@@ -463,8 +476,9 @@ React is an ergonomic wrapper over the DOM behavior. The same ids, groups, targe
 
 - Do not commit order on every pointer move. Use `onDrop`.
 - Do not treat placement boundaries as targeting. Targeting chooses the active target first.
+- Do not expect `placementBoundary` to decide the first side when entering a different container. Cross-container entry uses the target midpoint.
 - Do not use unstable ids. Sortable placement is id-based.
 - Do not forget containers for empty lists or broad parent regions.
-- Do not rely on stale measurements after app-owned layout changes. Call `remeasureDropTargets`.
+- Do not rely on stale measurements after app-owned layout changes. Call `remeasureDropTargets`, and call `recomputeActiveDrag` when the active target should update immediately.
 - Do not assume every drop has `sortablePlacement`. Plain droppable drops and no-op sortable drops may not include it.
 - Do not mix unrelated sortable sets in the same group. Use groups intentionally.

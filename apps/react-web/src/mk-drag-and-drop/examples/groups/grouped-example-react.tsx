@@ -11,6 +11,7 @@ import {
   DragProvider,
   getDistanceToRect,
   useRemeasureDropTargets,
+  useRecomputeActiveDrag,
   useDragHandle,
   useDraggable,
   useDroppable,
@@ -181,8 +182,9 @@ export function GroupedExample(): ReactElement {
   const [parentsById] = useState<Record<string, ParentItem>>(
     () => initialParentsById,
   );
-  const [childrenById, setChildrenById] =
-    useState<Record<string, ChildItem>>(() => initialChildrenById);
+  const [childrenById, setChildrenById] = useState<Record<string, ChildItem>>(
+    () => initialChildrenById,
+  );
   const [parentOrder, setParentOrder] = useState<string[]>(
     () => initialParentOrder,
   );
@@ -293,8 +295,7 @@ export function GroupedExample(): ReactElement {
       return;
     }
 
-    const targetIndex =
-      parsedTarget.type === "inside" ? 0 : parsedTarget.index;
+    const targetIndex = parsedTarget.type === "inside" ? 0 : parsedTarget.index;
     const targetParentChildren = getChildrenForParent({
       parentId: parsedTarget.parentId,
       childOrder,
@@ -407,9 +408,7 @@ function GroupedDragOverlay({
 
     return (
       <div className="groupedDragOverlay groupedParentDragOverlay">
-        <div className="groupedDragOverlayHandle">
-          {dragHandleText}
-        </div>
+        <div className="groupedDragOverlayHandle">{dragHandleText}</div>
         <span className="groupedParentLabel">{parent?.label ?? ""}</span>
       </div>
     );
@@ -419,9 +418,7 @@ function GroupedDragOverlay({
 
   return (
     <div className="groupedDragOverlay groupedChildDragOverlay">
-      <div className="groupedDragOverlayHandle">
-        {dragHandleText}
-      </div>
+      <div className="groupedDragOverlayHandle">{dragHandleText}</div>
       <span className="groupedChildLabel">{child?.label ?? ""}</span>
     </div>
   );
@@ -458,14 +455,12 @@ function GroupedParentBlock({
     containerId: parent.parentId,
   });
   const remeasureDropTargets = useRemeasureDropTargets();
+  const recomputeActiveDrag = useRecomputeActiveDrag();
   const hasChildren = children.length > 0;
   const isExpanded =
-    hasChildren &&
-    expandedParentIds.has(parent.parentId) &&
-    !isActivelyDragged;
+    hasChildren && expandedParentIds.has(parent.parentId) && !isActivelyDragged;
   const { ref: sortableRef, ...sortableProps } = sortable;
-  const { ref: insideDroppableRef, ...insideDroppableProps } =
-    insideDroppable;
+  const { ref: insideDroppableRef, ...insideDroppableProps } = insideDroppable;
   const parentBlockRef = useCallback(
     (element: HTMLDivElement | null) => {
       sortableRef(element);
@@ -489,7 +484,8 @@ function GroupedParentBlock({
     // Package API: remeasure after demo-owned expansion changes affect targets.
     remeasureDropTargets({ group: groupedParentGroup });
     remeasureDropTargets({ group: groupedChildGroup });
-  }, [isActivelyDragged, remeasureDropTargets]);
+    recomputeActiveDrag();
+  }, [isActivelyDragged, remeasureDropTargets, recomputeActiveDrag]);
 
   function toggleExpanded(): void {
     setExpandedParentIds((currentExpandedParentIds) => {
@@ -507,6 +503,7 @@ function GroupedParentBlock({
     window.requestAnimationFrame(() => {
       remeasureDropTargets({ group: groupedParentGroup });
       remeasureDropTargets({ group: groupedChildGroup });
+      recomputeActiveDrag();
     });
   }
 
@@ -652,25 +649,36 @@ function reorderParentOrder(
     (parentId) => parentId !== draggableId,
   );
   let insertIndex = withoutDraggedParent.length;
+  let resolvedPlacement = false;
 
-  if (placement.previousDraggableId) {
+  if (placement.targetDraggableId !== null && placement.side !== null) {
+    const targetIndex = withoutDraggedParent.indexOf(
+      placement.targetDraggableId,
+    );
+
+    if (targetIndex !== -1) {
+      insertIndex = placement.side === "after" ? targetIndex + 1 : targetIndex;
+      resolvedPlacement = true;
+    }
+  }
+
+  if (!resolvedPlacement && placement.previousDraggableId !== null) {
     const previousIndex = withoutDraggedParent.indexOf(
       placement.previousDraggableId,
     );
 
-    if (previousIndex === -1) {
-      return parentOrder;
+    if (previousIndex !== -1) {
+      insertIndex = previousIndex + 1;
+      resolvedPlacement = true;
     }
+  }
 
-    insertIndex = previousIndex + 1;
-  } else if (placement.nextDraggableId) {
+  if (!resolvedPlacement && placement.nextDraggableId !== null) {
     const nextIndex = withoutDraggedParent.indexOf(placement.nextDraggableId);
 
-    if (nextIndex === -1) {
-      return parentOrder;
+    if (nextIndex !== -1) {
+      insertIndex = nextIndex;
     }
-
-    insertIndex = nextIndex;
   }
 
   return insertIntoArray(withoutDraggedParent, insertIndex, draggableId);

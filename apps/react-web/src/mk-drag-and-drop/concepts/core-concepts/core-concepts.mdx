@@ -5,7 +5,7 @@ summary: 'A practical model for understanding mk-drag-and-drop.'
 
 # Core Concepts
 
-`mk-drag-and-drop` is headless. It handles drag input, element registration, target selection, overlays, movement modifiers, sortable placement, and lifecycle callbacks. Your application owns markup, styling, state, persistence, and the final result of a drop.
+`mk-drag-and-drop` is headless. It handles drag input, element registration, target selection, overlays, movement modifiers, sortable placement, lifecycle callbacks, and explicit geometry refresh. Your application owns markup, styling, state, persistence, and the final result of a drop.
 
 The DOM package and React package expose the same concepts through different APIs. In the DOM package, a drag-and-drop scope is created with a controller. In React, the scope is created with `DragProvider`.
 
@@ -20,7 +20,7 @@ The normal flow is:
 5. Sortable placement, when used, decides where the item would land relative to the active target.
 6. Lifecycle callbacks let your application update visuals and commit data.
 
-The public concepts are scopes, registered elements, groups, targeting, sortable placement, modifiers, overlays, lifecycle callbacks, and remeasurement.
+The public concepts are scopes, registered elements, groups, targeting, sortable placement, modifiers, overlays, lifecycle callbacks, remeasurement, and active-drag recomputation.
 
 ## Scope
 
@@ -78,7 +78,7 @@ The scope coordinates registered elements, group matching, target measurement, t
 
 ## Registered Elements
 
-Registered elements are the DOM nodes or React elements the runtime is allowed to use during a drag.
+Registered elements are the DOM nodes the runtime is allowed to use during a drag. In React, hooks register the rendered DOM nodes through refs.
 
 ### Draggables
 
@@ -118,7 +118,7 @@ function Card({ id, title }: { id: string; title: string }) {
 }
 ```
 
-When a draggable has a drag handle, pointer dragging starts from the handle. Without a handle, the draggable itself can start dragging.
+When a draggable has a drag handle, pointer and keyboard dragging start from the handle. Without a handle, the draggable itself can start dragging.
 
 ### Droppables
 
@@ -228,6 +228,8 @@ function SortableCard({
 
 During a sortable drag, the runtime may move DOM nodes to preview where the item would land. That preview is temporary. The application still commits the final data in lifecycle callbacks, usually `onDrop`.
 
+For cross-container sortable drags, initial before/after placement is based on the current placement position against the target midpoint: the pointer for pointer-based targeting, or the overlay center for rect-based targeting. `placementBoundary` is for later same-target reversal behavior; it is not a targeting threshold and does not decide the first side when entering another container.
+
 ## Groups
 
 Groups decide which draggables and targets can interact. A draggable with `group: "cards"` only targets droppables, drop containers, and sortables in the same group.
@@ -250,15 +252,15 @@ Targeting algorithms choose between candidate targets. Targeting constraints fil
 ```ts
 import {
   createDragController,
-  maxOverlayCenterDistanceToRect,
+  maxPointerDistanceToRect,
 } from "@mk-drag-and-drop/dom";
 
 const controller = createDragController({
-  targetingConstraint: maxOverlayCenterDistanceToRect({ maxDistance: 0 }),
+  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 0 }),
 });
 ```
 
-The constraint above accepts only drops directly on the target.
+The constraint above accepts only drops where the pointer is directly on the target. Overlay-center constraints such as `maxOverlayCenterDistanceToRect` are also available, but they require a configured drag overlay because they depend on `overlayRect`.
 
 For sortable items, a successful drop may include placement data:
 
@@ -275,11 +277,11 @@ type SortableDropPlacement = {
 
 `targetDraggableId` and `side` describe item-relative placement. They are `null` for container-only placement.
 
-## Remeasurement
+## Remeasurement And Recompute
 
 The runtime measures drop targets so targeting algorithms can compare geometry. Targets are measured when registered and remeasured when a drag starts.
 
-Call the public remeasurement API after layout changes that should affect targeting during an active drag. Common cases include expanding tree rows, opening grouped sections, changing list content outside the sortable preview, or resizing a target area.
+Call the public drop-target remeasurement API after app-owned layout changes that should affect targeting during an active drag. Common cases include expanding tree rows, opening grouped sections, changing list content outside the sortable preview, or resizing a target area.
 
 ```ts
 controller.remeasureDropTargets();
@@ -290,24 +292,33 @@ controller.remeasureDropTargets({ group: "cards" });
 
 ```tsx
 import { useLayoutEffect } from "react";
-import { useRemeasureDropTargets } from "@mk-drag-and-drop/react";
+import {
+  useRemeasureDropTargets,
+  useRecomputeActiveDrag,
+} from "@mk-drag-and-drop/react";
 
 function Tree({ expandedIds }: { expandedIds: string[] }) {
   const remeasureDropTargets = useRemeasureDropTargets();
+  const recomputeActiveDrag = useRecomputeActiveDrag();
 
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => {
       remeasureDropTargets({ group: "tree" });
+      recomputeActiveDrag();
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [expandedIds, remeasureDropTargets]);
+  }, [expandedIds, remeasureDropTargets, recomputeActiveDrag]);
 
   return null;
 }
 ```
 
-Do not call remeasurement on every render. Use it when layout changed and measured target geometry should be refreshed.
+Remeasurement refreshes cached geometry. Recompute reruns the active targeting and drag update path from the last pointer position. If layout changed and no new pointer event will happen immediately, remeasure first and then recompute.
+
+Overlay measurement is separate from drop-target measurement. Overlay content is measured on mount or replacement, and by `ResizeObserver` when available. Use `controller.remeasureOverlay()`, the overlay input `remeasureOverlay`, or React `useRemeasureOverlay()` when app-owned visual changes should refresh the current overlay geometry.
+
+Do not call remeasurement on every render. Use it when layout changed and measured geometry should be refreshed.
 
 ## Modifiers
 
@@ -353,7 +364,7 @@ function Board() {
 }
 ```
 
-Modifiers affect movement. They do not register targets, change ids, or change group matching.
+Modifiers affect movement. They do not register targets, change ids, or change group matching. The built-in `restrictToContainer` modifier remeasures the resolved bounds element during active movement, so it can respond when that container grows or shrinks.
 
 ## Lifecycle
 
@@ -437,6 +448,10 @@ In React, pass `dragOverlay` to `DragProvider`. It returns React content.
 
 Overlay movement is handled by the package. Applications should not need to update React state or rebuild DOM on every pointer move just to move the overlay.
 
+Overlay content is measured for overlay-aware targeting, constraints, and modifiers. If an app-owned transition, transform, or content change alters the visual bounds outside normal size observation, use `remeasureOverlay` to refresh that measurement.
+
+By default, overlays are removed automatically when a drag ends. For app-owned release animations, configure `overlayRelease: "manual"`; the released overlay receives `removeOverlay`, which should be called when the animation is done.
+
 ## DOM And React Comparison
 
 | Concept | DOM package | React package |
@@ -447,7 +462,9 @@ Overlay movement is handled by the package. Applications should not need to upda
 | Drop container | `createDropContainer({ controller, element, containerId, group })` | `useDropContainer({ containerId, group })` |
 | Sortable | `createSortable({ controller, element, draggableId, group, containerId, axis })` | `useSortable({ draggableId, group, containerId, axis })` |
 | Drag handle | `createDragHandle({ element })` | `useDragHandle()` |
-| Remeasurement | `controller.remeasureDropTargets(input?)` | `useRemeasureDropTargets()` |
+| Drop-target remeasurement | `controller.remeasureDropTargets(input?)` | `useRemeasureDropTargets()` |
+| Overlay remeasurement | `controller.remeasureOverlay()` or overlay input | `useRemeasureOverlay()` or overlay input |
+| Active-drag recompute | `controller.recomputeActiveDrag()` | `useRecomputeActiveDrag()` |
 | Targeting | Controller options | Provider props |
 | Modifiers | Controller option | Provider prop |
 
@@ -462,6 +479,8 @@ The React package is an ergonomic layer over the DOM behavior. It gives you prov
 - Keep targeting and sortable placement separate in your mental model.
 - Commit application state in `onDrop` when a valid drop occurs.
 - Use `onDragEnd` for cleanup that must happen even when there is no valid drop.
-- Call remeasurement after app-owned layout changes that should affect targeting.
+- Call drop-target remeasurement after app-owned layout changes that should affect targeting.
+- Recompute the active drag after external changes should affect targeting without waiting for pointer movement.
+- Remeasure the overlay after app-owned visual changes should affect overlay-aware targeting, constraints, or modifiers.
 - Use modifiers for movement constraints, not target registration.
 - Use drag handles when the draggable contains buttons, inputs, links, or other interactive content.

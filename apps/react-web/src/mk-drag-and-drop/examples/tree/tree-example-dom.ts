@@ -59,9 +59,7 @@ type ParsedTreeDropTarget =
 const treeGroup = "tree-example";
 const rootToken = "root";
 const treeDepthInsetRem = 1.5;
-const treeInsideTargetMaxXDistance = 120;
 const treeInsideTargetMaxYDistance = 8;
-const treeLineTargetMaxXDistance = 180;
 const treeLineTargetMaxYDistance = 24;
 const dragHandleText = "\u22ee\u22ee";
 
@@ -78,13 +76,8 @@ const treeTargetingConstraint: TargetingConstraint = ({
 
   if (isInsideDropTargetId(dropTarget.dropTargetId)) {
     return (
-      isPointInTargetStartXBand(
-        overlayCenter.x,
-        dropTarget,
-        treeInsideTargetMaxXDistance,
-      ) &&
       Math.abs(overlayCenter.y - getTargetVerticalCenter(dropTarget)) <=
-        treeInsideTargetMaxYDistance
+      treeInsideTargetMaxYDistance
     );
   }
 
@@ -94,13 +87,7 @@ const treeTargetingConstraint: TargetingConstraint = ({
       dropTarget.dropTargetRect,
     );
 
-    return (
-      isPointInTargetStartXBand(
-        overlayCenter.x,
-        dropTarget,
-        treeLineTargetMaxXDistance,
-      ) && distance.y <= treeLineTargetMaxYDistance
-    );
+    return distance.y <= treeLineTargetMaxYDistance;
   }
 
   return false;
@@ -578,12 +565,16 @@ function moveTreeItemToParentIndex(
     return treeState;
   }
 
-  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== draggableId);
+  const orderedItemIds = treeState.orderedItemIds.filter(
+    (id) => id !== draggableId,
+  );
   const beforeSibling = siblingsAfterRemoval[insertionIndex] ?? null;
   const nextOrderedItemIds = [...orderedItemIds];
 
   if (beforeSibling) {
-    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.draggableId);
+    const beforeSiblingIndex = nextOrderedItemIds.indexOf(
+      beforeSibling.draggableId,
+    );
 
     if (beforeSiblingIndex === -1) {
       return treeState;
@@ -683,7 +674,10 @@ function getInsideDropTargetId(draggableId: string): string {
   return `tree:inside:${draggableId}`;
 }
 
-function getChildrenDropTargetId(parentId: string | null, index: number): string {
+function getChildrenDropTargetId(
+  parentId: string | null,
+  index: number,
+): string {
   return `tree:children:${parentId ?? rootToken}:index:${index}`;
 }
 
@@ -749,15 +743,4 @@ function getRectCenter(rect: DragRect): DragPoint {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   };
-}
-
-function isPointInTargetStartXBand(
-  pointX: number,
-  dropTarget: DropTarget,
-  maxDistance: number,
-): boolean {
-  const rect = dropTarget.dropTargetRect;
-  const maxX = Math.min(rect.right, rect.left + maxDistance);
-
-  return pointX >= rect.left && pointX <= maxX;
 }

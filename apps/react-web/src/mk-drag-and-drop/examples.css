@@ -124,10 +124,6 @@
   border: 1px solid grey;
 }
 
-.sortableOverlayReleasing {
-  transition: transform 180ms ease;
-}
-
 .sortableParent {
   border: 0;
   padding: 2rem;
@@ -334,7 +330,8 @@ button.dragListHandle {
   opacity: 0;
 }
 
-.treeDropzoneLine[data-tree-active-drop-target="true"] .treeDropzoneLineIndicator {
+.treeDropzoneLine[data-tree-active-drop-target="true"]
+  .treeDropzoneLineIndicator {
   opacity: 1;
 }
 
@@ -493,7 +490,8 @@ button.dragListHandle {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
 }
 
-.groupedChildDropzoneLine[data-grouped-active-drop-target="true"] .groupedChildDropzoneIndicator {
+.groupedChildDropzoneLine[data-grouped-active-drop-target="true"]
+  .groupedChildDropzoneIndicator {
   opacity: 1;
 }
 
