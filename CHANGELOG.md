@@ -5,6 +5,15 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## Unreleased
+
+### Fixed
+
+- Fixed active and pending pointer drags in the shared DOM runtime becoming
+  stuck or using stale positions when descendant application handlers stop
+  pointer-event propagation. Global pointer lifecycle events are now observed
+  in capture phase for both direct DOM usage and React bindings.
+
 ## 0.4.5
 
 ### Fixed
@@ -69,4 +78,3 @@ API settles.
 - Added React `useRemeasureOverlay()`.
 - Added `remeasureOverlay` to the React `dragOverlay` render input
   (`DragOverlayInput`).
-

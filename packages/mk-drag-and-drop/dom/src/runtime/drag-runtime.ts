@@ -17,6 +17,7 @@ import {
   type KeyboardMoveDirection,
   type SourceKeyboardDragKeyDownInput as KeyboardSourceKeyDownInput,
 } from "../input/keyboard-drag.js";
+import { globalPointerListenerCapture } from "../input/global-pointer-listeners.js";
 import { PointerActivationController } from "../input/pointer-activation.js";
 import {
   applyDragModifiers,
@@ -878,9 +879,21 @@ export class DragRuntime {
       this.cancelDrag();
     };
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerCancel);
+    window.addEventListener(
+      "pointermove",
+      handlePointerMove,
+      globalPointerListenerCapture,
+    );
+    window.addEventListener(
+      "pointerup",
+      handlePointerUp,
+      globalPointerListenerCapture,
+    );
+    window.addEventListener(
+      "pointercancel",
+      handlePointerCancel,
+      globalPointerListenerCapture,
+    );
 
     this.releaseActiveInputListeners = () => {
       if (listenersReleased) {
@@ -888,9 +901,21 @@ export class DragRuntime {
       }
 
       listenersReleased = true;
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerCancel);
+      window.removeEventListener(
+        "pointermove",
+        handlePointerMove,
+        globalPointerListenerCapture,
+      );
+      window.removeEventListener(
+        "pointerup",
+        handlePointerUp,
+        globalPointerListenerCapture,
+      );
+      window.removeEventListener(
+        "pointercancel",
+        handlePointerCancel,
+        globalPointerListenerCapture,
+      );
     };
   }
 

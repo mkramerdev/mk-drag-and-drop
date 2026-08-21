@@ -189,14 +189,17 @@ describe("PointerActivationController", () => {
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
       "pointermove",
       expect.any(Function),
+      true,
     );
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
       "pointerup",
       expect.any(Function),
+      true,
     );
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
       "pointercancel",
       expect.any(Function),
+      true,
     );
     expect(removeEventListenerSpy).toHaveBeenCalledTimes(3);
   });

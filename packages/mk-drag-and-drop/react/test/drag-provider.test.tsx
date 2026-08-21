@@ -311,14 +311,17 @@ describe("DragProvider", () => {
     expect(removeListener).toHaveBeenCalledWith(
       "pointermove",
       expect.any(Function),
+      true,
     );
     expect(removeListener).toHaveBeenCalledWith(
       "pointerup",
       expect.any(Function),
+      true,
     );
     expect(removeListener).toHaveBeenCalledWith(
       "pointercancel",
       expect.any(Function),
+      true,
     );
     expect(document.documentElement.style.userSelect).toBe("");
     expect(document.body.style.userSelect).toBe("");

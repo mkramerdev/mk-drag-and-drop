@@ -1,6 +1,7 @@
 import type { DragPoint } from "../geometry/rects.js";
 
 import type { NormalizedPointerConfiguration } from "./config.js";
+import { globalPointerListenerCapture } from "./global-pointer-listeners.js";
 
 export type PointerDragActivationRequest = {
   draggableId: string;
@@ -102,14 +103,38 @@ export class PointerActivationController {
       this.cancelPendingActivation();
     };
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener(
+      "pointermove",
+      handlePointerMove,
+      globalPointerListenerCapture,
+    );
+    window.addEventListener(
+      "pointerup",
+      handlePointerEnd,
+      globalPointerListenerCapture,
+    );
+    window.addEventListener(
+      "pointercancel",
+      handlePointerEnd,
+      globalPointerListenerCapture,
+    );
 
     pendingActivation.releasePendingPointerListeners = () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener(
+        "pointermove",
+        handlePointerMove,
+        globalPointerListenerCapture,
+      );
+      window.removeEventListener(
+        "pointerup",
+        handlePointerEnd,
+        globalPointerListenerCapture,
+      );
+      window.removeEventListener(
+        "pointercancel",
+        handlePointerEnd,
+        globalPointerListenerCapture,
+      );
     };
 
     this.pendingActivation = pendingActivation;

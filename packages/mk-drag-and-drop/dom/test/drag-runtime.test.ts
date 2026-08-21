@@ -4,8 +4,10 @@ import {
   centerToCenter,
   lockToXAxis,
   pointerToCenter,
+  pointerToRectDistance,
   type DragLifecycleCallbacks,
   type DragModifierInput,
+  type PointerConfiguration,
   type TargetingAlgorithm,
   type TargetingConstraint,
 } from "../src/index.js";
@@ -117,6 +119,220 @@ describe("DragRuntime", () => {
       },
       expect.any(Object),
     );
+  });
+
+  it("observes descendant pointer movement when application handlers stop propagation", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const firstTarget = createElementWithRect(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const secondTarget = createElementWithRect(
+      createRect({ left: 200, top: 0, width: 20, height: 20 }),
+    );
+    const applicationElement = document.createElement("div");
+    const nestedElement = document.createElement("div");
+    applicationElement.append(nestedElement);
+    document.body.append(applicationElement);
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragUpdate },
+      targetingAlgorithm: pointerToRectDistance,
+    });
+    runtime.registerDropTarget("target-1", firstTarget, "items");
+    runtime.registerDropTarget("target-2", secondTarget, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(nestedElement, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    raf.flush();
+
+    expect(runtime.activeDropTargetId).toBe("target-1");
+    expect(onDragUpdate).toHaveBeenCalledTimes(1);
+
+    applicationElement.addEventListener("pointermove", (event) => {
+      event.stopPropagation();
+    });
+    onDragUpdate.mockClear();
+
+    dispatchPointerMove(nestedElement, {
+      pointerId: 1,
+      clientX: 190,
+      clientY: 10,
+    });
+
+    expect(raf.pendingCount()).toBe(1);
+    raf.flush();
+    expect(runtime.pointerPosition).toEqual({ x: 190, y: 10 });
+    expect(runtime.activeDropTargetId).toBe("target-2");
+    expect(onDragUpdate).toHaveBeenCalledTimes(1);
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        pointerPosition: { x: 190, y: 10 },
+        overlayRect: null,
+        activeDropTargetId: "target-2",
+        previousDropTargetId: "target-1",
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("completes a pointer drop stopped by an application handler exactly once", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const target = createElementWithRect(
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const applicationElement = document.createElement("div");
+    const nestedElement = document.createElement("div");
+    applicationElement.append(nestedElement);
+    document.body.append(applicationElement);
+    applicationElement.addEventListener("pointerup", (event) => {
+      event.stopPropagation();
+    });
+    const lifecycleOrder: string[] = [];
+    const onDragEnd = vi.fn(() => {
+      expect(runtime.isDragging).toBe(false);
+      expect(document.documentElement.style.userSelect).toBe("");
+      lifecycleOrder.push("drag-end");
+    });
+    const onDrop = vi.fn(() => {
+      lifecycleOrder.push("drop");
+    });
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, { onDragEnd, onDrop });
+    runtime.registerDropTarget("target-1", target, "items");
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    dispatchPointerUp(nestedElement, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+    dispatchPointerUp(nestedElement, {
+      pointerId: 1,
+      clientX: 110,
+      clientY: 10,
+    });
+
+    expect(lifecycleOrder).toEqual(["drag-end", "drop"]);
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("cancels a pointer drag stopped by an application handler exactly once", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const applicationElement = document.createElement("div");
+    const nestedElement = document.createElement("div");
+    applicationElement.append(nestedElement);
+    document.body.append(applicationElement);
+    applicationElement.addEventListener("pointercancel", (event) => {
+      event.stopPropagation();
+    });
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntime(runtime, { onDragEnd, onDrop });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerCancel(nestedElement, { pointerId: 1 });
+    dispatchPointerCancel(nestedElement, { pointerId: 1 });
+
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+    expect(onDragEnd).toHaveBeenCalledWith(
+      {
+        draggableId: "item-1",
+        source: "pointer",
+        result: "canceled",
+        overlayRect: null,
+        dropTargetId: null,
+      },
+      expect.any(Object),
+    );
+    expect(onDrop).not.toHaveBeenCalled();
+    expectActiveResourcesReleased(runtime, raf);
+    expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("activates a pending pointer drag from stopped descendant movement", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const applicationElement = document.createElement("div");
+    const nestedElement = document.createElement("div");
+    applicationElement.append(nestedElement);
+    document.body.append(applicationElement);
+    applicationElement.addEventListener("pointermove", (event) => {
+      event.stopPropagation();
+    });
+    const onDragStart = vi.fn();
+    const onDragUpdate = vi.fn();
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragStart, onDragUpdate },
+      pointerConfiguration: { activationDistance: 10 },
+    });
+
+    startRuntimeDrag(runtime, source);
+    expect(runtime.isDragging).toBe(false);
+
+    dispatchPointerMove(nestedElement, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 0,
+    });
+
+    expect(runtime.isDragging).toBe(true);
+    expect(raf.pendingCount()).toBe(1);
+    raf.flush();
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(runtime.pointerPosition).toEqual({ x: 10, y: 0 });
+    expect(onDragUpdate).toHaveBeenCalledTimes(1);
+    expect(onDragUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ pointerPosition: { x: 10, y: 0 } }),
+      expect.any(Object),
+    );
+  });
+
+  it("cancels delayed activation from stopped descendant pointer endings", () => {
+    vi.useFakeTimers();
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const applicationElement = document.createElement("div");
+    const nestedElement = document.createElement("div");
+    applicationElement.append(nestedElement);
+    document.body.append(applicationElement);
+    applicationElement.addEventListener("pointerup", (event) => {
+      event.stopPropagation();
+    });
+    applicationElement.addEventListener("pointercancel", (event) => {
+      event.stopPropagation();
+    });
+    const onDragStart = vi.fn();
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    configureRuntimeWith(runtime, {
+      lifecycleCallbacks: { onDragStart },
+      pointerConfiguration: { activationDelay: 100 },
+    });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerUp(nestedElement, { pointerId: 1 });
+    vi.advanceTimersByTime(100);
+
+    expect(runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerCancel(nestedElement, { pointerId: 1 });
+    vi.advanceTimersByTime(100);
+
+    expect(runtime.isDragging).toBe(false);
+    expect(onDragStart).not.toHaveBeenCalled();
+    expect(removeListener).toHaveBeenCalledTimes(6);
+    expectPointerWindowListenersReleased(removeListener);
   });
 
   it("no-ops active drag recomputation while idle", () => {
@@ -1572,6 +1788,7 @@ function configureRuntimeWith(
     hasDragOverlay?: boolean;
     overlayRelease?: "auto" | "manual";
     modifiers?: readonly DragModifierInput[];
+    pointerConfiguration?: PointerConfiguration;
     targetingAlgorithm?: TargetingAlgorithm;
     targetingConstraint?: TargetingConstraint;
   },
@@ -1584,7 +1801,7 @@ function configureRuntimeWith(
     lifecycleCallbacks: input.lifecycleCallbacks ?? {},
     keyboardConfiguration: undefined,
     modifiers: input.modifiers ?? [],
-    pointerConfiguration: undefined,
+    pointerConfiguration: input.pointerConfiguration,
   });
 }
 
@@ -1682,13 +1899,16 @@ function expectPointerWindowListenersReleased(
   expect(removeListener).toHaveBeenCalledWith(
     "pointermove",
     expect.any(Function),
+    true,
   );
   expect(removeListener).toHaveBeenCalledWith(
     "pointerup",
     expect.any(Function),
+    true,
   );
   expect(removeListener).toHaveBeenCalledWith(
     "pointercancel",
     expect.any(Function),
+    true,
   );
 }

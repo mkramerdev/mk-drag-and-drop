@@ -366,14 +366,17 @@ function expectPointerResourcesReleased(input: {
   expect(input.removeListener).toHaveBeenCalledWith(
     "pointermove",
     expect.any(Function),
+    true,
   );
   expect(input.removeListener).toHaveBeenCalledWith(
     "pointerup",
     expect.any(Function),
+    true,
   );
   expect(input.removeListener).toHaveBeenCalledWith(
     "pointercancel",
     expect.any(Function),
+    true,
   );
   expect(document.documentElement.style.userSelect).toBe("");
   expect(document.body.style.userSelect).toBe("");
