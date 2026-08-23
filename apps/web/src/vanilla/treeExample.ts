@@ -189,6 +189,7 @@ export function mountTreeExample(root: HTMLElement): () => void {
   renderTree();
 
   return () => {
+    controller.cancelDrag();
     clearActiveTreeDropTarget();
     dropTargetElements.clear();
     root.replaceChildren();
@@ -582,12 +583,16 @@ function moveTreeItemToParentIndex(
     return treeState;
   }
 
-  const orderedItemIds = treeState.orderedItemIds.filter((id) => id !== draggableId);
+  const orderedItemIds = treeState.orderedItemIds.filter(
+    (id) => id !== draggableId,
+  );
   const beforeSibling = siblingsAfterRemoval[insertionIndex] ?? null;
   const nextOrderedItemIds = [...orderedItemIds];
 
   if (beforeSibling) {
-    const beforeSiblingIndex = nextOrderedItemIds.indexOf(beforeSibling.draggableId);
+    const beforeSiblingIndex = nextOrderedItemIds.indexOf(
+      beforeSibling.draggableId,
+    );
 
     if (beforeSiblingIndex === -1) {
       return treeState;
@@ -682,7 +687,10 @@ function getInsideDropTargetId(draggableId: string): string {
   return `tree:inside:${draggableId}`;
 }
 
-function getChildrenDropTargetId(parentId: string | null, index: number): string {
+function getChildrenDropTargetId(
+  parentId: string | null,
+  index: number,
+): string {
   return `tree:children:${parentId ?? rootToken}:index:${index}`;
 }
 

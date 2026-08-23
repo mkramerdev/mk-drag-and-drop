@@ -13,6 +13,7 @@ import {
   DragProvider,
   useDraggable,
   useDroppable,
+  useSortable,
 } from "../src/index.js";
 import { DragContext } from "../src/drag-context.js";
 import {
@@ -828,6 +829,7 @@ describe("DragProvider", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "dropped",
         overlayRect: null,
@@ -836,7 +838,12 @@ describe("DragProvider", () => {
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", source: "pointer", dropTargetId: "target-1" },
+      {
+        draggableId: "item-1",
+        group: "items",
+        source: "pointer",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
     raf.restore();
@@ -879,9 +886,13 @@ describe("DragProvider", () => {
     expect(onDragUpdate).toHaveBeenCalledTimes(2);
     expect(onDragUpdate).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        draggableId: "item-1",
+        group: "items",
         source: "pointer",
+        pointerPosition: { x: 112, y: 10 },
         activeDropTargetId: "target-1",
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
       }),
       expect.any(Object),
     );
@@ -892,15 +903,114 @@ describe("DragProvider", () => {
     raf.restore();
   });
 
-  it("announces drag updates only when the active drop target changes", () => {
+  it("forwards normalized source and projected sortable previews unchanged", () => {
     const raf = installMockRaf();
-    const onDragUpdateAnnouncement = vi.fn(({ activeDropTargetId }) =>
-      activeDropTargetId ? `Over ${activeDropTargetId}` : "No target",
-    );
+    const onDragUpdate = vi.fn();
+    const onDragUpdateAnnouncement = vi.fn(() => "Sortable update");
     render(
       <DragProvider
+        onDragUpdate={onDragUpdate}
         announcements={{ onDragUpdate: onDragUpdateAnnouncement }}
       >
+        <SortableBox draggableId="a" />
+        <SortableBox draggableId="b" />
+      </DragProvider>,
+    );
+    const a = screen.getByTestId("sortable-a");
+    const b = screen.getByTestId("sortable-b");
+    stubBoundingClientRect(a, createRect({ top: 0, width: 20, height: 20 }));
+    stubBoundingClientRect(b, createRect({ top: 30, width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(a, { pointerId: 1, clientX: 10, clientY: 10 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 10 });
+      raf.flush();
+    });
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      {
+        draggableId: "a",
+        group: "sortable-items",
+        source: "pointer",
+        pointerPosition: { x: 10, y: 10 },
+        overlayRect: null,
+        activeDropTargetId: "a",
+        previousDropTargetId: null,
+        sortablePreview: {
+          status: "source",
+          placement: {
+            sourceContainerId: null,
+            containerId: null,
+            previousDraggableId: null,
+            nextDraggableId: "b",
+            targetDraggableId: null,
+            side: null,
+          },
+        },
+      },
+      expect.any(Object),
+    );
+    expect(onDragUpdateAnnouncement).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "sortable-items",
+        sortablePreview: expect.objectContaining({ status: "source" }),
+      }),
+    );
+
+    act(() => {
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+      raf.flush();
+    });
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      {
+        draggableId: "a",
+        group: "sortable-items",
+        source: "pointer",
+        pointerPosition: { x: 10, y: 40 },
+        overlayRect: null,
+        activeDropTargetId: "b",
+        previousDropTargetId: "a",
+        sortablePreview: {
+          status: "projected",
+          placement: {
+            sourceContainerId: null,
+            containerId: null,
+            previousDraggableId: "b",
+            nextDraggableId: null,
+            targetDraggableId: "b",
+            side: "after",
+          },
+        },
+      },
+      expect.any(Object),
+    );
+    expect(onDragUpdateAnnouncement).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "sortable-items",
+        sortablePreview: expect.objectContaining({
+          status: "projected",
+          placement: expect.objectContaining({
+            previousDraggableId: "b",
+            nextDraggableId: null,
+          }),
+        }),
+      }),
+    );
+
+    act(() =>
+      dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 40 }),
+    );
+    raf.restore();
+  });
+
+  it("announces drag updates only when the active drop target changes", () => {
+    const raf = installMockRaf();
+    const onDragUpdateAnnouncement = vi.fn((event) =>
+      event.activeDropTargetId
+        ? `Over ${event.activeDropTargetId}`
+        : "No target",
+    );
+    render(
+      <DragProvider announcements={{ onDragUpdate: onDragUpdateAnnouncement }}>
         <DraggableBox />
         <DroppableBox dropTargetId="target-1" testId="droppable-1" />
         <DroppableBox dropTargetId="target-2" testId="droppable-2" />
@@ -932,6 +1042,12 @@ describe("DragProvider", () => {
     });
 
     expect(onDragUpdateAnnouncement).toHaveBeenCalledTimes(1);
+    expect(onDragUpdateAnnouncement).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "items",
+        sortablePreview: { status: "inactive" },
+      }),
+    );
     expect(screen.getByText("Over target-1")).toBeInTheDocument();
 
     act(() => {
@@ -947,6 +1063,12 @@ describe("DragProvider", () => {
     });
 
     expect(onDragUpdateAnnouncement).toHaveBeenCalledTimes(2);
+    expect(onDragUpdateAnnouncement).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "items",
+        sortablePreview: { status: "inactive" },
+      }),
+    );
     expect(screen.getByText("Over target-2")).toBeInTheDocument();
 
     act(() => {
@@ -1141,6 +1263,16 @@ function DraggableBox() {
   );
 }
 
+function SortableBox({ draggableId }: { draggableId: string }) {
+  const sortable = useSortable({ draggableId, group: "sortable-items" });
+
+  return (
+    <div {...sortable} data-testid={`sortable-${draggableId}`}>
+      {draggableId}
+    </div>
+  );
+}
+
 function DroppableBox({
   dropTargetId = "target-1",
   testId = "droppable",
@@ -1166,7 +1298,11 @@ function ReleaseStateOverlayProbe() {
       onDragEnd={() => {
         setReleaseLabel("ready");
       }}
-      dragOverlay={({ phase }) => <div>{phase}:{releaseLabel}</div>}
+      dragOverlay={({ phase }) => (
+        <div>
+          {phase}:{releaseLabel}
+        </div>
+      )}
     >
       <DraggableBox />
       <DroppableBox />

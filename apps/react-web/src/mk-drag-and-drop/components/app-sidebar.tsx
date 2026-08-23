@@ -1,32 +1,32 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@repo/shared"
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@repo/shared";
 
 type SidebarLink = {
-  title: string
-  href: string
-}
+  title: string;
+  href: string;
+};
 
 type SidebarGroup = {
-  title: string
-  path: string
-  href?: string
-  items: SidebarLink[]
-}
+  title: string;
+  path: string;
+  href?: string;
+  items: SidebarLink[];
+};
 
 type DocsVersion = {
-  label: string
-  value: string
-}
+  label: string;
+  value: string;
+};
 
-const projectBase = "/projects/mk-drag-and-drop"
+const projectBase = "/projects/mk-drag-and-drop";
 
-const defaultDocsVersion: DocsVersion = { label: "v0.2.0", value: "0.2.0" }
+const defaultDocsVersion: DocsVersion = { label: "v0.5.0", value: "0.5.0" };
 
-const docsVersions: DocsVersion[] = [defaultDocsVersion]
+const docsVersions: DocsVersion[] = [defaultDocsVersion];
 
 const primaryItems: SidebarLink[] = [
   {
@@ -37,7 +37,7 @@ const primaryItems: SidebarLink[] = [
     title: "Quickstart",
     href: `${projectBase}/quickstart`,
   },
-]
+];
 
 const navigationGroups: SidebarGroup[] = [
   {
@@ -46,7 +46,10 @@ const navigationGroups: SidebarGroup[] = [
     items: [
       { title: "Core concepts", href: `${projectBase}/concepts/core-concepts` },
       { title: "Lifecycle", href: `${projectBase}/concepts/lifecycle` },
-      { title: "Overlays and modifiers", href: `${projectBase}/concepts/overlays-and-modifiers` },
+      {
+        title: "Overlays and modifiers",
+        href: `${projectBase}/concepts/overlays-and-modifiers`,
+      },
       { title: "Sortable", href: `${projectBase}/concepts/sortable` },
       { title: "Targeting", href: `${projectBase}/concepts/targeting` },
     ],
@@ -75,26 +78,27 @@ const navigationGroups: SidebarGroup[] = [
       { title: "Groups", href: `${projectBase}/examples/groups` },
       { title: "Kanban", href: `${projectBase}/examples/kanban` },
       { title: "Sortable list", href: `${projectBase}/examples/sortable-list` },
+      { title: "Carrier table", href: `${projectBase}/examples/carrier-table` },
       { title: "Tree", href: `${projectBase}/examples/tree` },
     ],
   },
-]
+];
 
 export function MkDragAndDropAppSidebar({
   className,
   onNavigate,
 }: {
-  className?: string
-  onNavigate?: () => void
+  className?: string;
+  onNavigate?: () => void;
 }) {
-  const pathname = usePathname()
-  const [version, setVersion] = useState(defaultDocsVersion.value)
+  const pathname = usePathname();
+  const [version, setVersion] = useState(defaultDocsVersion.value);
 
   return (
     <aside
       className={cn(
         "border-sidebar-border bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:h-screen md:border-r",
-        className
+        className,
       )}
     >
       <div className="flex h-full flex-col gap-4 px-3 py-4">
@@ -125,22 +129,24 @@ export function MkDragAndDropAppSidebar({
         </nav>
       </div>
     </aside>
-  )
+  );
 }
 
 function VersionSwitcher({
   value,
   onValueChange,
 }: {
-  value: string
-  onValueChange: (value: string) => void
+  value: string;
+  onValueChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const selectedVersion = docsVersions.find((version) => version.value === value) ?? defaultDocsVersion
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectedVersion =
+    docsVersions.find((version) => version.value === value) ??
+    defaultDocsVersion;
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
 
     function handlePointerDown(event: PointerEvent) {
       if (
@@ -148,21 +154,21 @@ function VersionSwitcher({
         event.target instanceof Node &&
         !rootRef.current.contains(event.target)
       ) {
-        setOpen(false)
+        setOpen(false);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false)
+      if (event.key === "Escape") setOpen(false);
     }
 
-    document.addEventListener("pointerdown", handlePointerDown)
-    document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown)
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [open])
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
   return (
     <div ref={rootRef} className="relative">
@@ -172,7 +178,7 @@ function VersionSwitcher({
         aria-expanded={open}
         className={cn(
           "flex h-12 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50",
-          open && "bg-sidebar-accent text-sidebar-accent-foreground"
+          open && "bg-sidebar-accent text-sidebar-accent-foreground",
         )}
         onClick={() => setOpen((current) => !current)}
       >
@@ -180,7 +186,9 @@ function VersionSwitcher({
           <GalleryIcon />
         </span>
         <span className="min-w-0 flex flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium leading-5">MK's Drag and Drop</span>
+          <span className="truncate font-medium leading-5">
+            MK's Drag and Drop
+          </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">
             {selectedVersion.label}
           </span>
@@ -196,8 +204,8 @@ function VersionSwitcher({
               type="button"
               className="flex w-full cursor-pointer items-center rounded-sm px-2 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
               onClick={() => {
-                onValueChange(version.value)
-                setOpen(false)
+                onValueChange(version.value);
+                setOpen(false);
               }}
             >
               {version.label}
@@ -211,7 +219,7 @@ function VersionSwitcher({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function SidebarCollapsibleGroup({
@@ -219,18 +227,18 @@ function SidebarCollapsibleGroup({
   pathname,
   onNavigate,
 }: {
-  group: SidebarGroup
-  pathname: string
-  onNavigate?: () => void
+  group: SidebarGroup;
+  pathname: string;
+  onNavigate?: () => void;
 }) {
-  const sectionActive = isActivePath(pathname, group.path)
-  const labelActive = group.href ? pathname === group.href : false
-  const [open, setOpen] = useState(sectionActive)
-  const expanded = open || sectionActive
+  const sectionActive = isActivePath(pathname, group.path);
+  const labelActive = group.href ? pathname === group.href : false;
+  const [open, setOpen] = useState(sectionActive);
+  const expanded = open || sectionActive;
   const labelClassName = cn(
     "min-w-0 flex-1 rounded-md px-2 py-2 text-left font-medium text-sidebar-foreground/75 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50",
-    labelActive && "bg-sidebar-accent text-sidebar-accent-foreground"
-  )
+    labelActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+  );
 
   return (
     <div className="space-y-1">
@@ -279,7 +287,7 @@ function SidebarCollapsibleGroup({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function SidebarItem({
@@ -287,9 +295,9 @@ function SidebarItem({
   active,
   onNavigate,
 }: {
-  item: SidebarLink
-  active: boolean
-  onNavigate?: () => void
+  item: SidebarLink;
+  active: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
@@ -297,17 +305,17 @@ function SidebarItem({
       onClick={onNavigate}
       className={cn(
         "block rounded-md px-2 py-2 text-sidebar-foreground/75 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50",
-        active && "bg-sidebar-accent text-sidebar-accent-foreground"
+        active && "bg-sidebar-accent text-sidebar-accent-foreground",
       )}
     >
       {item.title}
     </Link>
-  )
+  );
 }
 
 function isActivePath(pathname: string, href: string) {
-  if (href === projectBase) return pathname === href
-  return pathname === href || pathname.startsWith(`${href}/`)
+  if (href === projectBase) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function GalleryIcon() {
@@ -325,7 +333,7 @@ function GalleryIcon() {
       <path d="M3 5h12v12H3z" />
       <path d="M7 9h12v12H7z" />
     </svg>
-  )
+  );
 }
 
 function ChevronsIcon() {
@@ -343,7 +351,7 @@ function ChevronsIcon() {
       <path d="m7 15 5 5 5-5" />
       <path d="m7 9 5-5 5 5" />
     </svg>
-  )
+  );
 }
 
 function CheckIcon() {
@@ -360,5 +368,5 @@ function CheckIcon() {
     >
       <path d="m20 6-11 11-5-5" />
     </svg>
-  )
+  );
 }

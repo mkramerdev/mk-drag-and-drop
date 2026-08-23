@@ -1,5 +1,6 @@
 import "./style.css";
 import { mountBasicDrag } from "./vanilla/basicDrag";
+import { mountCarrierTable } from "./vanilla/carrierTable";
 import { mountDropzoneList } from "./vanilla/dropzoneList";
 import { mountGroupedExample } from "./vanilla/groupedExample";
 import { mountKanbanExample } from "./vanilla/kanbanExample";
@@ -9,7 +10,7 @@ import { mountTreeExample } from "./vanilla/treeExample";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
-type ExampleRoute = "examples" | "sortable-10k" | "not-found";
+type ExampleRoute = "examples" | "carrier-table" | "sortable-10k" | "not-found";
 
 if (app) {
   const shell = document.createElement("main");
@@ -21,6 +22,8 @@ if (app) {
 
   if (route === "sortable-10k") {
     mountSortablePerformanceExample(page);
+  } else if (route === "carrier-table") {
+    mountCarrierTable(page);
   } else if (route === "examples") {
     mountExamplesPage(page);
   } else {
@@ -38,6 +41,10 @@ function getCurrentRoute(): ExampleRoute {
 
   if (window.location.pathname === "/sortable-10k") {
     return "sortable-10k";
+  }
+
+  if (window.location.pathname === "/carrier-table") {
+    return "carrier-table";
   }
 
   return "not-found";
@@ -69,6 +76,10 @@ function mountExamplesPage(root: HTMLElement): () => void {
   const kanbanExample = document.createElement("div");
   const groupedExample = document.createElement("div");
   const treeExample = document.createElement("div");
+  const carrierLink = document.createElement("a");
+  carrierLink.className = "carrierExampleLink";
+  carrierLink.href = "/carrier-table";
+  carrierLink.textContent = "Open carrier-backed table parity example";
 
   const cleanups = [
     mountSortableList(sortableExample),
@@ -80,6 +91,7 @@ function mountExamplesPage(root: HTMLElement): () => void {
   ];
 
   examples.append(
+    carrierLink,
     sortableExample,
     basicExample,
     dropzoneExample,

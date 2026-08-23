@@ -11,6 +11,7 @@ export type DragEndResult =
 
 export type DragStartEvent = {
   draggableId: string;
+  group: string;
   source: DragSource;
   pointerPosition: DragPoint;
   sourceRect: DragRect;
@@ -18,15 +19,18 @@ export type DragStartEvent = {
 
 export type DragUpdateEvent = {
   draggableId: string;
+  group: string;
   source: DragSource;
   pointerPosition: DragPoint;
   overlayRect: DragRect | null;
   activeDropTargetId: string | null;
   previousDropTargetId: string | null;
+  sortablePreview: SortablePreview;
 };
 
 export type DragEndEvent = {
   draggableId: string;
+  group: string;
   source: DragSource;
   result: DragEndResult;
   overlayRect: DragRect | null;
@@ -35,6 +39,7 @@ export type DragEndEvent = {
 
 export type DropEvent = {
   draggableId: string;
+  group: string;
   source: DragSource;
   dropTargetId: string;
   sortablePlacement?: SortableDropPlacement;
@@ -42,18 +47,29 @@ export type DropEvent = {
 
 export type ActiveDragResetEvent = {
   draggableId: string;
+  group: string;
   source: DragSource;
 };
+
+export type SortablePreview =
+  | {
+      status: "inactive";
+    }
+  | {
+      status: "source";
+      placement: SortableDropPlacement;
+    }
+  | {
+      status: "projected";
+      placement: SortableDropPlacement;
+    };
 
 export type DragLifecycleHelpers = {
   getDropTargetRect: (dropTargetId: string) => DragRect | null;
 };
 
 export type DragLifecycleCallbacks = {
-  onDragStart?: (
-    event: DragStartEvent,
-    helpers: DragLifecycleHelpers,
-  ) => void;
+  onDragStart?: (event: DragStartEvent, helpers: DragLifecycleHelpers) => void;
   onDragUpdate?: (
     event: DragUpdateEvent,
     helpers: DragLifecycleHelpers,

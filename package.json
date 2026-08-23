@@ -4,9 +4,12 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "test:e2e": "playwright test",
+    "test:e2e:carrier": "playwright test e2e/carrier-table.spec.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "turbo": "^2.9.18"

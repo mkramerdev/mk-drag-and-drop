@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  pointerToCenter,
-} from "../src/index.js";
+import { pointerToCenter } from "../src/index.js";
 import {
   createDomDraggable,
   createDomDropContainer,
@@ -85,6 +83,94 @@ describe("DOM behaviors", () => {
     expect(runtime.requestDragStart).toHaveBeenCalledTimes(1);
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Space and Enter available to an interactive button handle", () => {
+    const element = document.createElement("div");
+    const button = document.createElement("button");
+    button.dataset.dndDragHandle = "true";
+    element.append(button);
+    const runtime = createDraggableRuntime();
+    const draggable = createDomDraggable({
+      runtime,
+      draggableId: "item-1",
+      group: "items",
+      getElement: () => element,
+    });
+    const onClick = vi.fn();
+    button.addEventListener("click", onClick);
+
+    for (const key of ["Space", "Enter"]) {
+      const event = {
+        target: button,
+        key,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      draggable.onKeyDown(event);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    button.click();
+
+    expect(runtime.handleSourceKeyboardKeyDown).not.toHaveBeenCalled();
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts keyboard drag from a noninteractive handle", () => {
+    const element = document.createElement("div");
+    const handle = document.createElement("span");
+    handle.tabIndex = 0;
+    handle.dataset.dndDragHandle = "true";
+    element.append(handle);
+    const runtime = createDraggableRuntime();
+    const draggable = createDomDraggable({
+      runtime,
+      draggableId: "item-1",
+      group: "items",
+      getElement: () => element,
+    });
+    const event = {
+      target: handle,
+      key: "Space",
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    draggable.onKeyDown(event);
+
+    expect(runtime.handleSourceKeyboardKeyDown).toHaveBeenCalledWith({
+      draggableId: "item-1",
+      group: "items",
+      element,
+      key: "Space",
+    });
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let handle matching bypass editable descendant protection", () => {
+    const element = document.createElement("div");
+    const handle = document.createElement("span");
+    const editable = document.createElement("span");
+    handle.dataset.dndDragHandle = "true";
+    Object.defineProperty(editable, "isContentEditable", { value: true });
+    handle.append(editable);
+    element.append(handle);
+    const runtime = createDraggableRuntime();
+    const draggable = createDomDraggable({
+      runtime,
+      draggableId: "item-1",
+      group: "items",
+      getElement: () => element,
+    });
+
+    draggable.onKeyDown({
+      target: editable,
+      key: "Space",
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+
+    expect(runtime.handleSourceKeyboardKeyDown).not.toHaveBeenCalled();
   });
 
   it("createDomDroppable registers and unregisters by ref lifecycle", () => {

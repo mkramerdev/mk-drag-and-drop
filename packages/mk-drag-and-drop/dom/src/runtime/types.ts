@@ -8,15 +8,9 @@ import type {
   TargetingAlgorithm,
   TargetingConstraint,
 } from "../targeting/types.js";
-import type {
-  DragLifecycleCallbacks,
-} from "./lifecycle.js";
-import type {
-  KeyboardDragStartInput,
-} from "../input/keyboard-drag.js";
-import type {
-  PointerDragActivationRequest,
-} from "../input/pointer-activation.js";
+import type { DragLifecycleCallbacks } from "./lifecycle.js";
+import type { KeyboardDragStartInput } from "../input/keyboard-drag.js";
+import type { PointerDragActivationRequest } from "../input/pointer-activation.js";
 import type { DragGroup } from "./drop-target-registry.js";
 
 export type Point = DragPoint;
@@ -57,6 +51,7 @@ export type StartDragInput =
   | (BaseStartDragInput & {
       inputType: "pointer";
       pointerId: number;
+      element: HTMLElement;
     })
   | (BaseStartDragInput & {
       inputType: "keyboard";

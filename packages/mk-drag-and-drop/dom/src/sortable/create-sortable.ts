@@ -52,6 +52,7 @@ export function createDomSortable(
       registry,
       runtime: input.runtime,
       draggableId: registeredDraggableId,
+      group,
       element: registeredElement,
     });
     registeredElementRef = null;

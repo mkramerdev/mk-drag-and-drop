@@ -19,7 +19,9 @@ describe("createDragController", () => {
   let controller: DragController | null = null;
 
   afterEach(() => {
-    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
+    controller
+      ? getControllerRuntime(controller).releaseActiveDragResources()
+      : undefined;
     controller = null;
     document.body.innerHTML = "";
     vi.restoreAllMocks();
@@ -57,6 +59,69 @@ describe("createDragController", () => {
     controller.remeasureDropTargets(input);
 
     expect(remeasureSpy).toHaveBeenCalledWith(input);
+  });
+
+  it("delegates cancellation to the runtime", () => {
+    controller = createDragController();
+    const runtime = getControllerRuntime(controller);
+    const cancelSpy = vi.spyOn(runtime, "cancelDrag");
+
+    controller.cancelDrag();
+
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("no-ops cancellation while idle", () => {
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    controller = createDragController({ onDragEnd, onDrop });
+
+    expect(() => controller?.cancelDrag()).not.toThrow();
+    expect(onDragEnd).not.toHaveBeenCalled();
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("cancels an active pointer drag without another update or drop and remains reusable", () => {
+    const onDragStart = vi.fn();
+    const onDragUpdate = vi.fn();
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    controller = createDragController({
+      dragOverlay: () => {
+        const overlay = document.createElement("div");
+        overlay.className = "drag-overlay-child";
+        return overlay;
+      },
+      onDragStart,
+      onDragUpdate,
+      onDragEnd,
+      onDrop,
+    });
+    const source = createElementWithRect();
+
+    startDrag(controller, source);
+    expect(getOverlayChild()).not.toBeNull();
+    const updateCountBeforeCancel = onDragUpdate.mock.calls.length;
+    controller.cancelDrag();
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draggableId: "item",
+        group: "items",
+        source: "pointer",
+        result: "canceled",
+        dropTargetId: null,
+      }),
+      expect.any(Object),
+    );
+    expect(onDragUpdate).toHaveBeenCalledTimes(updateCountBeforeCancel);
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(getOverlayChild()).toBeNull();
+
+    startDrag(controller, source);
+    expect(onDragStart).toHaveBeenCalledTimes(2);
+    controller.cancelDrag();
+    expect(onDragEnd).toHaveBeenCalledTimes(2);
   });
 
   it("exposes active drag recomputation on the controller", () => {
@@ -97,11 +162,13 @@ describe("createDragController", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 0, y: 0 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -166,7 +233,11 @@ describe("createDragController", () => {
       onDragEnd,
       onDrop,
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, source);
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
@@ -182,6 +253,7 @@ describe("createDragController", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "items",
         source: "pointer",
         result: "dropped",
         overlayRect: null,
@@ -190,7 +262,12 @@ describe("createDragController", () => {
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", source: "pointer", dropTargetId: "target" },
+      {
+        draggableId: "item",
+        group: "items",
+        source: "pointer",
+        dropTargetId: "target",
+      },
       expect.any(Object),
     );
 
@@ -217,6 +294,39 @@ describe("createDragController", () => {
     expect(getLiveRegion()?.textContent).toBe("Started");
   });
 
+  it("passes the captured group to announcement callbacks", () => {
+    const announceStart = vi.fn(() => "Started");
+    const announceUpdate = vi.fn(() => "Moved");
+    const announceEnd = vi.fn(() => "Ended");
+    controller = createDragController({
+      announcements: {
+        onDragStart: announceStart,
+        onDragUpdate: announceUpdate,
+        onDragEnd: announceEnd,
+      },
+    });
+    const source = createElementWithRect();
+    const target = createElementWithRect(
+      createRect({ left: 100, width: 20, height: 20 }),
+    );
+    const raf = installMockRaf();
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
+
+    startDrag(controller, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
+    raf.flush();
+    getControllerRuntime(controller).cancelDrag();
+
+    expect(announceStart.mock.calls[0]?.[0].group).toBe("items");
+    expect(announceUpdate.mock.calls[0]?.[0].group).toBe("items");
+    expect(announceEnd.mock.calls[0]?.[0].group).toBe("items");
+    raf.restore();
+  });
+
   it("ignores null announcement messages", () => {
     controller = createDragController({
       announcements: {
@@ -237,7 +347,11 @@ describe("createDragController", () => {
       createRect({ left: 100, width: 20, height: 20 }),
     );
     controller = createDragController({ onDragUpdate });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, source);
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
@@ -344,7 +458,11 @@ describe("createDragController", () => {
         onDrop: onDropAnnouncement,
       },
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, source);
 
@@ -520,7 +638,11 @@ describe("createDragController", () => {
       dragOverlay: () => overlayElement,
       targetingAlgorithm,
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, createElementWithRect());
     expect(targetingAlgorithm).toHaveBeenLastCalledWith(
@@ -557,7 +679,11 @@ describe("createDragController", () => {
       dragOverlay: () => overlayElement,
       targetingAlgorithm,
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, createElementWithRect());
     expect(targetingAlgorithm).toHaveBeenLastCalledWith(
@@ -593,7 +719,11 @@ describe("createDragController", () => {
       dragOverlay: () => overlayElement,
       targetingAlgorithm,
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, createElementWithRect());
 
@@ -661,7 +791,11 @@ describe("createDragController", () => {
         return element;
       },
     });
-    getControllerRuntime(controller).registerDropTarget("target", target, "items");
+    getControllerRuntime(controller).registerDropTarget(
+      "target",
+      target,
+      "items",
+    );
 
     startDrag(controller, createElementWithRect());
     dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 10 });
@@ -809,6 +943,7 @@ describe("createDragController", () => {
     });
 
     expect(Object.keys(controller)).toEqual([
+      "cancelDrag",
       "remeasureDropTargets",
       "remeasureOverlay",
       "recomputeActiveDrag",
@@ -818,6 +953,7 @@ describe("createDragController", () => {
     expect(controller).not.toHaveProperty("update");
     expect(controller).not.toHaveProperty("configure");
     expect(controller).not.toHaveProperty("finishOverlay");
+    expect(controller).toHaveProperty("cancelDrag");
     expect(controller).toHaveProperty("remeasureDropTargets");
     expect(controller).toHaveProperty("remeasureOverlay");
     expect(controller).toHaveProperty("recomputeActiveDrag");

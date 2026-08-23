@@ -1,0 +1,319 @@
+---
+title: "Carrier-backed tables"
+summary: "Sortable rows and logical columns with stable geometry carriers and live visible projection."
+---
+
+# Carrier-backed tables
+
+The runnable Vanilla and React playgrounds use invisible geometry carriers to
+make table rows and logical columns sortable while keeping real table/editor
+content in the visible table.
+
+- Vanilla source: `apps/web/src/vanilla/carrierTable.ts`
+- React source: `apps/react-web/src/react/carrierTable.tsx`
+- Shared model: `apps/shared/carrierTableModel.ts`
+- Shared normalized-anchor helper: `apps/shared/sortablePlacement.ts`
+- Both playground routes: `/carrier-table`
+
+The page also contains ordinary vertical and horizontal sortables with the same
+ids, unequal dimensions, axes, boundaries, targeting, constraints, pointer
+activation, and overlay strategy. They are behavioral parity references, not a
+required production architecture.
+
+## Why carriers
+
+A visible table row is one `<tr>`, so one row carrier can represent its complete
+geometry. A logical column is different: its header and body cells are multiple
+elements spread across rows. No single table-content element represents the
+whole logical column without moving real table/editor content into drag
+infrastructure.
+
+Carriers solve only geometry and package-owned preview order:
+
+- one row carrier matches one complete row;
+- one column carrier matches one logical column across every row;
+- carriers contain no table or editor content;
+- the visible table remains application-rendered;
+- row and column carriers use separate groups, so they cannot target each other;
+- the thin menu button is a carrier descendant, so the same button can click or
+  activate pointer drag for that carrier.
+
+## Data flow
+
+```text
+canonical table model
+        |
+        +-- source/no-op --> canonical visible order
+        |
+DragUpdateEvent.sortablePreview
+        |
+        +-- projected ----> transient visible row/column order
+
+DropEvent.sortablePlacement
+        |
+        +-----------------> one canonical commit
+```
+
+Canonical row and column arrays never change in `onDragUpdate`. The visible
+`<tr>` order or every header/body cell order is rendered from transient projected
+arrays. `onDrop` applies normalized placement once and clears projection.
+Preview state is presentation, not an editor/document transaction.
+
+## Carrier layout
+
+The table stage contains two absolute overlay lanes. Carriers participate in
+normal flex flow inside each lane:
+
+```css
+.tableStage {
+  position: relative;
+}
+
+.rowCarrierLane,
+.columnCarrierLane {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rowCarrierLane {
+  display: flex;
+  flex-direction: column;
+}
+
+.columnCarrierLane {
+  display: flex;
+  flex-direction: row;
+}
+
+.carrier {
+  position: relative;
+  pointer-events: none;
+}
+
+.carrierMenuButton {
+  position: absolute;
+  pointer-events: auto;
+}
+```
+
+Package DOM reordering therefore causes carrier geometry to reflow. Reordering
+individually fixed-position absolute carriers changes DOM anchors but does not
+change their geometry, so it cannot provide equivalent hitboxes.
+
+Required invariants:
+
+- carriers remain mounted and connected throughout the drag;
+- same-group carriers are siblings in one stable lane;
+- each carrier matches the represented row height or column width;
+- overlay lanes are outside table document flow;
+- carrier children reflow in normal flex/grid flow inside the absolute lane;
+- table/editor content is never moved into carriers;
+- carrier buttons are descendants and re-enable pointer events;
+- React does not reconcile carrier order from canonical state while the package
+  owns preview order;
+- a virtualized source carrier stays mounted during the active drag;
+- application projection, not carrier movement alone, moves visible rows and
+  every cell of a logical column.
+
+## Groups and one scope
+
+```ts
+const tableRowGroup = "carrier-table-rows";
+const tableColumnGroup = "carrier-table-columns";
+const referenceRowGroup = "reference-rows";
+const referenceColumnGroup = "reference-columns";
+```
+
+Use one controller/provider. Route by captured `event.group`, never by an id
+prefix:
+
+```ts
+switch (event.group) {
+  case "document-blocks":
+    break;
+  case tableRowGroup:
+    break;
+  case tableColumnGroup:
+    break;
+}
+```
+
+Groups isolate targeting and identify lifecycle domains. Row and column items
+may use ordinary logical ids without encoding type information.
+
+## Applying normalized placement
+
+The shared helper consumes only the package's normalized anchors:
+
+```ts
+function getProjectedOrder(
+  canonicalOrder: readonly string[],
+  event: DragUpdateEvent,
+): readonly string[] {
+  if (event.sortablePreview.status === "inactive") {
+    return canonicalOrder;
+  }
+
+  if (event.sortablePreview.status === "source") {
+    return canonicalOrder;
+  }
+
+  return applySortablePlacement(
+    canonicalOrder,
+    event.draggableId,
+    event.sortablePreview.placement,
+  );
+}
+```
+
+`applySortablePlacement` removes the dragged id, prefers exact target/side, and
+falls back to previous/next anchors. It does not inspect pointers, rectangles,
+target midpoint, direction, hysteresis, active target, or carrier DOM. Candidate
+selection and placement have already happened inside the package.
+
+## React lifecycle
+
+```tsx
+<DragProvider
+  onDragUpdate={(event) => {
+    if (event.group === tableColumnGroup) {
+      setProjectedColumns(getProjectedOrder(canonicalColumns, event));
+    }
+  }}
+  onDragEnd={(event) => {
+    if (event.result !== "dropped") {
+      clearProjection(event.group);
+    }
+  }}
+  onDrop={(event) => {
+    if (event.group === tableColumnGroup && event.sortablePlacement) {
+      commitColumnsOnce(event.sortablePlacement);
+    }
+
+    clearProjection(event.group);
+  }}
+  dragOverlay={({ dragState }) => (
+    <div
+      className={
+        dragState.group === tableRowGroup
+          ? "blankRowOverlay"
+          : "blankColumnOverlay"
+      }
+      aria-hidden="true"
+    />
+  )}
+>
+  <CarrierTable />
+</DragProvider>
+```
+
+`onDragEnd` precedes `onDrop`. Keep a successful projected order until drop
+commits to prevent a canonical-order flash. Clear immediately when end result is
+`canceled`, `no-target`, or `invalid-target`.
+
+Stable keyed carrier components remain mounted while projected visible rows or
+cells rerender. The carrier registration is not replaced by a projection
+rerender.
+
+## Vanilla lifecycle
+
+```ts
+const controller = createDragController({
+  onDragUpdate(event) {
+    if (event.group === tableRowGroup) {
+      const next = getProjectedOrder(canonicalRows, event);
+      if (!ordersEqual(projectedRows, next)) {
+        projectedRows = [...next];
+        renderVisibleTable();
+        scheduleGeometrySync(event.group);
+      }
+    }
+  },
+  onDragEnd(event) {
+    if (event.result !== "dropped") clearProjection(event.group);
+  },
+  onDrop(event) {
+    if (event.group === tableRowGroup && event.sortablePlacement) {
+      canonicalRows = applySortablePlacement(
+        canonicalRows,
+        event.draggableId,
+        event.sortablePlacement,
+      );
+      rowCommitCount += 1;
+    }
+    clearProjection(event.group);
+  },
+});
+```
+
+The visible table is rendered from `projectedRows` and `projectedColumns`. A
+column projection reorders headers and the corresponding cells in every body
+row while preserving each logical width.
+
+## Layout, scrolling, and recompute
+
+When visible projection or scroll changes geometry, schedule after the DOM
+change:
+
+```ts
+controller.remeasureDropTargets({ group });
+controller.recomputeActiveDrag();
+```
+
+React uses the equivalent hooks:
+
+```tsx
+const remeasureDropTargets = useRemeasureDropTargets();
+const recomputeActiveDrag = useRecomputeActiveDrag();
+
+useLayoutEffect(() => {
+  if (!projectionChanged || framePending) return;
+
+  const frame = requestAnimationFrame(() => {
+    remeasureDropTargets({ group });
+    recomputeActiveDrag();
+  });
+
+  return () => cancelAnimationFrame(frame);
+}, [group, projectionChanged, remeasureDropTargets, recomputeActiveDrag]);
+```
+
+Remeasurement updates cached geometry but publishes nothing. Recompute uses the
+last raw pointer, reapplies modifiers, and follows the same completed preview
+path without implicit remeasurement. Compare orders, keep at most one pending
+frame, and cancel it on drag end/unmount. For edge autoscroll, synchronize only
+after the scroll position actually changes.
+
+## Menu buttons
+
+The thin, absolutely positioned menu button is both a normal button and a
+pointer handle. A quick press/release before drag activation toggles its menu.
+Pointer delay and distance use OR semantics. Once drag activates, the related
+generated click is suppressed once, so completed drag does not open the menu;
+the next intentional click still works.
+
+Space and Enter activate the button/menu. Interactive-element filtering prevents
+those keys from starting keyboard drag. Provide a separate appropriate keyboard
+handle or domain menu commands for keyboard sorting. Buttons have accessible
+row/column menu names.
+
+## Overlays
+
+The examples return real blank measurable overlay elements. Row overlays match
+the complete row carrier; column overlays match the complete column carrier.
+They are pointer-inert and routed by `dragState.group`. The source rect comes
+from the carrier, not the thin button, and the runtime uses its translated rect
+before overlay measurement.
+
+Sortable pointer targeting itself can work without an overlay. The examples use
+rect-based `centerToCenter`, so they provide overlays. Returning `null` would not
+be equivalent to a measurable blank element.
+
+## Cancellation and invalid targets
+
+Cancellation emits no artificial update. The package restores carrier DOM, and
+`onDragEnd` restores visible projection from canonical data. No commit counter
+changes. If an example-owned action disconnects the active target, the next
+update/recompute excludes its stale anchor. Release reports `invalid-target`,
+does not call `onDrop`, and restores canonical presentation.

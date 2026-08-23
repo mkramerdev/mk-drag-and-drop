@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import * as reactApi from "../src/index.js";
+import type { DragUpdateEvent, SortablePreview } from "../src/index.js";
 
 const removedPublicNames = [
   "cleanup",
@@ -24,5 +25,16 @@ describe("React public API", () => {
     expect(reactApi).toHaveProperty("useRemeasureDropTargets");
     expect(reactApi).toHaveProperty("useRecomputeActiveDrag");
     expect(reactApi).toHaveProperty("useRemeasureOverlay");
+  });
+
+  it("re-exports the final sortable preview contract", () => {
+    const preview: SortablePreview = { status: "inactive" };
+    const eventPreview: DragUpdateEvent["sortablePreview"] = preview;
+    const hasAlternateField: "sortablePreviewPlacement" extends keyof DragUpdateEvent
+      ? true
+      : false = false;
+
+    expect(eventPreview).toEqual({ status: "inactive" });
+    expect(hasAlternateField).toBe(false);
   });
 });

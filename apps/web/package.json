@@ -10,7 +10,8 @@
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
-    "@mk-drag-and-drop/dom": "workspace:*"
+    "@mk-drag-and-drop/dom": "workspace:*",
+    "@repo/carrier-table-example": "workspace:*"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

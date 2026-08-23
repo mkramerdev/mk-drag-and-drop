@@ -41,7 +41,6 @@ import {
   type DragGroup,
   type RegisterDropTargetOptions,
   type RemeasureDropTargetsInput,
-  type RemovedDropTarget,
   type SortableDropPlacement,
   type SortableItemPlacement,
 } from "./drop-target-registry.js";
@@ -55,7 +54,9 @@ import type {
   DragUpdateEvent,
   DropEvent,
   ActiveDragResetEvent,
+  SortablePreview,
 } from "./lifecycle.js";
+import { getSortableCoordinator } from "./sortable-coordinator.js";
 import type {
   DragOverlayHostUpdate,
   DragRuntimeConfigureInput,
@@ -80,24 +81,16 @@ type DragSession =
       sourceRect: DragRect;
       sourceContainerId: string | null;
       sourceSortablePlacement: SortableItemPlacement | null;
+      sourceSortableElement: HTMLElement | null;
       overlayMeasurement: DragOverlayMeasurement | null;
       startPointerPosition: Point;
       rawPointerPosition: Point;
       pointerPosition: Point;
       activeDropTargetId: string | null;
+      sortablePreview: SortablePreview;
     };
 
 type DraggingSession = Extract<DragSession, { status: "dragging" }>;
-
-type DragUpdateSubscriptionEvent = DragUpdateEvent & {
-  placementPosition: Point;
-  movementPosition: Point;
-};
-
-type DragStartSubscriptionEvent = DragStartEvent & {
-  placementPosition: Point;
-  movementPosition: Point;
-};
 
 export type StaleDomBindingRecord = {
   release: () => void;
@@ -121,6 +114,7 @@ export class DragRuntime {
   private activeDragModifiers: ActiveDragModifier[] = [];
   private releaseActiveInputListeners: (() => void) | null = null;
   private restoreTextSelectionSuppression: (() => void) | null = null;
+  private releasePostDragClickSuppression: (() => void) | null = null;
   private queuedPointerPosition: Point | null = null;
   private pointerFrameId: number | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
@@ -157,6 +151,7 @@ export class DragRuntime {
         group: request.group,
         inputType: "pointer",
         pointerId: request.pointerId,
+        element: request.element,
         pointerPosition: request.pointerPosition,
         sourceRect: measureDomElement(request.element),
       });
@@ -171,6 +166,7 @@ export class DragRuntime {
         group: activation.group,
         inputType: "pointer",
         pointerId: activation.pointerId,
+        element: activation.element,
         pointerPosition: activation.initialPointerPosition,
         sourceRect: measureDomElement(activation.element),
       });
@@ -227,6 +223,7 @@ export class DragRuntime {
   }
 
   requestDragStart(input: RequestDragStartInput): void {
+    this.clearPostDragClickSuppression();
     this.pruneDisconnectedDomBindings();
     this.pointerActivation.request(input);
   }
@@ -358,6 +355,7 @@ export class DragRuntime {
       rawPointerPosition,
       pointerPosition,
       activeDropTargetId,
+      sortablePreview: session.sortablePreview,
     };
     this.setSession(nextSession);
 
@@ -365,20 +363,33 @@ export class DragRuntime {
       type: "move",
       dragState: this.createDragState(nextSession),
     });
-    const updateEvent: DragUpdateEvent = {
+    getSortableCoordinator(this)?.update({
       draggableId: nextSession.draggableId,
+      group: nextSession.group,
       source: nextSession.source,
       pointerPosition,
-      overlayRect,
       activeDropTargetId: nextSession.activeDropTargetId,
-      previousDropTargetId,
-    };
-
-    this.notifyDragUpdate(updateEvent, {
-      ...updateEvent,
       placementPosition: sortablePlacementPosition,
       movementPosition: rawPointerPosition,
     });
+    const sortablePreview = this.getSortablePreview(nextSession);
+    const completedSession: DraggingSession = {
+      ...nextSession,
+      sortablePreview,
+    };
+    this.setSession(completedSession);
+    const updateEvent: DragUpdateEvent = {
+      draggableId: completedSession.draggableId,
+      group: completedSession.group,
+      source: completedSession.source,
+      pointerPosition,
+      overlayRect,
+      activeDropTargetId: completedSession.activeDropTargetId,
+      previousDropTargetId,
+      sortablePreview,
+    };
+
+    this.notifyDragUpdate(updateEvent);
   }
 
   private updatePointerNowOrRelease(rawPointerPosition: Point): void {
@@ -410,7 +421,8 @@ export class DragRuntime {
   }
 
   cancelDrag(): void {
-    this.finishDragAfterQueuedPointerUpdate({
+    this.cancelQueuedPointerUpdate();
+    this.finishDrag({
       reason: "cancel",
       overlayRelease: this.overlayRelease,
     });
@@ -426,23 +438,11 @@ export class DragRuntime {
     group: DragGroup,
     options?: RegisterDropTargetOptions,
   ): void {
-    const removedTargets = this.dropTargetRegistry.register(
-      dropTargetId,
-      element,
-      group,
-      options,
-    );
-
-    this.clearActiveDropTargetIdIfRemoved(removedTargets);
+    this.dropTargetRegistry.register(dropTargetId, element, group, options);
   }
 
   unregisterDropTarget(dropTargetId: string, element?: HTMLElement): void {
-    const removedTargets = this.dropTargetRegistry.unregister(
-      dropTargetId,
-      element,
-    );
-
-    this.clearActiveDropTargetIdIfRemoved(removedTargets);
+    this.dropTargetRegistry.unregister(dropTargetId, element);
   }
 
   registerDropContainer(
@@ -450,23 +450,14 @@ export class DragRuntime {
     element: HTMLElement,
     group: DragGroup,
   ): void {
-    const removedTargets = this.dropTargetRegistry.register(
+    this.dropTargetRegistry.register(containerId, element, group, {
       containerId,
-      element,
-      group,
-      {
-        containerId,
-        container: true,
-      },
-    );
-
-    this.clearActiveDropTargetIdIfRemoved(removedTargets);
+      container: true,
+    });
   }
 
   unregisterDropContainer(containerId: string, element?: HTMLElement): void {
-    const removedTargets = this.dropTargetRegistry.unregister(containerId, element);
-
-    this.clearActiveDropTargetIdIfRemoved(removedTargets);
+    this.dropTargetRegistry.unregister(containerId, element);
   }
 
   releaseActiveDragResources(): void {
@@ -478,13 +469,26 @@ export class DragRuntime {
 
     if (activeSession) {
       try {
-        this.notifyActiveDragReset({
+        getSortableCoordinator(this)?.release({
           draggableId: activeSession.draggableId,
-          source: activeSession.source,
+          group: activeSession.group,
         });
       } catch (error) {
         firstReleaseError = error;
         hasReleaseError = true;
+      }
+
+      try {
+        this.notifyActiveDragReset({
+          draggableId: activeSession.draggableId,
+          group: activeSession.group,
+          source: activeSession.source,
+        });
+      } catch (error) {
+        if (!hasReleaseError) {
+          firstReleaseError = error;
+          hasReleaseError = true;
+        }
       }
     }
 
@@ -505,6 +509,8 @@ export class DragRuntime {
         hasReleaseError = true;
       }
     }
+
+    this.clearPostDragClickSuppression();
 
     if (hasReleaseError) {
       throw firstReleaseError;
@@ -527,15 +533,16 @@ export class DragRuntime {
   }
 
   getDropTargetRegistration(dropTargetId: string, group?: DragGroup) {
-    return this.dropTargetRegistry.getDropTargetRegistration(dropTargetId, group);
+    return this.dropTargetRegistry.getDropTargetRegistration(
+      dropTargetId,
+      group,
+    );
   }
 
   getCurrentDragRect(): DragRect | null {
     const session = this.getDraggingSession();
 
-    return session
-      ? this.getCurrentDragRectAt(session.pointerPosition)
-      : null;
+    return session ? this.getCurrentDragRectAt(session.pointerPosition) : null;
   }
 
   setOverlayRect(overlayRect: DragRect | null): void {
@@ -658,6 +665,16 @@ export class DragRuntime {
           input.draggableId,
           input.group,
         );
+      const sourceSortableRegistration =
+        this.dropTargetRegistry.getDropTargetRegistration(
+          input.draggableId,
+          input.group,
+        );
+      const sourceSortableElement =
+        sourceSortablePlacement &&
+        sourceSortableRegistration?.capabilities.sortable
+          ? sourceSortableRegistration.element
+          : null;
 
       const nextSession: DraggingSession = {
         status: "dragging",
@@ -667,11 +684,13 @@ export class DragRuntime {
         sourceRect: input.sourceRect,
         sourceContainerId,
         sourceSortablePlacement,
+        sourceSortableElement,
         overlayMeasurement: null,
         startPointerPosition: rawPointerPosition,
         rawPointerPosition,
         pointerPosition: effectivePointerPosition,
         activeDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       };
 
       this.setSession(nextSession);
@@ -679,6 +698,7 @@ export class DragRuntime {
 
       const dragStartEvent: DragStartEvent = {
         draggableId: input.draggableId,
+        group: input.group,
         source: input.inputType,
         pointerPosition: effectivePointerPosition,
         sourceRect: input.sourceRect,
@@ -686,16 +706,17 @@ export class DragRuntime {
       const startOverlayRect = this.hasDragOverlay
         ? this.getCurrentDragRectAt(effectivePointerPosition)
         : null;
-      const dragStartSubscriptionEvent: DragStartSubscriptionEvent = {
+      const placementPosition = this.getSortablePlacementPosition({
+        pointerPosition: effectivePointerPosition,
+        overlayRect: startOverlayRect,
+      });
+      getSortableCoordinator(this)?.start({
         ...dragStartEvent,
-        placementPosition: this.getSortablePlacementPosition({
-          pointerPosition: effectivePointerPosition,
-          overlayRect: startOverlayRect,
-        }),
+        placementPosition,
         movementPosition: rawPointerPosition,
-      };
+      });
 
-      this.notifyDragStartSubscriptions(dragStartSubscriptionEvent);
+      this.notifyDragStartSubscriptions(dragStartEvent);
       this.updateOverlayHost({
         type: "mount",
         state: {
@@ -705,7 +726,7 @@ export class DragRuntime {
       });
       this.suppressTextSelection();
       if (input.inputType === "pointer") {
-        this.bindPointerWindowListeners(input.pointerId);
+        this.bindPointerWindowListeners(input.pointerId, input.element);
       } else {
         this.bindKeyboardWindowListeners();
       }
@@ -722,9 +743,7 @@ export class DragRuntime {
     this.cancelPendingActivation();
 
     const session = this.getDraggingSession();
-    const releasedDragState = session
-      ? this.createDragState(session)
-      : null;
+    const releasedDragState = session ? this.createDragState(session) : null;
     const activeDropTargetId =
       input.reason === "drop" ? session?.activeDropTargetId ?? null : null;
     const validDropTarget =
@@ -750,7 +769,7 @@ export class DragRuntime {
         : null;
     const sortablePlacement =
       session && dropTargetId
-        ? this.getDropEventSortablePlacement(session, dropTargetId)
+        ? this.getDropEventSortablePlacement(session)
         : undefined;
     const lifecycleDropTargetRectSnapshot = session
       ? this.createLifecycleDropTargetRectSnapshot({
@@ -770,12 +789,27 @@ export class DragRuntime {
       hasFinishError = true;
     }
 
-    if (session && result) {
+    if (session) {
+      try {
+        getSortableCoordinator(this)?.release({
+          draggableId: session.draggableId,
+          group: session.group,
+        });
+      } catch (error) {
+        if (!hasFinishError) {
+          finishError = error;
+          hasFinishError = true;
+        }
+      }
+    }
+
+    if (session && result && !hasFinishError) {
       this.lifecycleDropTargetRectSnapshot = lifecycleDropTargetRectSnapshot;
 
       try {
         this.notifyDragEnd({
           draggableId: session.draggableId,
+          group: session.group,
           source: session.source,
           result,
           overlayRect,
@@ -785,6 +819,7 @@ export class DragRuntime {
         if (result === "dropped" && dropTargetId) {
           this.notifyDrop({
             draggableId: session.draggableId,
+            group: session.group,
             source: session.source,
             dropTargetId,
             ...(sortablePlacement ? { sortablePlacement } : {}),
@@ -848,7 +883,10 @@ export class DragRuntime {
     this.clearOverlayHost();
   }
 
-  private bindPointerWindowListeners(pointerId: number): void {
+  private bindPointerWindowListeners(
+    pointerId: number,
+    initiatingElement: HTMLElement,
+  ): void {
     this.releaseActiveInputListeners?.();
 
     let listenersReleased = false;
@@ -868,7 +906,13 @@ export class DragRuntime {
         return;
       }
 
-      this.endDrag();
+      try {
+        this.endDrag();
+        this.suppressNextRelatedClick(initiatingElement);
+      } catch (error) {
+        this.clearPostDragClickSuppression();
+        throw error;
+      }
     };
 
     const handlePointerCancel = (event: PointerEvent): void => {
@@ -876,6 +920,7 @@ export class DragRuntime {
         return;
       }
 
+      this.clearPostDragClickSuppression();
       this.cancelDrag();
     };
 
@@ -922,6 +967,47 @@ export class DragRuntime {
   private bindKeyboardWindowListeners(): void {
     this.releaseActiveInputListeners?.();
     this.releaseActiveInputListeners = this.keyboardDrag.bindWindowListeners();
+  }
+
+  private suppressNextRelatedClick(initiatingElement: HTMLElement): void {
+    this.clearPostDragClickSuppression();
+
+    let timeoutId: number | null = null;
+    const handleClick = (event: MouseEvent): void => {
+      if (
+        event.detail === 0 ||
+        !(event.target instanceof Node) ||
+        !initiatingElement.contains(event.target)
+      ) {
+        return;
+      }
+
+      this.clearPostDragClickSuppression();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const release = (): void => {
+      window.removeEventListener("click", handleClick, true);
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      if (this.releasePostDragClickSuppression === release) {
+        this.releasePostDragClickSuppression = null;
+      }
+    };
+
+    window.addEventListener("click", handleClick, true);
+    this.releasePostDragClickSuppression = release;
+    timeoutId = window.setTimeout(release, 0);
+  }
+
+  private clearPostDragClickSuppression(): void {
+    const release = this.releasePostDragClickSuppression;
+    this.releasePostDragClickSuppression = null;
+    release?.();
   }
 
   private suppressTextSelection(): void {
@@ -1037,23 +1123,55 @@ export class DragRuntime {
 
   private getDropEventSortablePlacement(
     session: DraggingSession,
-    dropTargetId: string,
   ): SortableDropPlacement | undefined {
-    const placement = this.dropTargetRegistry.getSortableDropPlacement({
+    const preview = this.getSortablePreview(session);
+
+    return preview.status === "projected" ? preview.placement : undefined;
+  }
+
+  private getSortablePreview(session: DraggingSession): SortablePreview {
+    const currentRegistration =
+      this.dropTargetRegistry.getDropTargetRegistration(
+        session.draggableId,
+        session.group,
+      );
+
+    if (
+      !session.sourceSortablePlacement ||
+      !session.sourceSortableElement ||
+      !currentRegistration?.capabilities.sortable ||
+      currentRegistration.element !== session.sourceSortableElement
+    ) {
+      return { status: "inactive" };
+    }
+
+    const placement = this.dropTargetRegistry.normalizeSortablePlacement({
       draggableId: session.draggableId,
-      dropTargetId,
+      activeDropTargetId: session.activeDropTargetId,
       group: session.group,
       sourceContainerId: session.sourceContainerId,
     });
 
-    if (
-      !placement ||
-      isSameSortablePlacement(placement, session.sourceSortablePlacement)
-    ) {
-      return undefined;
+    if (!placement) {
+      return { status: "inactive" };
     }
 
-    return placement;
+    if (isSameSortableLocation(placement, session.sourceSortablePlacement)) {
+      return {
+        status: "source",
+        placement: {
+          sourceContainerId: session.sourceContainerId,
+          containerId: session.sourceContainerId,
+          previousDraggableId:
+            session.sourceSortablePlacement.previousDraggableId,
+          nextDraggableId: session.sourceSortablePlacement.nextDraggableId,
+          targetDraggableId: null,
+          side: null,
+        },
+      };
+    }
+
+    return { status: "projected", placement };
   }
 
   private createDragState(session: DraggingSession): DragState {
@@ -1180,8 +1298,7 @@ export class DragRuntime {
   }
 
   private removeDisconnectedDropTargets(group?: DragGroup): void {
-    const removedTargets = this.dropTargetRegistry.pruneDisconnected(group);
-    this.clearActiveDropTargetIdIfRemoved(removedTargets);
+    this.dropTargetRegistry.pruneDisconnected(group);
   }
 
   private pruneDisconnectedDomBindingRecords(
@@ -1206,32 +1323,8 @@ export class DragRuntime {
     }
   }
 
-  private clearActiveDropTargetIdIfRemoved(
-    removedTargets: RemovedDropTarget[],
-  ): void {
-    if (this.session.status !== "dragging") {
-      return;
-    }
-
-    const session = this.session;
-    const removedActiveTarget = removedTargets.some(
-      (removedTarget) =>
-        removedTarget.id === session.activeDropTargetId &&
-        removedTarget.group === session.group,
-    );
-
-    if (!removedActiveTarget) {
-      return;
-    }
-
-    this.setSession({
-      ...session,
-      activeDropTargetId: null,
-    });
-  }
-
   private notifyDragStartSubscriptions(
-    subscriptionEvent: DragStartSubscriptionEvent,
+    subscriptionEvent: DragStartEvent,
   ): void {
     for (const subscription of Array.from(this.subscriptions)) {
       subscription.onDragStart?.(subscriptionEvent);
@@ -1239,24 +1332,15 @@ export class DragRuntime {
   }
 
   private notifyDragStartLifecycle(event: DragStartEvent): void {
-    this.lifecycleCallbacks.onDragStart?.(
-      event,
-      this.lifecycleHelpers,
-    );
+    this.lifecycleCallbacks.onDragStart?.(event, this.lifecycleHelpers);
   }
 
-  private notifyDragUpdate(
-    event: DragUpdateEvent,
-    subscriptionEvent: DragUpdateSubscriptionEvent,
-  ): void {
+  private notifyDragUpdate(event: DragUpdateEvent): void {
     for (const subscription of Array.from(this.subscriptions)) {
-      subscription.onDragUpdate?.(subscriptionEvent);
+      subscription.onDragUpdate?.(event);
     }
 
-    this.lifecycleCallbacks.onDragUpdate?.(
-      event,
-      this.lifecycleHelpers,
-    );
+    this.lifecycleCallbacks.onDragUpdate?.(event, this.lifecycleHelpers);
   }
 
   private notifyDragEnd(event: DragEndEvent): void {
@@ -1264,10 +1348,7 @@ export class DragRuntime {
       subscription.onDragEnd?.(event);
     }
 
-    this.lifecycleCallbacks.onDragEnd?.(
-      event,
-      this.lifecycleHelpers,
-    );
+    this.lifecycleCallbacks.onDragEnd?.(event, this.lifecycleHelpers);
   }
 
   private notifyDrop(event: DropEvent): void {
@@ -1316,32 +1397,18 @@ function getRectCenter(rect: DragRect): Point {
   };
 }
 
-export function createDragRuntime(
-  options?: DragRuntimeOptions,
-): DragRuntime {
+export function createDragRuntime(options?: DragRuntimeOptions): DragRuntime {
   return new DragRuntime(options);
 }
 
-function isSameSortablePlacement(
+function isSameSortableLocation(
   placement: SortableDropPlacement,
   sourcePlacement: SortableItemPlacement | null,
 ): boolean {
-  if (
+  return !(
     sourcePlacement === null ||
     placement.containerId !== sourcePlacement.containerId ||
     placement.previousDraggableId !== sourcePlacement.previousDraggableId ||
     placement.nextDraggableId !== sourcePlacement.nextDraggableId
-  ) {
-    return false;
-  }
-
-  if (placement.targetDraggableId === null || placement.side === null) {
-    return true;
-  }
-
-  return sourcePlacement.exactAnchors.some(
-    (anchor) =>
-      anchor.targetDraggableId === placement.targetDraggableId &&
-      anchor.side === placement.side,
   );
 }

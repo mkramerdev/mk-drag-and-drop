@@ -12,6 +12,7 @@
   "dependencies": {
     "@mk-drag-and-drop/dom": "workspace:*",
     "@mk-drag-and-drop/react": "workspace:*",
+    "@repo/carrier-table-example": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

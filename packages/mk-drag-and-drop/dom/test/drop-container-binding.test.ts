@@ -21,7 +21,9 @@ describe("createDropContainer", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
+    controller
+      ? getControllerRuntime(controller).releaseActiveDragResources()
+      : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -39,6 +41,7 @@ describe("createDropContainer", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "default",
         source: "pointer",
         dropTargetId: "column-a",
       },
@@ -76,6 +79,7 @@ describe("createDropContainer", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "default",
         source: "pointer",
         dropTargetId: "column-a",
       },
@@ -97,8 +101,12 @@ describe("createDropContainer", () => {
     const onDrop = vi.fn();
     controller = createDragController({ onDrop });
     raf = installMockRaf();
-    const firstSource = createMeasuredElement(createRect({ width: 20, height: 20 }));
-    const secondSource = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const firstSource = createMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
+    const secondSource = createMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
     const container = createMeasuredElement(
       createRect({ left: 100, top: 0, width: 80, height: 80 }),
     );
@@ -131,6 +139,7 @@ describe("createDropContainer", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "target-item",
+        group: "cards",
         source: "pointer",
         dropTargetId: "column-a",
       },
@@ -256,7 +265,9 @@ describe("createDropContainer", () => {
   }
 });
 
-function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
+function createMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   stubBoundingClientRect(element, rect);

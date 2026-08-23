@@ -5,6 +5,44 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## 0.5.0
+
+### Breaking
+
+- Added the activation-captured `group` to every drag lifecycle event and active
+  reset event.
+- Added the discriminated `SortablePreview` value to every
+  `DragUpdateEvent`. Its `inactive`, `source`, and `projected` states replace
+  target-id inference with normalized live placement.
+- Sortable updates are now published only after the package-owned preview DOM
+  has moved and the current placement has been normalized. Live preview and
+  final drop use the same `SortableDropPlacement` normalization path.
+- Removed the superseded sortable lifecycle subscription path and any alternate
+  preview event shape.
+
+### Added
+
+- Added `DragController.cancelDrag()` so Vanilla owners can cancel pending or
+  active input and restore package-owned preview DOM before teardown.
+- Added live placement to `recomputeActiveDrag()`, including the documented
+  `remeasureDropTargets({ group })` then recompute workflow.
+- Added coordinated DOM and React exports and unchanged lifecycle forwarding for
+  `SortablePreview` and captured drag groups.
+- Added carrier-backed row and logical-column table examples for Vanilla DOM and
+  React, with ordinary vertical and horizontal sortables as parity references.
+- Added shared six-browser Playwright parity coverage for live projection,
+  unequal dimensions, continuous midpoint/reversal trajectories, re-entry,
+  cancellation, one-time commits without a drop-time jump, all overlay groups,
+  two-axis autoscroll synchronization, and behavior-changing
+  remeasure/recompute without another pointer movement.
+
+### Changed
+
+- An activated pointer drag suppresses only its related generated click, while
+  a quick pre-activation release and later intentional clicks remain available.
+- Interactive button handles remain pointer drag handles, but Space and Enter
+  activate the button rather than starting keyboard dragging.
+
 ## 0.4.6
 
 ### Fixed

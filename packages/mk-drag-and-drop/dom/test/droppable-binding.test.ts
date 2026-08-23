@@ -21,7 +21,9 @@ describe("createDroppable", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
+    controller
+      ? getControllerRuntime(controller).releaseActiveDragResources()
+      : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -36,7 +38,12 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", source: "pointer", dropTargetId: "target" },
+      {
+        draggableId: "item",
+        group: "default",
+        source: "pointer",
+        dropTargetId: "target",
+      },
       expect.any(Object),
     );
   });
@@ -68,7 +75,12 @@ describe("createDroppable", () => {
     dragToTarget(source, target);
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", source: "pointer", dropTargetId: "target" },
+      {
+        draggableId: "item",
+        group: "default",
+        source: "pointer",
+        dropTargetId: "target",
+      },
       expect.any(Object),
     );
   });
@@ -119,8 +131,12 @@ describe("createDroppable", () => {
     const onDrop = vi.fn();
     controller = createDragController({ onDrop });
     raf = installMockRaf();
-    const firstSource = createMeasuredElement(createRect({ width: 20, height: 20 }));
-    const secondSource = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const firstSource = createMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
+    const secondSource = createMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
     const target = createMeasuredElement(
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
@@ -153,6 +169,7 @@ describe("createDroppable", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "target-item",
+        group: "targets",
         source: "pointer",
         dropTargetId: "target",
       },
@@ -215,7 +232,9 @@ describe("createDroppable", () => {
     runtime.pruneDisconnectedDomBindings();
 
     expect(runtime.getStaleDomBindingRecordCount()).toBe(1);
-    expect(runtime.getDropTargetRegistration("target")?.element).toBe(newTarget);
+    expect(runtime.getDropTargetRegistration("target")?.element).toBe(
+      newTarget,
+    );
   });
 
   it("clears the active drop target when its element is removed", () => {
@@ -292,6 +311,7 @@ describe("createDroppable", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "default",
         source: "pointer",
         result: "invalid-target",
         overlayRect: null,
@@ -343,7 +363,9 @@ describe("createDroppable", () => {
   }
 });
 
-function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
+function createMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   stubBoundingClientRect(element, rect);

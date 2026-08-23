@@ -1,177 +1,240 @@
 # mk-drag-and-drop
 
-`mk-drag-and-drop` is a headless, DOM-first drag-and-drop workspace. The DOM
-package owns drag behavior, target measurement, targeting, lifecycle callbacks,
-modifiers, overlays, and sortable/drop-container placement. The React package is
-a thin adapter that wires React refs and effects into the same DOM runtime.
+`mk-drag-and-drop` is a headless, DOM-first drag-and-drop library. The DOM
+package owns input, measurement, targeting, overlays, modifiers, sortable DOM
+preview, and lifecycle sequencing. The React package is a thin provider and
+hook layer over the same public DOM types and runtime.
 
-Apps own markup, styling, data, rendering, and final commits. The packages report
-drag operations and placement data; they do not own application state or persist
-changes for you.
-
-Drag overlays use the same ownership split: apps create overlay content with
-`dragOverlay`, while the packages own overlay hosting, movement, release-mode
-coordination, and measurement for targeting and modifiers. Manual overlay
-release is opt-in through `overlayRelease: "manual"` and the overlay-owned
-`removeOverlay` callback.
+Applications own markup, visible projection, canonical data, and the single
+final commit.
 
 ## Packages
 
-- `@mk-drag-and-drop/dom`: public DOM API for vanilla DOM apps, custom elements,
-  and framework adapters.
-- `@mk-drag-and-drop/react`: React provider and hooks over the DOM package.
-
-Both packages are public npm packages published under the `@mk-drag-and-drop`
-scope.
-
-## Public Imports
-
-Application code should use package root imports:
+- `@mk-drag-and-drop/dom` exposes the controller and DOM bindings. Adapter
+  authors can also use its intentional `/integration` entry point.
+- `@mk-drag-and-drop/react` exposes `DragProvider` and hooks, and re-exports the
+  public DOM contract with one type identity.
 
 ```ts
 import {
   createDragController,
-  createDraggable,
-  createDroppable,
+  createDragHandle,
   createSortable,
+  type DragUpdateEvent,
+  type SortablePreview,
 } from "@mk-drag-and-drop/dom";
 ```
 
 ```tsx
 import {
   DragProvider,
-  useDraggable,
-  useDroppable,
+  useDragHandle,
   useSortable,
+  type DragUpdateEvent,
+  type SortablePreview,
 } from "@mk-drag-and-drop/react";
 ```
 
-The DOM package also exports `@mk-drag-and-drop/dom/integration` for adapter
-authors who need lower-level DOM behaviors and a runtime scope. The React
-package uses that subpath internally. The React package does not expose package
-subpaths.
+Deep imports into source, build output, registries, or runtime internals are not
+public API.
 
-Deep imports into `src` or `dist` files are not part of the package exports.
+## Lifecycle contract
 
-## Architecture Model
+Every lifecycle event carries the drag group captured when activation succeeds.
+That group is immutable for the session, even if registrations change later.
 
-The public controller/provider is a drag-and-drop scope, not a manually
-disposed resource. The internal runtime is normal JavaScript memory and is
-released by garbage collection when no longer reachable. Application code does
-not manage runtime teardown.
+```ts
+type SortablePreview =
+  | { status: "inactive" }
+  | { status: "source"; placement: SortableDropPlacement }
+  | { status: "projected"; placement: SortableDropPlacement };
 
-DOM bindings are scope-owned registrations. `createDraggable`,
-`createDroppable`, `createDropContainer`, and `createSortable` return `void`;
-they do not return per-element disposers. Registrations use WeakRef-backed
-records, and disconnected elements are pruned on drag-critical paths and public
-remeasurement while the scope remains alive.
+type DragStartEvent = {
+  draggableId: string;
+  group: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  sourceRect: DragRect;
+};
 
-Pending pointer activation resources and active drag resources are owned by the
-input/drag lifecycle. Activation timers are canceled by activation paths. Active
-drag side effects such as window listeners, RAF updates, text-selection
-suppression, overlays, modifiers, active target state, and sortable previews are
-released on drop/cancel/reset paths rather than by runtime disposal.
+type DragUpdateEvent = {
+  draggableId: string;
+  group: string;
+  source: DragSource;
+  pointerPosition: DragPoint;
+  overlayRect: DragRect | null;
+  activeDropTargetId: string | null;
+  previousDropTargetId: string | null;
+  sortablePreview: SortablePreview;
+};
 
-## API Shape
+type DragEndEvent = {
+  draggableId: string;
+  group: string;
+  source: DragSource;
+  result: "dropped" | "no-target" | "invalid-target" | "canceled";
+  overlayRect: DragRect | null;
+  dropTargetId: string | null;
+};
 
-The DOM root export includes:
+type DropEvent = {
+  draggableId: string;
+  group: string;
+  source: DragSource;
+  dropTargetId: string;
+  sortablePlacement?: SortableDropPlacement;
+};
 
-- `createDragController`
-- `createDraggable`
-- `createDroppable`
-- `createDropContainer`
-- `createSortable`
-- `createDragHandle`
-- lifecycle event/helper types
-- `DragSource`, `DragEndResult`, `SortableDropPlacement`,
-  `RemeasureDropTargetsInput`
-- targeting helpers and types
-- modifier helpers and types
-- pointer and keyboard configuration types
-- `DragPoint`, `DragRect`
+type ActiveDragResetEvent = {
+  draggableId: string;
+  group: string;
+  source: DragSource;
+};
+```
 
-The DOM integration subpath is adapter infrastructure. It includes
-`createDragRuntimeScope`, DOM behavior factories such as `createDomDraggable`,
-`createDomDroppable`, `createDomDropContainer`, and `createDomSortable`,
-related behavior/runtime types, `DragState`, `DragOverlayPhase`, and
-`domDragHandleAttribute`. Application code should prefer package root imports.
+`sortablePreview` is present on every normal update:
 
-The React root export includes `DragProvider`, `useDraggable`, `useDroppable`,
-`useDropContainer`, `useSortable`, `useDragHandle`,
-`useRemeasureDropTargets`, `composeRefs`, React-friendly
-`restrictToContainer`, DOM targeting/modifier/type re-exports, and overlay
-types.
+| Status      | Meaning                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `inactive`  | The source is not a valid sortable registration in the captured group. A plain draggable is inactive.                           |
+| `source`    | The normalized preview equals the captured source container and sibling anchors.                                                |
+| `projected` | The normalized package preview differs from the captured source order, including retained movement after leaving valid targets. |
 
-No application-facing package root exposes `cleanup`, `dispose`, `update`, or
-`finishOverlay`. The public manual scope operation is `remeasureDropTargets`.
+The package guarantees this conceptual update order:
 
-## Naming And Lifecycle Results
+```text
+measure/select target
+-> update package-owned sortable preview
+-> normalize current preview
+-> publish DragUpdateEvent
+```
 
-The current drag item identifier field is `draggableId`. Lifecycle events include
-`source`, which is `"pointer"` or `"keyboard"`.
+Drop uses the same normalizer:
 
-`onDragEnd` includes a `result` value:
+```text
+flush final pointer update
+-> validate target
+-> capture normalized placement
+-> restore package preview DOM
+-> publish drag end
+-> publish successful drop
+```
 
-- `"dropped"`: a valid target was accepted and `onDrop` also runs.
-- `"no-target"`: the user ended normally without an active target.
-- `"invalid-target"`: an active target candidate became stale before drag end.
-- `"canceled"`: the drag was canceled, such as Escape or pointercancel.
+Consequently `onDragUpdate` sees completed preview DOM, and a projected
+`DropEvent.sortablePlacement` deeply matches the last projected live placement
+when no update intervenes. A successful source/no-op drop omits
+`sortablePlacement`. Cancellation emits no artificial final update; consumers
+end projection in `onDragEnd`. Invalid release reports `invalid-target` and does
+not call `onDrop`.
 
-`onDrop` only runs for valid successful drops. Plain drops are id-only
-(`draggableId`, `dropTargetId`, and `source`). Sortable behavior may add
-`event.sortablePlacement` with:
+## Groups and scope
 
-- `sourceContainerId`
-- `containerId`
-- `previousDraggableId`
-- `nextDraggableId`
+Groups are both target-interaction boundaries and lifecycle-routing
+identifiers. One controller or provider can coordinate independent domains:
 
-Sortable behavior may move DOM nodes temporarily to preview placement during a
-drag. The app still commits data on `onDrop` by reading the event and updating
-its own data/rendering.
+```ts
+function onDragUpdate(event: DragUpdateEvent) {
+  switch (event.group) {
+    case "document-blocks":
+      break;
+    case "table-rows":
+      break;
+    case "table-columns":
+      break;
+  }
+}
+```
 
-## Examples
+Do not encode domain information into `draggableId`. In React, one
+`DragProvider` creates one scope and hooks read the nearest provider. Nested
+providers are isolated scopes; cross-provider coordination is not a separate
+feature.
 
-Vanilla DOM examples live in `apps/web/src/vanilla`:
+## Live projection and commit
 
-- `basicDrag.ts`
-- `dropzoneList.ts`
-- `sortableList.ts`
-- `kanbanExample.ts`
-- `groupedExample.ts`
-- `treeExample.ts`
+Use only normalized anchors. Application code must not recalculate target
+midpoints, direction, hysteresis, or candidate selection.
 
-React examples live in `apps/react-web/src/react`:
+```ts
+function getProjectedOrder(
+  canonicalOrder: readonly string[],
+  event: DragUpdateEvent,
+): readonly string[] {
+  if (event.sortablePreview.status === "inactive") return canonicalOrder;
+  if (event.sortablePreview.status === "source") return canonicalOrder;
 
-- `basicDrag.tsx`
-- `dropzoneList.tsx`
-- `sortableList.tsx`
-- `kanbanExample.tsx`
-- `groupedExample.tsx`
-- `treeExample.tsx`
+  return applySortablePlacement(
+    canonicalOrder,
+    event.draggableId,
+    event.sortablePreview.placement,
+  );
+}
+```
 
-Package-level documentation lives in the DOM and React package READMEs.
-Maintainer release notes live in `docs/package-maintenance.md`.
+Keep projected state local. Commit canonical state exactly once from
+`onDrop`. Because `onDragEnd` precedes `onDrop`, clear projection immediately
+for non-dropped results but retain a successful projection until the drop
+callback commits.
+
+The runnable carrier-backed table demonstrates this architecture with unequal
+rows and columns, descendant menu-button handles, and ordinary sortable parity
+references:
+
+- Vanilla: `apps/web/src/vanilla/carrierTable.ts`, route `/carrier-table`
+- React: `apps/react-web/src/react/carrierTable.tsx`, route `/carrier-table`
+- Shared anchor application: `apps/shared/sortablePlacement.ts`
+- Browser parity tests: `e2e/carrier-table.spec.ts`
+
+## Layout changes during a drag
+
+After application layout or scrolling changes target geometry, refresh cached
+measurements and then publish through the normal update path:
+
+```ts
+controller.remeasureDropTargets({ group });
+controller.recomputeActiveDrag();
+```
+
+Remeasurement alone does not publish. Recompute reuses the last raw pointer,
+reapplies modifiers, and does not implicitly remeasure. Run the pair after the
+projected DOM has committed, compare projected orders, and allow at most one
+pending synchronization frame to avoid loops.
+
+Vanilla owners should call `controller.cancelDrag()` before removing registered
+DOM during teardown. The method is idle-safe and uses the normal cancellation
+path for pending activation and active pointer or keyboard drags, including
+sortable restoration, listener cleanup, and a canceled drag end without a
+drop.
+
+## Handles and overlays
+
+Pointer activation delay and distance use OR semantics: reaching either
+threshold activates. A quick release before activation remains a click. Once a
+pointer drag activates, only the related generated click in the initiating
+draggable subtree is suppressed; later intentional and keyboard clicks remain
+available.
+
+A button may be a pointer drag handle, but interactive filtering reserves Space
+and Enter for button/menu activation. Provide another noninteractive or
+separately focusable handle, or domain commands, for keyboard sorting.
+
+Sortables do not require overlays. Pointer targeting works without one;
+rect-based targeting requires a measurable overlay. Overlay callbacks receive
+`dragState.group`, so one scope can return group-specific blank row or column
+elements. The source rectangle is measured from the carrier rather than its
+thin button. Returning `null` is not equivalent to returning a measurable blank
+element.
 
 ## Development
 
-Build commands used for package and example verification:
-
 ```bash
-pnpm --filter @mk-drag-and-drop/dom build
-pnpm --filter @mk-drag-and-drop/react... build
-pnpm --filter web build
-pnpm --filter react-web build
-```
-
-The root package also exposes:
-
-```bash
-pnpm build
+pnpm install --frozen-lockfile
 pnpm lint
-pnpm format
+pnpm build
+pnpm --filter @mk-drag-and-drop/dom test
+pnpm --filter @mk-drag-and-drop/react test
+pnpm playwright test
 ```
 
-Package and app manifests also include `dev` and `preview` scripts where
-applicable. Those start local Vite processes and are not required for static
-build verification.
+See the package READMEs and documentation under
+`apps/react-web/src/mk-drag-and-drop` for the complete API and carrier guide.

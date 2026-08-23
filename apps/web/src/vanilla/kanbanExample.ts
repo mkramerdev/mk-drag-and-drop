@@ -223,6 +223,7 @@ export function mountKanbanExample(root: HTMLElement): () => void {
   renderBoard();
 
   return () => {
+    controller.cancelDrag();
     root.replaceChildren();
   };
 
@@ -490,7 +491,8 @@ function moveByPlacement<T>(input: {
   placement: PlacementInput;
 }): T[] {
   const item = input.items.find(
-    (currentItem) => input.getItemId(currentItem) === input.placement.draggableId,
+    (currentItem) =>
+      input.getItemId(currentItem) === input.placement.draggableId,
   );
 
   if (!item) {
@@ -498,7 +500,8 @@ function moveByPlacement<T>(input: {
   }
 
   const itemsWithoutMovedItem = input.items.filter(
-    (currentItem) => input.getItemId(currentItem) !== input.placement.draggableId,
+    (currentItem) =>
+      input.getItemId(currentItem) !== input.placement.draggableId,
   );
   const insertIndex = getPlacementIndex({
     ids: itemsWithoutMovedItem.map(input.getItemId),
@@ -526,7 +529,9 @@ function getPlacementIndex(input: {
   placement: PlacementInput;
 }): number {
   if (input.placement.previousDraggableId) {
-    const previousIndex = input.ids.indexOf(input.placement.previousDraggableId);
+    const previousIndex = input.ids.indexOf(
+      input.placement.previousDraggableId,
+    );
 
     if (previousIndex !== -1) {
       return previousIndex + 1;

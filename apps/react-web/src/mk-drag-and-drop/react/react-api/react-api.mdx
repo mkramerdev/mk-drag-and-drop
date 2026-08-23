@@ -1,17 +1,15 @@
 ---
-title: 'React API Reference'
-summary: 'Public API reference for @mk-drag-and-drop/react.'
+title: "React API"
+summary: "Complete provider, overlay, hook, lifecycle, sortable, targeting, input, geometry, and ref reference."
 ---
 
-# React API Reference
+# React API
 
-This is the API reference for `@mk-drag-and-drop/react`.
+`@mk-drag-and-drop/react` is a view adapter over the DOM runtime. It forwards
+completed lifecycle events unchanged and re-exports DOM public types rather
+than redefining them.
 
-The React package wraps the DOM package behavior in a provider and hooks. `DragProvider` owns a drag-and-drop scope for a React subtree. Hooks register rendered DOM elements into that scope through refs.
-
-This is an API reference, not a concepts guide.
-
-## Imports
+## Imports and re-exports
 
 ```tsx
 import {
@@ -22,32 +20,17 @@ import {
   useSortable,
   useDragHandle,
   useRemeasureDropTargets,
-  useRemeasureOverlay,
   useRecomputeActiveDrag,
+  useRemeasureOverlay,
   composeRefs,
-} from "@mk-drag-and-drop/react";
-```
-
-React also re-exports DOM targeting helpers, modifier helpers, lifecycle event
-and helper types, overlay state and release types, configuration types, sortable
-types, and geometry types.
-
-```tsx
-import {
   centerToCenter,
   pointerToCenter,
-  pointerToRectDistance,
-  maxPointerDistanceToRect,
-  maxOverlayCenterDistanceToRect,
+  lockToXAxis,
   lockToYAxis,
   restrictToContainer,
-  type DragStartEvent,
+  type DragProviderProps,
   type DragUpdateEvent,
-  type DragEndEvent,
-  type DropEvent,
-  type DragLifecycleHelpers,
-  type OverlayReleaseMode,
-  type RemeasureDropTargetsInput,
+  type SortablePreview,
   type SortableDropPlacement,
 } from "@mk-drag-and-drop/react";
 ```
@@ -56,69 +39,41 @@ import {
 
 ### `DragProvider`
 
-Creates one drag-and-drop scope for its React subtree.
-
 ```tsx
-import { DragProvider } from "@mk-drag-and-drop/react";
-
-export function Board() {
-  return (
-    <DragProvider
-      onDrop={({ draggableId, dropTargetId }) => {
-        moveItem(draggableId, dropTargetId);
-      }}
-    >
-      <BoardContent />
-    </DragProvider>
-  );
-}
+<DragProvider
+  pointerConfiguration={{ activationDelay: 180, activationDistance: 6 }}
+  onDragUpdate={(event) => routeByGroup(event.group, event)}
+>
+  {children}
+</DragProvider>
 ```
 
-Hooks must be used inside `DragProvider`. If a hook is used outside a provider, it throws.
-
-Nested providers are not documented as a special public feature. By React context behavior, hooks read the nearest provider.
+One provider creates one scope. Hooks use the nearest provider. Nested
+providers are isolated scopes, not a coordinated drag feature. Use one provider
+and multiple groups for document blocks, table rows, table columns, and
+reference sortables.
 
 ### `DragProviderProps`
 
 ```ts
-type DragProviderProps = {
-  children: React.ReactNode;
+type DragProviderProps = DragLifecycleCallbacks & {
+  children: ReactNode;
   announcements?: DragAnnouncements;
-  dragOverlay?: (overlay: DragOverlayInput) => React.ReactNode;
+  dragOverlay?: (input: DragOverlayInput) => ReactNode;
   keyboardConfiguration?: KeyboardConfiguration;
   modifiers?: readonly DragModifierInput[];
   overlayRelease?: OverlayReleaseMode;
   pointerConfiguration?: PointerConfiguration;
   targetingAlgorithm?: TargetingAlgorithm;
   targetingConstraint?: TargetingConstraint;
-  onDragStart?: (
-    event: DragStartEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDragUpdate?: (
-    event: DragUpdateEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDragEnd?: (
-    event: DragEndEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDrop?: (
-    event: DropEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
 };
 ```
 
-Defaults:
+Lifecycle callbacks receive the DOM package event and helpers unchanged.
+Provider-wide pointer and keyboard configuration applies consistently to all
+draggables in the scope.
 
-- `keyboardConfiguration` inherits the DOM keyboard defaults.
-- `modifiers` defaults to an empty array in the DOM runtime.
-- `overlayRelease` defaults to `"auto"`.
-- `targetingAlgorithm` defaults to `pointerToCenter`.
-- `targetingConstraint` defaults to no constraint.
-
-### `DragAnnouncements`
+### Announcements
 
 ```ts
 type DragAnnouncements = {
@@ -129,25 +84,11 @@ type DragAnnouncements = {
 };
 ```
 
-`announcements` causes the provider to render a polite live region. Update announcements are emitted only when `activeDropTargetId` changes.
+Announcements receive group-bearing lifecycle events, including
+`sortablePreview` on updates. Update announcements run only when
+`activeDropTargetId` changes.
 
 ## Overlay
-
-There is no public `DragOverlay` component export in the current API. Overlay rendering is configured with the `dragOverlay` prop on `DragProvider`.
-
-```tsx
-<DragProvider
-  dragOverlay={({ dragState, phase }) => (
-    <div className={phase === "released" ? "overlay released" : "overlay"}>
-      {dragState.draggableId}
-    </div>
-  )}
->
-  <BoardContent />
-</DragProvider>
-```
-
-### `DragOverlayInput`
 
 ```ts
 type DragOverlayInput = {
@@ -166,113 +107,56 @@ type DragOverlayInput = {
 );
 ```
 
-### `DragState`
-
-```ts
-type DragState = {
-  draggableId: string;
-  group: string;
-  sourceRect: DragRect;
-  startPointerPosition: DragPoint;
-  pointerPosition: DragPoint;
-};
-```
-
-### `DragOverlayPhase`
-
-```ts
-type DragOverlayPhase = "dragging" | "released";
-```
-
-### `OverlayReleaseMode`
-
-```ts
-type OverlayReleaseMode = "auto" | "manual";
-```
-
-With `overlayRelease="auto"`, the overlay is removed when the drag ends.
-
-With `overlayRelease="manual"`, `dragOverlay` is called for the `"released"` phase and receives `removeOverlay`. Call `removeOverlay` after your release animation finishes.
+`DragState` includes the captured group, source/pointer rects, current pointer,
+active/previous target IDs, and completed sortable preview. Overlay content can
+be selected exhaustively by group:
 
 ```tsx
-<DragProvider
-  overlayRelease="manual"
-  dragOverlay={(input) => (
-    <Preview
-      id={input.dragState.draggableId}
-      phase={input.phase}
-      removeOverlay={input.phase === "released" ? input.removeOverlay : null}
-    />
-  )}
->
-  <BoardContent />
-</DragProvider>
+dragOverlay={({ dragState }) => {
+  switch (dragState.group) {
+    case "table-rows":
+      return <div className="blankOverlay blankOverlay--row" />;
+    case "table-columns":
+      return <div className="blankOverlay blankOverlay--column" />;
+    default:
+      return <div className="blankOverlay" />;
+  }
+}}
 ```
 
-`removeOverlay` exists only for `"released"` overlays in manual release mode.
-`remeasureOverlay` exists in both phases. Call it when overlay-local UI changes
-visual bounds outside the automatic resize observation path, such as after a CSS
-transform or transition. React measures the first rendered overlay child when one
-exists; otherwise it measures the wrapper.
+The wrapper is pointer-inert and begins at the registered source rect, not the
+dimensions of a thin descendant handle. Sortable operation does not require an
+overlay. A configured callback returning `null` is no overlay, not a measurable
+blank one. `OverlayReleaseMode` is `"auto" | "manual"`.
 
-## Draggable Hook
+## Draggable hook
 
 ### `useDraggable`
-
-Registers an element as a drag source.
-
-```tsx
-function Card({ id }: { id: string }) {
-  const draggable = useDraggable<HTMLDivElement>({
-    draggableId: id,
-    group: "cards",
-  });
-
-  return <div {...draggable}>Card {id}</div>;
-}
-```
-
-### `UseDraggableOptions`
 
 ```ts
 type UseDraggableOptions = {
   draggableId: string;
   group?: string;
 };
+
+type UseDraggableResult<E extends HTMLElement = HTMLElement> =
+  HTMLAttributes<E> & { ref: RefCallback<E> };
 ```
-
-`draggableId` is required and should be stable. `group` defaults to `"default"`.
-
-### `UseDraggableResult`
-
-```ts
-type UseDraggableResult<
-  ElementType extends HTMLElement = HTMLElement,
-> = React.HTMLAttributes<ElementType> & {
-  ref: React.RefCallback<ElementType>;
-};
-```
-
-The returned props include `ref`. When pointer dragging is enabled, they include pointer activation handlers. When keyboard dragging is enabled, they include `tabIndex` and keyboard handlers.
-
-## Droppable Hook
-
-### `useDroppable`
-
-Registers an element as a drop target.
 
 ```tsx
-function Lane({ id }: { id: string }) {
-  const droppable = useDroppable<HTMLDivElement>({
-    dropTargetId: id,
-    group: "cards",
+function Item({ id }: { id: string }) {
+  const draggable = useDraggable<HTMLDivElement>({
+    draggableId: id,
+    group: "blocks",
   });
-
-  return <div {...droppable} />;
+  return <div {...draggable}>Item</div>;
 }
 ```
 
-### `UseDroppableOptions`
+The result supplies a ref and pointer behavior, plus keyboard props when
+keyboard dragging is enabled.
+
+## Droppable hook
 
 ```ts
 type UseDroppableOptions = {
@@ -280,405 +164,111 @@ type UseDroppableOptions = {
   group?: string;
   containerId?: string | null;
 };
+
+type UseDroppableResult<E extends HTMLElement = HTMLElement> =
+  HTMLAttributes<E> & { ref: RefCallback<E> };
 ```
 
-`dropTargetId` is required and should be stable. `group` defaults to `"default"`. `containerId` defaults to `null`.
+`useDroppable` registers the current ref and releases/re-registers safely over
+React ref and effect lifecycles.
 
-### `UseDroppableResult`
-
-```ts
-type UseDroppableResult<
-  ElementType extends HTMLElement = HTMLElement,
-> = React.HTMLAttributes<ElementType> & {
-  ref: React.RefCallback<ElementType>;
-};
-```
-
-The returned props currently include `ref`.
-
-## Drop Container Hook
-
-### `useDropContainer`
-
-Registers an element as a drop container.
-
-```tsx
-function EmptyList({ listId }: { listId: string }) {
-  const container = useDropContainer<HTMLDivElement>({
-    containerId: listId,
-    group: "cards",
-  });
-
-  return <div {...container} />;
-}
-```
-
-### `UseDropContainerOptions`
+## Drop container hook
 
 ```ts
 type UseDropContainerOptions = {
   containerId: string;
   group?: string;
 };
-```
 
-`containerId` is required and should be stable. `group` defaults to `"default"`.
-
-### `UseDropContainerResult`
-
-```ts
-type UseDropContainerResult<
-  ElementType extends HTMLElement = HTMLElement,
-> = {
-  ref: React.RefCallback<ElementType>;
+type UseDropContainerResult<E extends HTMLElement = HTMLElement> = {
+  ref: RefCallback<E>;
 };
 ```
 
-The returned props currently include `ref`.
+Use containers for cross-container and empty-list placement.
 
-## Sortable Hook
-
-### `useSortable`
-
-Registers an element as both a drag source and a drop target for sortable behavior.
-
-```tsx
-function SortableCard({
-  cardId,
-  columnId,
-}: {
-  cardId: string;
-  columnId: string;
-}) {
-  const sortable = useSortable<HTMLElement>({
-    draggableId: cardId,
-    group: "cards",
-    containerId: columnId,
-  });
-
-  return <article {...sortable}>Card {cardId}</article>;
-}
-```
-
-### `UseSortableOptions`
+## Sortable hook
 
 ```ts
 type UseSortableOptions = {
   draggableId: string;
   group?: string;
   containerId?: string | null;
-  axis?: "vertical" | "horizontal";
+  axis?: SortableAxis;
   placementBoundary?: SortablePlacementBoundary;
 };
+
+type UseSortableResult<E extends HTMLElement = HTMLElement> =
+  HTMLAttributes<E> & { ref: RefCallback<E> };
 ```
-
-`draggableId` is required and should be stable. `group` defaults to `"default"`, `containerId` defaults to `null`, `axis` defaults to `"vertical"` in DOM sortable behavior, and `placementBoundary` defaults to `{ start: 0.25, end: 0.75 }`.
-
-### `UseSortableResult`
-
-```ts
-type UseSortableResult<
-  ElementType extends HTMLElement = HTMLElement,
-> = React.HTMLAttributes<ElementType> & {
-  ref: React.RefCallback<ElementType>;
-};
-```
-
-The returned props include `ref`. When pointer dragging is enabled, they include pointer activation handlers. When keyboard dragging is enabled, they include `tabIndex` and keyboard handlers.
-
-### `SortableAxis`
-
-```ts
-type SortableAxis = "vertical" | "horizontal";
-```
-
-### `SortablePlacementBoundary`
-
-```ts
-type SortablePlacementBoundary = {
-  start?: number;
-  end?: number;
-};
-```
-
-## Drag Handle Hook
-
-### `useDragHandle`
-
-Marks an element as a drag handle.
 
 ```tsx
-function Handle() {
-  const handle = useDragHandle<HTMLButtonElement>();
-
-  return (
-    <button {...handle} type="button" aria-label="Drag card">
-      Drag
-    </button>
-  );
+function SortableItem({ id }: { id: string }) {
+  const sortable = useSortable<HTMLLIElement>({
+    draggableId: id,
+    group: "items",
+    axis: "vertical",
+    placementBoundary: { start: 0.25, end: 0.75 },
+  });
+  return <li {...sortable}>{id}</li>;
 }
 ```
 
-`useDragHandle` takes no options.
+`SortableAxis` is `"vertical" | "horizontal"`.
+`SortablePlacementBoundary` has optional `start` and `end` ratios.
 
-### `UseDragHandleResult`
+## Drag handle hook
 
 ```ts
-type UseDragHandleResult<
-  ElementType extends HTMLElement = HTMLElement,
-> = React.HTMLAttributes<ElementType> & {
-  "data-dnd-drag-handle": string;
-};
+type UseDragHandleResult<E extends HTMLElement = HTMLElement> =
+  HTMLAttributes<E> & { "data-dnd-drag-handle": string };
 ```
-
-The hook returns a stable props object containing the handle marker attribute. The current value is `"true"`.
-
-## Remeasurement And Recompute Hooks
-
-### `useRemeasureDropTargets`
-
-Returns a function that remeasures drop target geometry.
 
 ```tsx
-function TreeControls() {
-  const remeasureDropTargets = useRemeasureDropTargets();
-  const recomputeActiveDrag = useRecomputeActiveDrag();
-
-  function afterExpand() {
-    requestAnimationFrame(() => {
-      remeasureDropTargets({ group: "tree" });
-      recomputeActiveDrag();
-    });
-  }
-
-  return <button onClick={afterExpand}>Expand</button>;
-}
+const handle = useDragHandle<HTMLButtonElement>();
+return (
+  <button {...handle} type="button">
+    Menu
+  </button>
+);
 ```
+
+A button handle starts pointer dragging, but interactive filtering preserves
+Space/Enter for the button. Use a noninteractive keyboard handle or explicit
+commands for keyboard sorting. Quick pointer release remains a click; an
+activated drag suppresses its one related generated click only.
+
+## Remeasurement and recompute hooks
 
 ```ts
-function useRemeasureDropTargets(): (
-  input?: RemeasureDropTargetsInput
-) => void;
+const remeasureDropTargets = useRemeasureDropTargets();
+const recomputeActiveDrag = useRecomputeActiveDrag();
+const remeasureOverlay = useRemeasureOverlay();
 
-type RemeasureDropTargetsInput =
-  | string
-  | string[]
-  | { group: string };
+remeasureDropTargets({ group });
+recomputeActiveDrag();
 ```
 
-Supported calls:
+`useRemeasureDropTargets()` returns
+`(input?: RemeasureDropTargetsInput) => void`.
+`useRecomputeActiveDrag()` and `useRemeasureOverlay()` return `() => void`.
+
+Remeasurement updates cached geometry but emits no update. Recompute uses the
+last raw pointer and the normal modifier, preview, normalization, and
+publication pipeline; it does not implicitly remeasure. Schedule the pair
+after visible projection or scrolling reaches the DOM, compare orders, allow
+only one pending frame, and do not loop on unchanged projection.
+
+## Lifecycle and sortable types
+
+React re-exports the exact DOM identities:
 
 ```ts
-remeasureDropTargets();
-remeasureDropTargets("target-1");
-remeasureDropTargets(["target-1", "target-2"]);
-remeasureDropTargets({ group: "cards" });
-```
+type SortablePreview =
+  | { status: "inactive" }
+  | { status: "source"; placement: SortableDropPlacement }
+  | { status: "projected"; placement: SortableDropPlacement };
 
-Use this after app-owned layout changes that should affect targeting.
-Remeasurement updates cached target rectangles. It does not send a drag update by
-itself. If the active target should update immediately, remeasure first and then
-call the function returned by `useRecomputeActiveDrag`.
-
-### `useRecomputeActiveDrag`
-
-Returns a function that reruns the active drag update path from the last pointer
-position.
-
-```ts
-function useRecomputeActiveDrag(): () => void;
-```
-
-Calling the returned function with no active drag is safe. It does not remeasure
-drop targets or overlay geometry; call the relevant remeasurement hook first
-when layout changed.
-
-### `useRemeasureOverlay`
-
-Returns a function that manually refreshes current overlay geometry.
-
-```ts
-function useRemeasureOverlay(): () => void;
-```
-
-Calling the returned function with no mounted overlay is safe. Normal overlay
-size changes are observed automatically when `ResizeObserver` is available. Use
-this hook when the app knows visual bounds changed outside that automatic path.
-
-## Modifiers
-
-React re-exports DOM modifiers and provides a React-friendly `restrictToContainer`.
-
-### `lockToXAxis`
-
-```ts
-function lockToXAxis(): DragModifier;
-```
-
-Locks movement to the x axis.
-
-### `lockToYAxis`
-
-```ts
-function lockToYAxis(): DragModifier;
-```
-
-Locks movement to the y axis.
-
-```tsx
-const modifiers = [lockToYAxis()] as const;
-
-<DragProvider modifiers={modifiers}>
-  <List />
-</DragProvider>
-```
-
-### `restrictToContainer`
-
-```ts
-type ReactRestrictToContainerInput =
-  | React.RefObject<HTMLElement | null>
-  | ((input: DragModifierSetupInput) => HTMLElement | null);
-
-function restrictToContainer(
-  input: ReactRestrictToContainerInput
-): DragModifier<DragRect | null>;
-```
-
-The React version accepts either a React ref object or a resolver function. It
-uses the DOM modifier under the hood; the resolved container is remeasured during
-movement so resizing during a drag is respected.
-
-```tsx
-function Board() {
-  const boardRef = useRef<HTMLDivElement | null>(null);
-
-  const modifiers = useMemo(
-    () => [restrictToContainer(boardRef)],
-    []
-  );
-
-  return (
-    <DragProvider modifiers={modifiers}>
-      <div ref={boardRef}>
-        <BoardContent />
-      </div>
-    </DragProvider>
-  );
-}
-```
-
-Memoize modifier arrays when passing them to `DragProvider`.
-
-### Modifier Types
-
-```ts
-type DragModifierSetupInput = {
-  draggableId: string;
-  group: string;
-  sourceRect: DragRect;
-  initialPointerPosition: DragPoint;
-};
-
-type DragModifierTransformInput<State = unknown> = {
-  draggableId: string;
-  group: string;
-  sourceRect: DragRect;
-  initialPointerPosition: DragPoint;
-  rawPointerPosition: DragPoint;
-  pointerPosition: DragPoint;
-  overlayRect: DragRect;
-  state: State;
-};
-
-type DragModifier<State = unknown> = {
-  setup?: (input: DragModifierSetupInput) => State;
-  transform: (input: DragModifierTransformInput<State>) => DragPoint;
-};
-
-type DragModifierInput = {
-  setup?: (input: DragModifierSetupInput) => unknown;
-  transform: (input: DragModifierTransformInput<unknown>) => DragPoint;
-};
-```
-
-## Targeting And Lifecycle Types
-
-These APIs are re-exported from the DOM package. React uses them in `DragProvider` props and related callbacks.
-
-### Lifecycle Types
-
-```ts
-type DragSource = "pointer" | "keyboard";
-
-type DragEndResult =
-  | "dropped"
-  | "no-target"
-  | "invalid-target"
-  | "canceled";
-
-type DragStartEvent = {
-  draggableId: string;
-  source: DragSource;
-  pointerPosition: DragPoint;
-  sourceRect: DragRect;
-};
-
-type DragUpdateEvent = {
-  draggableId: string;
-  source: DragSource;
-  pointerPosition: DragPoint;
-  overlayRect: DragRect | null;
-  activeDropTargetId: string | null;
-  previousDropTargetId: string | null;
-};
-
-type DragEndEvent = {
-  draggableId: string;
-  source: DragSource;
-  result: DragEndResult;
-  dropTargetId: string | null;
-  overlayRect: DragRect | null;
-};
-
-type DropEvent = {
-  draggableId: string;
-  source: DragSource;
-  dropTargetId: string;
-  sortablePlacement?: SortableDropPlacement;
-};
-
-type DragLifecycleHelpers = {
-  getDropTargetRect: (dropTargetId: string) => DragRect | null;
-};
-
-type DragLifecycleCallbacks = {
-  onDragStart?: (
-    event: DragStartEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDragUpdate?: (
-    event: DragUpdateEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDragEnd?: (
-    event: DragEndEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-  onDrop?: (
-    event: DropEvent,
-    helpers: DragLifecycleHelpers
-  ) => void;
-};
-```
-
-`DragUpdateEvent.overlayRect` is the current viewport-space overlay rectangle.
-`DragEndEvent.overlayRect` is the final overlay rectangle at the moment the drag
-ends. Both are `null` when no drag overlay is configured.
-
-### Sortable Drop Placement
-
-```ts
 type SortableDropPlacement = {
   sourceContainerId: string | null;
   containerId: string | null;
@@ -689,69 +279,59 @@ type SortableDropPlacement = {
 };
 ```
 
-### Targeting Algorithms
+- `inactive`: plain drag or invalid sortable source in the captured group.
+- `source`: normalized preview equals captured source anchors.
+- `projected`: normalized preview differs, including retained no-target and
+  container-only projections.
 
-```ts
-type DropTarget = {
-  dropTargetId: string;
-  dropTargetRect: DragRect;
-};
+`DragStartEvent`, `DragUpdateEvent`, `DragEndEvent`, `DropEvent`, and
+`ActiveDragResetEvent` all carry the captured immutable `group`.
+`DragUpdateEvent.sortablePreview` is published after package preview mutation.
+Final placement uses the same normalizer; source/no-op drops omit it.
 
-type TargetingAlgorithmInput = {
-  pointerPosition: DragPoint;
-  overlayRect: DragRect | null;
-  dropTargets: readonly DropTarget[];
-};
+Route by group, not ID:
 
-type TargetingAlgorithm = {
-  (input: TargetingAlgorithmInput): DropTarget | null;
-  mode: "pointer" | "rect";
-};
+```tsx
+onDragUpdate={(event) => {
+  switch (event.group) {
+    case "document-blocks":
+      break;
+    case "table-rows":
+      break;
+    case "table-columns":
+      break;
+  }
+}}
 ```
 
-Exported algorithms:
+Cancellation has no final artificial update. End consumer projection from
+`onDragEnd`; retain successful projection until `onDrop` commits because end
+precedes drop.
 
-- `pointerToCenter`: chooses the target whose center is closest to the pointer.
-- `pointerToRectDistance`: chooses the target whose rectangle is closest to the pointer.
-- `centerToCenter`: chooses the target whose center is closest to the overlay center. Because its mode is
-  `"rect"`, it requires `dragOverlay`.
+## Modifiers
 
-### Targeting Constraints
+React exports `lockToXAxis` and `lockToYAxis` unchanged. Its
+`restrictToContainer` accepts `ReactRestrictToContainerInput`, allowing a ref
+or resolver appropriate to React. Modifier types are re-exported from DOM.
 
-```ts
-type TargetingConstraintInput = {
-  pointerPosition: DragPoint;
-  overlayRect: DragRect | null;
-  dropTarget: DropTarget;
-};
+## Targeting
 
-type TargetingConstraint = {
-  (input: TargetingConstraintInput): boolean;
-};
-```
+The package exports:
 
-Exported helpers:
+- `pointerToCenter`
+- `pointerToRectDistance`
+- `centerToCenter`
+- `getDistanceToRect`
+- `maxPointerDistanceToRect`
+- `maxOverlayCenterDistanceToRect`
+- `TargetingAlgorithm`, `TargetingAlgorithmInput`
+- `TargetingConstraint`, `TargetingConstraintInput`
+- `DropTarget`
 
-- `getDistanceToRect(point, rect)`: returns `{ x, y, distance }` from a point to a rect.
-- `maxPointerDistanceToRect(options)`: keeps targets eligible only when the pointer is within configured distance.
-- `maxOverlayCenterDistanceToRect(options)`: keeps targets eligible only when the overlay center is within
-  configured distance. It rejects every target when no overlay rectangle is available.
+Targeting selects a candidate. Sortable placement and hysteresis remain
+package-owned and must not be reconstructed from the pointer or active target.
 
-`maxPointerDistanceToRect` and `maxOverlayCenterDistanceToRect` accept:
-
-```ts
-type MaxDistanceToRectOptions = {
-  maxDistance?: number;
-  maxXDistance?: number;
-  maxYDistance?: number;
-};
-```
-
-The named `MaxDistanceToRectOptions` type is not re-exported from the React root.
-
-## Input Configuration
-
-### `PointerConfiguration`
+## Input configuration
 
 ```ts
 type PointerConfiguration = {
@@ -760,208 +340,70 @@ type PointerConfiguration = {
 };
 ```
 
-Pointer defaults are inherited from the DOM runtime. Both values normalize to `null` when omitted or invalid.
+Delay and distance use OR semantics. Either threshold activates.
 
-### `KeyboardCommand`
+`KeyboardConfiguration` supports `enabled`, start/drop/cancel commands,
+direction commands, and move distance. `KeyboardCommand` is a string or
+readonly string array. Defaults use Space/Enter, Escape, and arrow keys.
 
-```ts
-type KeyboardCommand = string | readonly string[];
-```
+## Geometry
 
-### `KeyboardConfiguration`
+`DragPoint` contains `x` and `y`. `DragRect` contains `x`, `y`, `left`, `top`,
+`right`, `bottom`, `width`, and `height`. Overlay state also re-exports
+`DragState` and `DragOverlayPhase` from the integration contract.
 
-```ts
-type KeyboardConfiguration = {
-  enabled?: boolean;
-  start?: KeyboardCommand;
-  drop?: KeyboardCommand;
-  cancel?: KeyboardCommand;
-  moveUp?: KeyboardCommand;
-  moveDown?: KeyboardCommand;
-  moveLeft?: KeyboardCommand;
-  moveRight?: KeyboardCommand;
-  moveDistance?: number;
-};
-```
+## Ref and element typing
 
-DOM keyboard defaults:
-
-- `enabled`: `true`
-- `start`: `["Space", "Enter"]`
-- `drop`: `["Space", "Enter"]`
-- `cancel`: `["Escape"]`
-- `moveUp`: `["ArrowUp"]`
-- `moveDown`: `["ArrowDown"]`
-- `moveLeft`: `["ArrowLeft"]`
-- `moveRight`: `["ArrowRight"]`
-- `moveDistance`: `24`
-
-## Geometry Types
-
-```ts
-type DragPoint = {
-  x: number;
-  y: number;
-};
-
-type DragRect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-};
-```
-
-## Ref And Element Typing
-
-Hook result types are generic over `HTMLElement` subclasses and default to `HTMLElement`.
+All element hooks accept an `HTMLElement` generic:
 
 ```tsx
-const draggable = useDraggable<HTMLButtonElement>({
-  draggableId: "button",
-});
-
-const droppable = useDroppable<HTMLElement>({
-  dropTargetId: "section",
-});
-
-const container = useDropContainer<HTMLUListElement>({
-  containerId: "list",
-});
-
-const sortable = useSortable<HTMLArticleElement>({
-  draggableId: "article",
-});
+const sortable = useSortable<HTMLTableRowElement>({ draggableId: "row-1" });
 ```
 
-Use the generic when you want element-specific ref and attribute typing.
-
-### `composeRefs`
-
-Combines callback refs and object refs into one callback ref.
-
-```ts
-function composeRefs<ElementType>(
-  ...refs: Array<React.Ref<ElementType> | undefined>
-): React.RefCallback<ElementType>;
-```
+Use `composeRefs` when the package callback ref and an application ref must
+observe the same node:
 
 ```tsx
-function Lane() {
-  const localRef = useRef<HTMLDivElement | null>(null);
-  const droppable = useDroppable<HTMLDivElement>({
-    dropTargetId: "lane-a",
-  });
-
-  const ref = useMemo(
-    () => composeRefs(localRef, droppable.ref),
-    [droppable.ref]
-  );
-
-  return <div {...droppable} ref={ref} />;
-}
+const ref = composeRefs(sortable.ref, localRef);
+return <div {...sortable} ref={ref} />;
 ```
 
-Memoize composed refs when using them with hook return refs.
+## Carrier-backed tables
 
-## Full API Index
+A logical column spans multiple table parents, so one content element cannot
+represent it. Keep transparent row/column carriers in separate normal-flow
+lanes and separate groups. Project visible rows/cells from
+`DragUpdateEvent.sortablePreview`, keep canonical arrays unchanged during
+preview, and commit normalized placement once in `onDrop`.
 
-### React Components And Provider APIs
+See [Carrier-backed table sorting](/mk-drag-and-drop/examples/carrier-table).
 
-- `DragProvider`
-- `DragProviderProps`
-- `DragAnnouncements`
+## Complete public API index
 
-### Overlay API
+Components and provider:
 
-- `DragOverlayInput`
-- `DragOverlayPhase`
-- `DragState`
-- `OverlayReleaseMode`
+- `DragProvider`, `DragProviderProps`, `DragAnnouncements`
+- `DragOverlayInput`, `DragOverlayPhase`, `DragState`, `OverlayReleaseMode`
 
-There is no public `DragOverlay` component export.
+Hooks:
 
-### Hooks
+- `useDraggable`, `UseDraggableOptions`, `UseDraggableResult`
+- `useDroppable`, `UseDroppableOptions`, `UseDroppableResult`
+- `useDropContainer`, its options and result
+- `useSortable`, its options and result
+- `useDragHandle`, `UseDragHandleResult`
+- `useRemeasureDropTargets`, `useRecomputeActiveDrag`, `useRemeasureOverlay`
 
-- `useDraggable`
-- `UseDraggableOptions`
-- `UseDraggableResult`
-- `useDroppable`
-- `UseDroppableOptions`
-- `UseDroppableResult`
-- `useDropContainer`
-- `UseDropContainerOptions`
-- `UseDropContainerResult`
-- `useSortable`
-- `UseSortableOptions`
-- `UseSortableResult`
-- `useDragHandle`
-- `UseDragHandleResult`
-- `useRemeasureDropTargets`
-- `useRecomputeActiveDrag`
-- `useRemeasureOverlay`
-
-### React Utilities
+Utilities and modifiers:
 
 - `composeRefs`
+- axis locks and React container restriction
+- modifier setup/transform/input types
 
-### Modifiers
+Re-exported DOM contracts:
 
-- `lockToXAxis`
-- `lockToYAxis`
-- `restrictToContainer`
-- `ReactRestrictToContainerInput`
-- `DragModifier`
-- `DragModifierInput`
-- `DragModifierSetupInput`
-- `DragModifierTransformInput`
-
-### Lifecycle Types
-
-- `DragEndResult`
-- `DragEndEvent`
-- `DragLifecycleCallbacks`
-- `DragLifecycleHelpers`
-- `DragSource`
-- `DragStartEvent`
-- `DragUpdateEvent`
-- `DropEvent`
-
-### Targeting APIs
-
-- `centerToCenter`
-- `pointerToCenter`
-- `pointerToRectDistance`
-- `getDistanceToRect`
-- `maxOverlayCenterDistanceToRect`
-- `maxPointerDistanceToRect`
-- `DropTarget`
-- `TargetingAlgorithm`
-- `TargetingAlgorithmInput`
-- `TargetingConstraint`
-- `TargetingConstraintInput`
-
-### Sortable Types
-
-- `SortableAxis`
-- `SortableDropPlacement`
-- `SortablePlacementBoundary`
-
-### Input Configuration Types
-
-- `KeyboardCommand`
-- `KeyboardConfiguration`
-- `PointerConfiguration`
-
-### Geometry Types
-
-- `DragPoint`
-- `DragRect`
-
-### Remeasurement Types
-
-- `RemeasureDropTargetsInput`
+- all lifecycle/callback/helper/source/result/reset types
+- sortable preview, placement, axis, and boundary
+- targeting algorithms, constraints, and types
+- pointer/keyboard configuration
+- geometry and remeasurement types

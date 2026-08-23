@@ -43,7 +43,9 @@ describe("architecture lifetimes", () => {
 
   it("binding helpers return void", () => {
     const controller = trackController(createDragController());
-    const draggable = createMeasuredElement(createRect({ width: 20, height: 20 }));
+    const draggable = createMeasuredElement(
+      createRect({ width: 20, height: 20 }),
+    );
     const droppable = createMeasuredElement(
       createRect({ left: 100, width: 20, height: 20 }),
     );
@@ -72,7 +74,11 @@ describe("architecture lifetimes", () => {
       }),
     ).toBeUndefined();
     expect(
-      createSortable({ controller, element: sortable, draggableId: "sortable" }),
+      createSortable({
+        controller,
+        element: sortable,
+        draggableId: "sortable",
+      }),
     ).toBeUndefined();
   });
 
@@ -166,7 +172,12 @@ describe("architecture lifetimes", () => {
     dragToTarget({ source, target: liveTarget, raf });
 
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item", source: "pointer", dropTargetId: "live" },
+      {
+        draggableId: "item",
+        group: "default",
+        source: "pointer",
+        dropTargetId: "live",
+      },
       expect.any(Object),
     );
   });
@@ -422,8 +433,12 @@ function createSortablePair(controller: DragController): {
 } {
   const list = document.createElement("div");
   document.body.append(list);
-  const a = createMeasuredElement(createRect({ top: 0, width: 20, height: 20 }));
-  const b = createMeasuredElement(createRect({ top: 30, width: 20, height: 20 }));
+  const a = createMeasuredElement(
+    createRect({ top: 0, width: 20, height: 20 }),
+  );
+  const b = createMeasuredElement(
+    createRect({ top: 30, width: 20, height: 20 }),
+  );
 
   list.append(a, b);
   createSortable({ controller, element: a, draggableId: "a" });
@@ -461,7 +476,9 @@ function dragToTarget(input: {
   });
 }
 
-function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
+function createMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
   const element = document.createElement("div");
 
   document.body.append(element);

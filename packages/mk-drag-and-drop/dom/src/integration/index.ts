@@ -11,7 +11,11 @@ export type {
   DragState,
   OverlayReleaseMode,
 } from "../runtime/types.js";
-export type { DragRuntimeSubscription } from "../runtime/lifecycle.js";
+export type {
+  ActiveDragResetEvent,
+  DragRuntimeSubscription,
+  SortablePreview,
+} from "../runtime/lifecycle.js";
 export {
   createDomDraggable,
   type CreateDomDraggableInput,

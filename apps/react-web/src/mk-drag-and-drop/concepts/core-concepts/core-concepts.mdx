@@ -1,486 +1,105 @@
 ---
-title: 'Core Concepts'
-summary: 'A practical model for understanding mk-drag-and-drop.'
+title: "Core concepts"
+summary: "Scopes, registrations, groups, application state, and input behavior."
 ---
 
-# Core Concepts
+# Core concepts
 
-`mk-drag-and-drop` is headless. It handles drag input, element registration, target selection, overlays, movement modifiers, sortable placement, lifecycle callbacks, and explicit geometry refresh. Your application owns markup, styling, state, persistence, and the final result of a drop.
+## Ownership
 
-The DOM package and React package expose the same concepts through different APIs. In the DOM package, a drag-and-drop scope is created with a controller. In React, the scope is created with `DragProvider`.
+The package owns pointer and keyboard input, target measurement, targeting,
+modifiers, overlays, package-owned sortable preview DOM, normalized lifecycle
+events, and cleanup. Applications own markup, styles, canonical models, visible
+projection outside the sortable carriers, and one final commit.
 
-## Mental Model
-
-The normal flow is:
-
-1. Create a drag-and-drop scope.
-2. Register draggable items and drop targets in that scope.
-3. Start a drag from a registered draggable.
-4. Targeting chooses the active drop target from measured eligible targets.
-5. Sortable placement, when used, decides where the item would land relative to the active target.
-6. Lifecycle callbacks let your application update visuals and commit data.
-
-The public concepts are scopes, registered elements, groups, targeting, sortable placement, modifiers, overlays, lifecycle callbacks, remeasurement, and active-drag recomputation.
+Registration describes what exists. Lifecycle describes one drag. Neither is
+an application transaction system.
 
 ## Scope
 
-A scope is the boundary for one drag-and-drop system. Items in one scope do not coordinate with items in another scope.
+A DOM controller creates one drag-and-drop scope. In React, one `DragProvider`
+creates one scope and hooks read the nearest provider. Nested providers create
+isolated scopes. Coordination across nested providers is not a special public
+feature.
 
-In the DOM package, create a scope with `createDragController`.
-
-```ts
-import {
-  createDragController,
-  createDraggable,
-  createDroppable,
-} from "@mk-drag-and-drop/dom";
-
-const controller = createDragController({
-  onDrop({ draggableId, dropTargetId }) {
-    moveItemToTarget(draggableId, dropTargetId);
-  },
-});
-
-createDraggable({
-  controller,
-  element: cardElement,
-  draggableId: "card-1",
-  group: "cards",
-});
-
-createDroppable({
-  controller,
-  element: laneElement,
-  dropTargetId: "lane-a",
-  group: "cards",
-});
-```
-
-In React, `DragProvider` owns the scope for its subtree.
+Use a single provider for related domains and separate them with groups:
 
 ```tsx
-import { DragProvider } from "@mk-drag-and-drop/react";
-
-export function Board() {
-  return (
-    <DragProvider
-      onDrop={({ draggableId, dropTargetId }) => {
-        moveItemToTarget(draggableId, dropTargetId);
-      }}
-    >
-      <BoardContent />
-    </DragProvider>
-  );
-}
+<DragProvider onDragUpdate={routeByGroup}>
+  <DocumentBlocks />
+  <SortableTable />
+</DragProvider>
 ```
-
-The scope coordinates registered elements, group matching, target measurement, target selection, lifecycle callbacks, overlay rendering, drag input, and movement modifiers.
-
-## Registered Elements
-
-Registered elements are the DOM nodes the runtime is allowed to use during a drag. In React, hooks register the rendered DOM nodes through refs.
-
-### Draggables
-
-A draggable is the source item that can start a drag. It has a stable `draggableId` and a `group`.
-
-```ts
-import { createDraggable, createDragHandle } from "@mk-drag-and-drop/dom";
-
-createDraggable({
-  controller,
-  element: cardElement,
-  draggableId: "card-1",
-  group: "cards",
-});
-
-createDragHandle({ element: handleElement });
-```
-
-```tsx
-import { useDraggable, useDragHandle } from "@mk-drag-and-drop/react";
-
-function Card({ id, title }: { id: string; title: string }) {
-  const draggable = useDraggable<HTMLDivElement>({
-    draggableId: id,
-    group: "cards",
-  });
-  const handle = useDragHandle<HTMLButtonElement>();
-
-  return (
-    <div {...draggable}>
-      <button {...handle} type="button" aria-label="Drag card">
-        Drag
-      </button>
-      <span>{title}</span>
-    </div>
-  );
-}
-```
-
-When a draggable has a drag handle, pointer and keyboard dragging start from the handle. Without a handle, the draggable itself can start dragging.
-
-### Droppables
-
-A droppable is a target that can become active during a drag. It has a stable `dropTargetId` and a `group`. A draggable can target a droppable when their groups match.
-
-```ts
-import { createDroppable } from "@mk-drag-and-drop/dom";
-
-createDroppable({
-  controller,
-  element: archiveElement,
-  dropTargetId: "archive",
-  group: "cards",
-});
-```
-
-```tsx
-import { useDroppable } from "@mk-drag-and-drop/react";
-
-function ArchiveDropTarget() {
-  const droppable = useDroppable<HTMLDivElement>({
-    dropTargetId: "archive",
-    group: "cards",
-  });
-
-  return <div {...droppable} />;
-}
-```
-
-Droppables are useful for custom drop zones, generated insertion lines, tree rows, grouped rows, and any other app-defined target geometry.
-
-### Drop Containers
-
-A drop container represents an area rather than a specific item. It is useful for empty lists, boards, lanes, columns, and broad valid drop regions.
-
-```ts
-import { createDropContainer } from "@mk-drag-and-drop/dom";
-
-createDropContainer({
-  controller,
-  element: laneElement,
-  containerId: "lane-a",
-  group: "cards",
-});
-```
-
-```tsx
-import { useDropContainer } from "@mk-drag-and-drop/react";
-
-function Lane({
-  laneId,
-  children,
-}: {
-  laneId: string;
-  children: React.ReactNode;
-}) {
-  const container = useDropContainer<HTMLDivElement>({
-    containerId: laneId,
-    group: "cards",
-  });
-
-  return <div {...container}>{children}</div>;
-}
-```
-
-A container does not define sortable placement by itself. Sortable placement comes from sortable item registrations, their layout, the configured axis, and the current active target.
-
-### Sortables
-
-A sortable item is both a drag source and a drop target. Use it for reorderable lists, boards, and trees.
-
-```ts
-import { createSortable } from "@mk-drag-and-drop/dom";
-
-createSortable({
-  controller,
-  element: cardElement,
-  draggableId: "card-1",
-  group: "cards",
-  containerId: "lane-a",
-  axis: "vertical",
-  placementBoundary: { start: 0.25, end: 0.75 },
-});
-```
-
-```tsx
-import { useSortable } from "@mk-drag-and-drop/react";
-
-function SortableCard({
-  card,
-  laneId,
-}: {
-  card: { id: string; title: string };
-  laneId: string;
-}) {
-  const sortable = useSortable<HTMLArticleElement>({
-    draggableId: card.id,
-    group: "cards",
-    containerId: laneId,
-    axis: "vertical",
-    placementBoundary: { start: 0.25, end: 0.75 },
-  });
-
-  return <article {...sortable}>{card.title}</article>;
-}
-```
-
-During a sortable drag, the runtime may move DOM nodes to preview where the item would land. That preview is temporary. The application still commits the final data in lifecycle callbacks, usually `onDrop`.
-
-For cross-container sortable drags, initial before/after placement is based on the current placement position against the target midpoint: the pointer for pointer-based targeting, or the overlay center for rect-based targeting. `placementBoundary` is for later same-target reversal behavior; it is not a targeting threshold and does not decide the first side when entering another container.
 
 ## Groups
 
-Groups decide which draggables and targets can interact. A draggable with `group: "cards"` only targets droppables, drop containers, and sortables in the same group.
-
-Use groups when one screen has different drag systems next to each other, such as cards and columns, rows and files, or canvas elements and sidebar items.
-
-## Targeting And Placement
-
-Targeting and sortable placement are related, but they answer different questions.
-
-| Concept | Question | Main output |
-| --- | --- | --- |
-| Targeting | Which drop target is active? | `activeDropTargetId` |
-| Sortable placement | Where would the sortable item land relative to that target? | `sortablePlacement` |
-
-Targeting runs first. It chooses the active drop target from measured eligible targets in the same group. Sortable placement then interprets that active target for reorderable items.
-
-Targeting algorithms choose between candidate targets. Targeting constraints filter candidate targets before an algorithm chooses one.
+Groups are both target-interaction boundaries and lifecycle-routing
+identifiers. Only targets in the captured group can interact with the active
+drag.
 
 ```ts
-import {
-  createDragController,
-  maxPointerDistanceToRect,
-} from "@mk-drag-and-drop/dom";
-
-const controller = createDragController({
-  targetingConstraint: maxPointerDistanceToRect({ maxDistance: 0 }),
-});
-```
-
-The constraint above accepts only drops where the pointer is directly on the target. Overlay-center constraints such as `maxOverlayCenterDistanceToRect` are also available, but they require a configured drag overlay because they depend on `overlayRect`.
-
-For sortable items, a successful drop may include placement data:
-
-```ts
-type SortableDropPlacement = {
-  sourceContainerId: string | null;
-  containerId: string | null;
-  previousDraggableId: string | null;
-  nextDraggableId: string | null;
-  targetDraggableId: string | null;
-  side: "before" | "after" | null;
-};
-```
-
-`targetDraggableId` and `side` describe item-relative placement. They are `null` for container-only placement.
-
-## Remeasurement And Recompute
-
-The runtime measures drop targets so targeting algorithms can compare geometry. Targets are measured when registered and remeasured when a drag starts.
-
-Call the public drop-target remeasurement API after app-owned layout changes that should affect targeting during an active drag. Common cases include expanding tree rows, opening grouped sections, changing list content outside the sortable preview, or resizing a target area.
-
-```ts
-controller.remeasureDropTargets();
-controller.remeasureDropTargets("archive");
-controller.remeasureDropTargets(["lane-a", "lane-b"]);
-controller.remeasureDropTargets({ group: "cards" });
-```
-
-```tsx
-import { useLayoutEffect } from "react";
-import {
-  useRemeasureDropTargets,
-  useRecomputeActiveDrag,
-} from "@mk-drag-and-drop/react";
-
-function Tree({ expandedIds }: { expandedIds: string[] }) {
-  const remeasureDropTargets = useRemeasureDropTargets();
-  const recomputeActiveDrag = useRecomputeActiveDrag();
-
-  useLayoutEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      remeasureDropTargets({ group: "tree" });
-      recomputeActiveDrag();
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, [expandedIds, remeasureDropTargets, recomputeActiveDrag]);
-
-  return null;
+switch (event.group) {
+  case "document-blocks":
+    break;
+  case "table-rows":
+    break;
+  case "table-columns":
+    break;
 }
 ```
 
-Remeasurement refreshes cached geometry. Recompute reruns the active targeting and drag update path from the last pointer position. If layout changed and no new pointer event will happen immediately, remeasure first and then recompute.
+The group is captured when activation succeeds and is immutable for the drag.
+Registration changes can invalidate the source or target but cannot change
+event or announcement routing. Keep `draggableId` a stable logical identity;
+do not encode domain routing into it.
 
-Overlay measurement is separate from drop-target measurement. Overlay content is measured on mount or replacement, and by `ResizeObserver` when available. Use `controller.remeasureOverlay()`, the overlay input `remeasureOverlay`, or React `useRemeasureOverlay()` when app-owned visual changes should refresh the current overlay geometry.
+## Draggables, targets, and sortables
 
-Do not call remeasurement on every render. Use it when layout changed and measured geometry should be refreshed.
+- A draggable is a drag source.
+- A droppable is a target.
+- A drop container is a target region for container placement, including empty
+  destinations.
+- A sortable combines a source and item target and participates in transient
+  preview ordering.
 
-## Modifiers
+`activeDropTargetId` reports selection. Sortable before/after placement is
+already represented by `sortablePreview`; do not calculate it from the target
+id.
 
-Modifiers transform drag movement before drag state updates. They are useful for axis locking, bounds, or custom coordinate transforms.
+## Canonical and projected state
 
-```ts
-import {
-  createDragController,
-  lockToYAxis,
-  restrictToContainer,
-} from "@mk-drag-and-drop/dom";
+The application canonical model does not change during `onDragUpdate`.
+`SortablePreview` drives optional local presentation:
 
-const controller = createDragController({
-  modifiers: [
-    lockToYAxis(),
-    restrictToContainer(() => boardElement),
-  ],
-});
+```text
+canonical model -- source/inactive --> canonical visible order
+DragUpdateEvent.sortablePreview -- projected --> transient visible order
+DropEvent.sortablePlacement --> one canonical commit
 ```
 
-```tsx
-import { useMemo, useRef } from "react";
-import {
-  DragProvider,
-  lockToYAxis,
-  restrictToContainer,
-} from "@mk-drag-and-drop/react";
+The package restores its sortable preview nodes before public end/drop
+callbacks. Application projection is cleared on non-dropped end, or after the
+successful drop callback commits.
 
-function Board() {
-  const boardRef = useRef<HTMLDivElement | null>(null);
-  const modifiers = useMemo(
-    () => [lockToYAxis(), restrictToContainer(boardRef)],
-    []
-  );
+## Activation and handles
 
-  return (
-    <DragProvider modifiers={modifiers}>
-      <div ref={boardRef}>
-        <BoardContent />
-      </div>
-    </DragProvider>
-  );
-}
-```
+Pointer activation delay and distance use OR semantics. Reaching either
+configured threshold activates. Releasing quickly before activation remains an
+ordinary click. An activated pointer drag suppresses at most the related
+generated click in the initiating draggable subtree; later unrelated,
+programmatic, and keyboard clicks work normally.
 
-Modifiers affect movement. They do not register targets, change ids, or change group matching. The built-in `restrictToContainer` modifier remeasures the resolved bounds element during active movement, so it can respond when that container grows or shrinks.
+A descendant button may be the pointer handle. Space and Enter remain reserved
+for button/menu activation and do not start keyboard drag through an interactive
+button. Keyboard sorting needs a separate noninteractive or separately focusable
+handle, or explicit commands. Editable descendants are always protected.
 
-## Lifecycle
+## Completed events
 
-Lifecycle callbacks are where applications usually update visual state and commit data.
+Every normal update includes `group` and discriminated `sortablePreview`. The
+package selects a target, applies its preview mutation, normalizes that current
+order, and then publishes. Adapter/runtime subscribers and public callbacks
+receive the same completed event.
 
-The main callbacks are:
-
-- `onDragStart`: a drag started from a registered draggable.
-- `onDragUpdate`: drag movement updated and targeting may have changed.
-- `onDragEnd`: the drag ended, with or without a successful drop.
-- `onDrop`: the drag ended on a valid target.
-
-A drag can end without a successful drop:
-
-```ts
-type DragEndResult =
-  | "dropped"
-  | "no-target"
-  | "invalid-target"
-  | "canceled";
-```
-
-`onDrop` only runs for a valid successful drop.
-
-```tsx
-<DragProvider
-  onDragUpdate={({ activeDropTargetId, previousDropTargetId }) => {
-    if (activeDropTargetId !== previousDropTargetId) {
-      highlightTarget(activeDropTargetId);
-      clearTarget(previousDropTargetId);
-    }
-  }}
-  onDragEnd={({ result }) => {
-    if (result !== "dropped") {
-      clearDragUi();
-    }
-  }}
-  onDrop={({ draggableId, dropTargetId, sortablePlacement }) => {
-    if (sortablePlacement) {
-      reorderItem(draggableId, sortablePlacement);
-      return;
-    }
-
-    moveItemToTarget(draggableId, dropTargetId);
-  }}
->
-  <BoardContent />
-</DragProvider>
-```
-
-Pointer and keyboard drags use the same lifecycle event shapes. The `source` field tells you whether the drag came from pointer or keyboard input.
-
-## Drag Overlay
-
-A drag overlay is the visual representation shown while dragging. It is useful when the original element should remain in place, fade out, or use a custom preview.
-
-In the DOM package, pass `dragOverlay` to the controller. It returns an `HTMLElement` or `null`.
-
-```ts
-const controller = createDragController({
-  dragOverlay({ dragState }) {
-    const overlay = document.createElement("div");
-    overlay.className = "dragOverlay";
-    overlay.textContent = dragState.draggableId;
-    return overlay;
-  },
-});
-```
-
-In React, pass `dragOverlay` to `DragProvider`. It returns React content.
-
-```tsx
-<DragProvider
-  dragOverlay={({ dragState }) => (
-    <div className="dragOverlay">{dragState.draggableId}</div>
-  )}
->
-  <BoardContent />
-</DragProvider>
-```
-
-Overlay movement is handled by the package. Applications should not need to update React state or rebuild DOM on every pointer move just to move the overlay.
-
-Overlay content is measured for overlay-aware targeting, constraints, and modifiers. If an app-owned transition, transform, or content change alters the visual bounds outside normal size observation, use `remeasureOverlay` to refresh that measurement.
-
-By default, overlays are removed automatically when a drag ends. For app-owned release animations, configure `overlayRelease: "manual"`; the released overlay receives `removeOverlay`, which should be called when the animation is done.
-
-## DOM And React Comparison
-
-| Concept | DOM package | React package |
-| --- | --- | --- |
-| Scope | `createDragController(options?)` | `DragProvider` |
-| Draggable | `createDraggable({ controller, element, draggableId, group })` | `useDraggable({ draggableId, group })` |
-| Droppable | `createDroppable({ controller, element, dropTargetId, group })` | `useDroppable({ dropTargetId, group })` |
-| Drop container | `createDropContainer({ controller, element, containerId, group })` | `useDropContainer({ containerId, group })` |
-| Sortable | `createSortable({ controller, element, draggableId, group, containerId, axis })` | `useSortable({ draggableId, group, containerId, axis })` |
-| Drag handle | `createDragHandle({ element })` | `useDragHandle()` |
-| Drop-target remeasurement | `controller.remeasureDropTargets(input?)` | `useRemeasureDropTargets()` |
-| Overlay remeasurement | `controller.remeasureOverlay()` or overlay input | `useRemeasureOverlay()` or overlay input |
-| Active-drag recompute | `controller.recomputeActiveDrag()` | `useRecomputeActiveDrag()` |
-| Targeting | Controller options | Provider props |
-| Modifiers | Controller option | Provider prop |
-
-The React package is an ergonomic layer over the DOM behavior. It gives you provider-based scoping, hooks, React refs, and React overlay rendering, while the same underlying concepts apply to both packages.
-
-## Practical Rules
-
-- Keep `draggableId`, `dropTargetId`, and `containerId` stable.
-- Use groups intentionally.
-- Use `useSortable` or `createSortable` for reorderable items.
-- Use drop containers for empty lists, lanes, boards, and broad valid regions.
-- Keep targeting and sortable placement separate in your mental model.
-- Commit application state in `onDrop` when a valid drop occurs.
-- Use `onDragEnd` for cleanup that must happen even when there is no valid drop.
-- Call drop-target remeasurement after app-owned layout changes that should affect targeting.
-- Recompute the active drag after external changes should affect targeting without waiting for pointer movement.
-- Remeasure the overlay after app-owned visual changes should affect overlay-aware targeting, constraints, or modifiers.
-- Use modifiers for movement constraints, not target registration.
-- Use drag handles when the draggable contains buttons, inputs, links, or other interactive content.
+Live and drop placement share `SortableDropPlacement`; there is no second
+placement representation. A source/no-op successful drop omits final placement.

@@ -1,6 +1,6 @@
 ---
-title: 'mk-drag-and-drop'
-summary: 'Headless DOM-first drag-and-drop primitives with a React adapter.'
+title: "mk-drag-and-drop"
+summary: "Headless DOM-first drag-and-drop primitives with a React adapter."
 ---
 
 # mk-drag-and-drop
@@ -19,7 +19,7 @@ Use `@mk-drag-and-drop/dom` when you are working with plain DOM, custom elements
 - Pointer and keyboard drag input.
 - Draggable, droppable, drop-container, sortable, and drag-handle registration.
 - Drop-target measurement and active-target selection.
-- Temporary sortable preview movement during an active drag.
+- Transient sortable preview movement during an active drag.
 - Optional drag overlays, including manual release animations.
 - Movement modifiers such as axis locks and container bounds.
 - Lifecycle events that describe what happened.
@@ -60,13 +60,18 @@ Older examples or docs may assume a smaller API surface. The current packages ex
 - DOM controllers expose `remeasureDropTargets()`, `remeasureOverlay()`, and `recomputeActiveDrag()`. React exposes the matching `useRemeasureDropTargets()`, `useRemeasureOverlay()`, and `useRecomputeActiveDrag()` hooks.
 - `overlayRelease="manual"` calls the overlay renderer again with `phase: "released"` and a `removeOverlay` callback so your app can finish a release animation.
 - Sortable items can be vertical or horizontal through `axis`, and `placementBoundary` tunes same-target reversal behavior.
-- Sortable drops may include `event.sortablePlacement`. Plain droppable drops are id-only.
+- Every normal update includes discriminated `event.sortablePreview`; sortable
+  drops may include the same normalized placement under
+  `event.sortablePlacement`. Plain droppable drops are id-only.
 - Binding helpers and hooks register DOM elements, but they do not commit app data or expose sortable reorder helpers. Reordering remains app code.
 
 ## Examples
 
 - [Basic drag](/projects/mk-drag-and-drop/examples/basic-drag): one draggable item, two droppable containers, an overlay, and a pointer-distance targeting constraint.
 - [Sortable list](/projects/mk-drag-and-drop/examples/sortable-list): `useSortable`, sortable placement data, axis locking, overlay-center targeting, and manual overlay release.
+- [Carrier-backed tables](/projects/mk-drag-and-drop/examples/carrier-table):
+  live row and logical-column projection driven by normalized preview, with
+  ordinary sortables as parity references.
 - [Kanban](/projects/mk-drag-and-drop/examples/kanban): sortable columns, sortable cards, drop containers, composed refs, and a container-bound modifier.
 - [Groups](/projects/mk-drag-and-drop/examples/groups): sortable parent rows, draggable child rows, generated insertion targets, custom constraints, and explicit remeasurement after expansion changes.
 - [Tree](/projects/mk-drag-and-drop/examples/tree): app-owned tree projection, generated drop targets, custom targeting, and hierarchy updates from `dropTargetId`.

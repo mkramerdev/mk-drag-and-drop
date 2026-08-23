@@ -1,6 +1,7 @@
 {
   "extends": "@repo/typescript-config/vite.json",
   "include": ["src"],
+  "exclude": ["src/mk-drag-and-drop"],
   "compilerOptions": {
     "jsx": "react-jsx",
     "strictNullChecks": true

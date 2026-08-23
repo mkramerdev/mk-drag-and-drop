@@ -1,5 +1,6 @@
 import type { DomDraggableRuntime } from "../draggable/create-draggable.js";
 import type { RemeasureDropTargetsInput } from "../runtime/drop-target-registry.js";
+import { setSortableCoordinator } from "../runtime/sortable-coordinator.js";
 import {
   clearSortableDraggedState,
   clearSortablePointerMovement,
@@ -49,39 +50,6 @@ export type DomSortableRuntime = DomDraggableRuntime & {
       sortable: boolean;
     };
   } | null;
-  subscribe: (subscription: {
-    onDragStart?: (event: {
-      draggableId: string;
-      source: "pointer" | "keyboard";
-      pointerPosition: { x: number; y: number };
-      placementPosition?: { x: number; y: number };
-      movementPosition?: { x: number; y: number };
-    }) => void;
-    onDragUpdate?: (event: {
-      draggableId: string;
-      source: "pointer" | "keyboard";
-      pointerPosition: { x: number; y: number };
-      placementPosition?: { x: number; y: number };
-      movementPosition?: { x: number; y: number };
-      activeDropTargetId: string | null;
-      previousDropTargetId: string | null;
-    }) => void;
-    onDragEnd?: (event: {
-      draggableId: string;
-      source: "pointer" | "keyboard";
-      result: "dropped" | "no-target" | "invalid-target" | "canceled";
-      dropTargetId: string | null;
-    }) => void;
-    onDrop?: (event: {
-      draggableId: string;
-      source: "pointer" | "keyboard";
-      dropTargetId: string;
-    }) => void;
-    onActiveDragReset?: (event: {
-      draggableId: string;
-      source: "pointer" | "keyboard";
-    }) => void;
-  }) => () => void;
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
 };
 
@@ -92,10 +60,14 @@ export type SortableRegistry = {
 
 export type SortableRegistrationState = {
   registrationAttributeSnapshots: Map<string, SortableAttributeSnapshot>;
-  sortableElementIds: WeakMap<HTMLElement, string>;
+  sortableElementIds: WeakMap<HTMLElement, SortableRegistrationIdentity>;
   sortableElementRefs: Map<string, WeakRef<HTMLElement>>;
-  sortableGroups: Map<string, string>;
   sortableOptions: Map<string, NormalizedSortableOptions>;
+};
+
+export type SortableRegistrationIdentity = {
+  draggableId: string;
+  group: string;
 };
 
 export type SortableActiveDragState = {
@@ -134,7 +106,6 @@ export function getSortableRegistry(
       registrationAttributeSnapshots: new Map(),
       sortableElementIds: new WeakMap(),
       sortableElementRefs: new Map(),
-      sortableGroups: new Map(),
       sortableOptions: new Map(),
     },
     activeDrag: {
@@ -144,51 +115,52 @@ export function getSortableRegistry(
     },
   };
 
-  runtime.subscribe({
-    onDragStart: (event) => {
-      const placementPosition = event.placementPosition ?? event.pointerPosition;
+  setSortableCoordinator(runtime, {
+    start: (event) => {
       initializeSortablePointerMovement(
         registry,
-        event.movementPosition ?? placementPosition,
-        placementPosition,
+        event.movementPosition,
+        event.placementPosition,
       );
-      snapshotSortableElement(registry, event.draggableId);
+      if (isActiveSortableRegistration(registry, runtime, event)) {
+        snapshotSortableElement(registry, event.draggableId, event.group);
+      }
     },
-    onDragUpdate: (event) => {
+    update: (event) => {
+      const isActiveSortable = isActiveSortableRegistration(
+        registry,
+        runtime,
+        event,
+      );
+
       if (
+        isActiveSortable &&
         isSortablePreviewTarget({
           activeDropTargetId: event.activeDropTargetId,
         })
       ) {
-        const placementPosition = event.placementPosition ?? event.pointerPosition;
         moveSortablePreview({
           registry,
           runtime,
           draggedDraggableId: event.draggableId,
           activeDropTargetId: event.activeDropTargetId,
-          placementPosition,
-          movementPosition: event.movementPosition ?? placementPosition,
-          options: getSortableOptions(registry, event.draggableId),
+          draggedGroup: event.group,
+          placementPosition: event.placementPosition,
+          movementPosition: event.movementPosition,
+          options: getSortableOptions(registry, event.draggableId, event.group),
         });
-      } else {
+      } else if (!isActiveSortable) {
         clearSortablePreviewPlacement(registry);
       }
 
-      const placementPosition = event.placementPosition ?? event.pointerPosition;
       updateSortablePointerMovement(
         registry,
-        event.movementPosition ?? placementPosition,
-        placementPosition,
+        event.movementPosition,
+        event.placementPosition,
       );
     },
-    onDragEnd: (event) => {
-      releaseSortableActiveDragState(registry, event.draggableId);
-    },
-    onDrop: (event) => {
-      releaseSortableActiveDragState(registry, event.draggableId);
-    },
-    onActiveDragReset: (event) => {
-      releaseSortableActiveDragState(registry, event.draggableId);
+    release: ({ draggableId, group }) => {
+      releaseSortableActiveDragState(registry, draggableId, group);
     },
   });
 
@@ -197,9 +169,32 @@ export function getSortableRegistry(
   return registry;
 }
 
+function isActiveSortableRegistration(
+  registry: SortableRegistry,
+  runtime: DomSortableRuntime,
+  input: { draggableId: string; group: string },
+): boolean {
+  const element = getRegisteredSortableElement(
+    registry,
+    input.draggableId,
+    input.group,
+  );
+  const registration = runtime.getDropTargetRegistration(
+    input.draggableId,
+    input.group,
+  );
+
+  return (
+    element !== null &&
+    registration?.element === element &&
+    registration.capabilities.sortable
+  );
+}
+
 function releaseSortableActiveDragState(
   registry: SortableRegistry,
   draggableId: string,
+  group: string,
 ): void {
   let releaseError: unknown;
   let hasReleaseError = false;
@@ -212,7 +207,7 @@ function releaseSortableActiveDragState(
   }
 
   try {
-    clearSortableDraggedState(registry, draggableId);
+    clearSortableDraggedState(registry, draggableId, group);
   } catch (error) {
     if (!hasReleaseError) {
       releaseError = error;
@@ -238,15 +233,19 @@ export function registerSortableElement(input: {
   element: HTMLElement;
   options?: SortableOptions;
 }): void {
+  const registrationKey = getSortableRegistrationKey(
+    input.draggableId,
+    input.group,
+  );
   const existingSnapshot =
     input.registry.registration.registrationAttributeSnapshots.get(
-      input.draggableId,
+      registrationKey,
     );
   const existingSnapshotElement = existingSnapshot?.elementRef.deref() ?? null;
 
   if (!existingSnapshot || existingSnapshotElement !== input.element) {
     input.registry.registration.registrationAttributeSnapshots.set(
-      input.draggableId,
+      registrationKey,
       {
         elementRef: new WeakRef(input.element),
         sortableDraggable: input.element.getAttribute(
@@ -259,47 +258,60 @@ export function registerSortableElement(input: {
 
   input.element.setAttribute("data-dnd-sortable-draggable", "true");
   const normalizedOptions = normalizeSortableOptions(input.options);
-  input.registry.registration.sortableElementIds.set(
-    input.element,
-    input.draggableId,
-  );
+  input.registry.registration.sortableElementIds.set(input.element, {
+    draggableId: input.draggableId,
+    group: input.group,
+  });
   input.registry.registration.sortableElementRefs.set(
-    input.draggableId,
+    registrationKey,
     new WeakRef(input.element),
   );
-  input.registry.registration.sortableGroups.set(input.draggableId, input.group);
   input.registry.registration.sortableOptions.set(
-    input.draggableId,
+    registrationKey,
     normalizedOptions,
   );
-  input.runtime.registerDropTarget(input.draggableId, input.element, input.group, {
-    containerId: input.containerId ?? null,
-    sortable: true,
-    sortableAxis: normalizedOptions.axis,
-  });
+  input.runtime.registerDropTarget(
+    input.draggableId,
+    input.element,
+    input.group,
+    {
+      containerId: input.containerId ?? null,
+      sortable: true,
+      sortableAxis: normalizedOptions.axis,
+    },
+  );
 }
 
 export function unregisterSortableElement(input: {
   registry: SortableRegistry;
   runtime: DomSortableRuntime;
   draggableId: string | null;
+  group: string;
   element: HTMLElement | null;
 }): void {
   if (input.draggableId !== null) {
-    input.runtime.unregisterDropTarget(input.draggableId, input.element ?? undefined);
+    const registrationKey = getSortableRegistrationKey(
+      input.draggableId,
+      input.group,
+    );
+    input.runtime.unregisterDropTarget(
+      input.draggableId,
+      input.element ?? undefined,
+    );
     const registeredElement =
       input.registry.registration.sortableElementRefs
-        .get(input.draggableId)
+        .get(registrationKey)
         ?.deref() ?? null;
 
     if (registeredElement === input.element || input.element === null) {
       if (registeredElement) {
-        input.registry.registration.sortableElementIds.delete(registeredElement);
+        input.registry.registration.sortableElementIds.delete(
+          registeredElement,
+        );
       }
 
-      input.registry.registration.sortableElementRefs.delete(input.draggableId);
-      input.registry.registration.sortableGroups.delete(input.draggableId);
-      input.registry.registration.sortableOptions.delete(input.draggableId);
+      input.registry.registration.sortableElementRefs.delete(registrationKey);
+      input.registry.registration.sortableOptions.delete(registrationKey);
     }
   }
 
@@ -307,6 +319,7 @@ export function unregisterSortableElement(input: {
     restoreSortableInternalAttributes({
       registry: input.registry,
       draggableId: input.draggableId,
+      group: input.group,
       element: input.element,
     });
   }
@@ -315,11 +328,12 @@ export function unregisterSortableElement(input: {
 export function restoreSortableInternalAttributes(input: {
   registry: SortableRegistry;
   draggableId: string | null;
+  group: string;
   element: HTMLElement;
 }): void {
   const snapshot = input.draggableId
     ? input.registry.registration.registrationAttributeSnapshots.get(
-        input.draggableId,
+        getSortableRegistrationKey(input.draggableId, input.group),
       )
     : null;
   const snapshotElement = snapshot?.elementRef.deref() ?? null;
@@ -327,7 +341,9 @@ export function restoreSortableInternalAttributes(input: {
   restoreAttribute(
     input.element,
     "data-dnd-sortable-draggable",
-    snapshot && snapshotElement === input.element ? snapshot.sortableDraggable : null,
+    snapshot && snapshotElement === input.element
+      ? snapshot.sortableDraggable
+      : null,
   );
   restoreAttribute(
     input.element,
@@ -337,7 +353,7 @@ export function restoreSortableInternalAttributes(input: {
 
   if (input.draggableId) {
     input.registry.registration.registrationAttributeSnapshots.delete(
-      input.draggableId,
+      getSortableRegistrationKey(input.draggableId, input.group),
     );
   }
 }
@@ -345,11 +361,12 @@ export function restoreSortableInternalAttributes(input: {
 export function restoreSortableDraggedAttribute(input: {
   registry: SortableRegistry;
   draggableId: string;
+  group: string;
   element: HTMLElement;
 }): void {
   const snapshot =
     input.registry.registration.registrationAttributeSnapshots.get(
-      input.draggableId,
+      getSortableRegistrationKey(input.draggableId, input.group),
     );
   const snapshotElement = snapshot?.elementRef.deref() ?? null;
 
@@ -363,9 +380,12 @@ export function restoreSortableDraggedAttribute(input: {
 export function getRegisteredSortableElement(
   registry: SortableRegistry,
   draggableId: string,
+  group: string,
 ): HTMLElement | null {
   const element =
-    registry.registration.sortableElementRefs.get(draggableId)?.deref() ?? null;
+    registry.registration.sortableElementRefs
+      .get(getSortableRegistrationKey(draggableId, group))
+      ?.deref() ?? null;
 
   return element?.isConnected ? element : null;
 }
@@ -373,11 +393,20 @@ export function getRegisteredSortableElement(
 function getSortableOptions(
   registry: SortableRegistry,
   draggableId: string,
+  group: string,
 ): NormalizedSortableOptions {
   return (
-    registry.registration.sortableOptions.get(draggableId) ??
-    normalizeSortableOptions(undefined)
+    registry.registration.sortableOptions.get(
+      getSortableRegistrationKey(draggableId, group),
+    ) ?? normalizeSortableOptions(undefined)
   );
+}
+
+export function getSortableRegistrationKey(
+  draggableId: string,
+  group: string,
+): string {
+  return `${group}\u0000${draggableId}`;
 }
 
 function restoreAttribute(

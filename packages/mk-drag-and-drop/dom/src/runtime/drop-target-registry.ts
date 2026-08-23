@@ -11,10 +11,7 @@ import { emptyDragRect } from "../geometry/rects.js";
 
 export type DragGroup = string;
 
-export type RemeasureDropTargetsInput =
-  | string
-  | string[]
-  | { group: string };
+export type RemeasureDropTargetsInput = string | string[] | { group: string };
 
 export type DropTargetCapabilities = {
   container: boolean;
@@ -56,15 +53,9 @@ export type SortableItemPlacement = {
   containerId: string | null;
   previousDraggableId: string | null;
   nextDraggableId: string | null;
-  exactAnchors: readonly SortablePlacementAnchor[];
 };
 
 export type SortablePlacementSide = "before" | "after";
-
-export type SortablePlacementAnchor = {
-  targetDraggableId: string;
-  side: SortablePlacementSide;
-};
 
 export type SortableDropPlacement = {
   sourceContainerId: string | null;
@@ -334,7 +325,10 @@ export class DropTargetRegistry {
       }
     }
 
-    return this.getAvailableDropTargetsFromEntries(groupTargets.values(), input);
+    return this.getAvailableDropTargetsFromEntries(
+      groupTargets.values(),
+      input,
+    );
   }
 
   private getAvailableDropTargetsFromEntries(
@@ -401,21 +395,13 @@ export class DropTargetRegistry {
     return dropTargets;
   }
 
-  getSortableDropPlacement(input: {
+  normalizeSortablePlacement(input: {
     draggableId: string;
-    dropTargetId: string | null;
+    activeDropTargetId: string | null;
     group: DragGroup | null;
     sourceContainerId: string | null;
   }): SortableDropPlacement | null {
-    if (input.dropTargetId === null || input.group === null) {
-      return null;
-    }
-
-    const dropTarget = this.findRegistration(input.dropTargetId, {
-      group: input.group,
-    });
-
-    if (!dropTarget) {
+    if (input.group === null) {
       return null;
     }
 
@@ -427,42 +413,59 @@ export class DropTargetRegistry {
       return null;
     }
 
-    if (
-      !dropTarget.capabilities.sortable &&
-      !dropTarget.capabilities.container
-    ) {
-      return null;
-    }
-
-    const previewContainer =
-      dropTarget.id === input.draggableId
-        ? this.findContainerRegistrationForElement({
-            element: itemRegistration?.element.parentElement ?? null,
-            group: input.group,
-          })
+    const activeTarget = input.activeDropTargetId
+      ? this.findRegistration(input.activeDropTargetId, {
+          group: input.group,
+        })
+      : null;
+    const validActiveTarget =
+      activeTarget?.capabilities.sortable ||
+      activeTarget?.capabilities.container
+        ? activeTarget
         : null;
-    const containerId = previewContainer?.containerId ?? dropTarget.containerId;
-    const containerElement =
-      previewContainer?.element ?? getDropTargetContainerElement(dropTarget);
-    const siblingPlacement = this.getSiblingPlacement({
-      draggableId: input.draggableId,
+    const currentContainer = this.findContainerRegistrationForElement({
+      element: itemRegistration.element.parentElement,
       group: input.group,
-      itemElement: itemRegistration.element,
-      dropTarget,
-      containerElement,
     });
-    const targetPlacement = this.getTargetPlacement({
-      draggableId: input.draggableId,
-      group: input.group,
-      itemElement: itemRegistration.element,
-      dropTarget,
-    });
+    const previousDraggableId = this.getNearestSortableSiblingDraggableId(
+      itemRegistration.element.previousElementSibling,
+      input.group,
+      "previous",
+      input.draggableId,
+    );
+    const nextDraggableId = this.getNearestSortableSiblingDraggableId(
+      itemRegistration.element.nextElementSibling,
+      input.group,
+      "next",
+      input.draggableId,
+    );
+    const adjacentRegistration = previousDraggableId
+      ? this.findRegistration(previousDraggableId, { group: input.group })
+      : nextDraggableId
+        ? this.findRegistration(nextDraggableId, { group: input.group })
+        : null;
+    const activeTargetSharesParent =
+      validActiveTarget?.element.parentElement ===
+      itemRegistration.element.parentElement;
+    const containerId =
+      currentContainer?.id ??
+      adjacentRegistration?.containerId ??
+      (activeTargetSharesParent ? validActiveTarget.containerId : null) ??
+      itemRegistration.containerId;
+    const targetPlacement = validActiveTarget
+      ? this.getNormalizedTargetPlacement({
+          draggableId: input.draggableId,
+          group: input.group,
+          itemElement: itemRegistration.element,
+          activeTarget: validActiveTarget,
+        })
+      : { targetDraggableId: null, side: null };
 
     return {
       sourceContainerId: input.sourceContainerId,
       containerId,
-      previousDraggableId: siblingPlacement.previousDraggableId,
-      nextDraggableId: siblingPlacement.nextDraggableId,
+      previousDraggableId,
+      nextDraggableId,
       targetDraggableId: targetPlacement.targetDraggableId,
       side: targetPlacement.side,
     };
@@ -499,7 +502,6 @@ export class DropTargetRegistry {
       containerId: registration.containerId,
       previousDraggableId,
       nextDraggableId,
-      exactAnchors: this.getExactSortableItemAnchors(element, itemGroup),
     };
   }
 
@@ -601,11 +603,9 @@ export class DropTargetRegistry {
     } = {},
   ): DropTargetEntry | null {
     if (input.group !== undefined) {
-      return (
-        input.group === null
-          ? null
-          : this.targetsByGroup.get(input.group)?.get(id) ?? null
-      );
+      return input.group === null
+        ? null
+        : this.targetsByGroup.get(input.group)?.get(id) ?? null;
     }
 
     for (const groupTargets of this.targetsByGroup.values()) {
@@ -672,7 +672,9 @@ export class DropTargetRegistry {
     }
 
     const candidates = new Map<string, SortableAxisCandidate>();
-    const addCandidate = (candidate: SortableAxisCandidate | undefined): void => {
+    const addCandidate = (
+      candidate: SortableAxisCandidate | undefined,
+    ): void => {
       if (candidate) {
         candidates.set(candidate.id, candidate);
       }
@@ -684,7 +686,10 @@ export class DropTargetRegistry {
 
     if (nearestIndex !== null) {
       for (
-        let candidateIndex = Math.max(0, nearestIndex - sortableCandidateWindowRadius);
+        let candidateIndex = Math.max(
+          0,
+          nearestIndex - sortableCandidateWindowRadius,
+        );
         candidateIndex <=
         Math.min(
           index.candidatesByCenter.length - 1,
@@ -785,7 +790,9 @@ export class DropTargetRegistry {
         return createUnsupportedSortableAxisIndex();
       }
 
-      candidates.push(createSortableAxisCandidate(entry, element, entry.sortableAxis));
+      candidates.push(
+        createSortableAxisCandidate(entry, element, entry.sortableAxis),
+      );
     }
 
     if (axis === null || candidates.length === 0) {
@@ -877,7 +884,8 @@ export class DropTargetRegistry {
     );
 
     if (previousDraggableId) {
-      const previousCandidate = input.index.candidatesById.get(previousDraggableId);
+      const previousCandidate =
+        input.index.candidatesById.get(previousDraggableId);
 
       if (previousCandidate) {
         input.candidates.set(previousDraggableId, previousCandidate);
@@ -901,94 +909,34 @@ export class DropTargetRegistry {
       return null;
     }
 
-    const groupTargets = this.targetsByGroup.get(input.group);
+    const target = this.targetElements.get(input.element);
 
-    if (!groupTargets) {
+    if (!target || target.group !== input.group) {
       return null;
     }
 
-    for (const entry of groupTargets.values()) {
-      const element = this.resolveEntry(entry);
+    const entry = this.targetsByGroup.get(input.group)?.get(target.id);
+    const element = entry ? this.resolveEntry(entry) : null;
 
-      if (
-        entry.capabilities.container &&
-        element &&
-        element === input.element
-      ) {
-        return {
-          ...entry,
-          element,
-        };
-      }
-    }
-
-    return null;
+    return entry?.capabilities.container && element === input.element
+      ? { ...entry, element }
+      : null;
   }
 
-  private getSiblingPlacement(input: {
+  private getNormalizedTargetPlacement(input: {
     draggableId: string;
     group: DragGroup;
     itemElement: HTMLElement;
-    dropTarget: ResolvedDropTargetEntry;
-    containerElement: HTMLElement | null;
-  }): Pick<SortableDropPlacement, "previousDraggableId" | "nextDraggableId"> {
-    if (
-      input.itemElement.parentElement &&
-      input.itemElement.parentElement === input.containerElement
-    ) {
-      return {
-        previousDraggableId: this.getNearestSortableSiblingDraggableId(
-          input.itemElement.previousElementSibling,
-          input.group,
-          "previous",
-          input.draggableId,
-        ),
-        nextDraggableId: this.getNearestSortableSiblingDraggableId(
-          input.itemElement.nextElementSibling,
-          input.group,
-          "next",
-          input.draggableId,
-        ),
-      };
-    }
-
-    if (input.dropTarget.capabilities.container) {
-      return {
-        previousDraggableId: this.getNearestSortableSiblingDraggableId(
-          input.dropTarget.element.lastElementChild,
-          input.group,
-          "previous",
-          input.draggableId,
-        ),
-        nextDraggableId: null,
-      };
-    }
-
-    return {
-      previousDraggableId: this.getNearestSortableSiblingDraggableId(
-        input.dropTarget.element.previousElementSibling,
-        input.group,
-        "previous",
-        input.draggableId,
-      ),
-      nextDraggableId: input.dropTarget.id,
-    };
-  }
-
-  private getTargetPlacement(input: {
-    draggableId: string;
-    group: DragGroup;
-    itemElement: HTMLElement;
-    dropTarget: ResolvedDropTargetEntry;
+    activeTarget: ResolvedDropTargetEntry;
   }): Pick<SortableDropPlacement, "targetDraggableId" | "side"> {
-    if (!input.dropTarget.capabilities.sortable) {
+    if (!input.activeTarget.capabilities.sortable) {
       return {
         targetDraggableId: null,
         side: null,
       };
     }
 
-    if (input.dropTarget.id === input.draggableId) {
+    if (input.activeTarget.id === input.draggableId) {
       return this.getPreviewDomTargetPlacement({
         draggableId: input.draggableId,
         group: input.group,
@@ -997,43 +945,12 @@ export class DropTargetRegistry {
     }
 
     return {
-      targetDraggableId: input.dropTarget.id,
+      targetDraggableId: input.activeTarget.id,
       side: getSortableTargetSide({
         itemElement: input.itemElement,
-        targetElement: input.dropTarget.element,
+        targetElement: input.activeTarget.element,
       }),
     };
-  }
-
-  private getExactSortableItemAnchors(
-    element: HTMLElement,
-    group: DragGroup,
-  ): SortablePlacementAnchor[] {
-    const anchors: SortablePlacementAnchor[] = [];
-    const previousDraggableId = this.getSortableDraggableId(
-      element.previousElementSibling,
-      group,
-    );
-    const nextDraggableId = this.getSortableDraggableId(
-      element.nextElementSibling,
-      group,
-    );
-
-    if (previousDraggableId) {
-      anchors.push({
-        targetDraggableId: previousDraggableId,
-        side: "after",
-      });
-    }
-
-    if (nextDraggableId) {
-      anchors.push({
-        targetDraggableId: nextDraggableId,
-        side: "before",
-      });
-    }
-
-    return anchors;
   }
 
   private getPreviewDomTargetPlacement(input: {
@@ -1088,12 +1005,13 @@ export class DropTargetRegistry {
       };
     }
 
-    const previousNearestDraggableId = this.getNearestSortableSiblingDraggableId(
-      previousElement,
-      input.group,
-      "previous",
-      input.draggableId,
-    );
+    const previousNearestDraggableId =
+      this.getNearestSortableSiblingDraggableId(
+        previousElement,
+        input.group,
+        "previous",
+        input.draggableId,
+      );
 
     if (previousNearestDraggableId) {
       return {
@@ -1190,14 +1108,6 @@ function toPublicRegistration(
   };
 }
 
-function getDropTargetContainerElement(
-  dropTarget: ResolvedDropTargetEntry,
-): HTMLElement | null {
-  return dropTarget.capabilities.container
-    ? dropTarget.element
-    : dropTarget.element.parentElement;
-}
-
 function getSortableTargetSide(input: {
   itemElement: HTMLElement;
   targetElement: HTMLElement;
@@ -1209,7 +1119,9 @@ function getSortableTargetSide(input: {
     return null;
   }
 
-  const position = input.targetElement.compareDocumentPosition(input.itemElement);
+  const position = input.targetElement.compareDocumentPosition(
+    input.itemElement,
+  );
 
   if ((position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) {
     return "after";
@@ -1228,7 +1140,10 @@ function shouldIncludeContainerCandidate(input: {
   pointerPosition: DragPoint;
 }): boolean {
   if (
-    !isPointInsideRect(input.pointerPosition, input.containerCandidate.viewportRect)
+    !isPointInsideRect(
+      input.pointerPosition,
+      input.containerCandidate.viewportRect,
+    )
   ) {
     return false;
   }
@@ -1371,7 +1286,8 @@ function getNearestSortableAxisIndex(
     return low;
   }
 
-  return axisCoordinate - previous.axisCenter <= next.axisCenter - axisCoordinate
+  return axisCoordinate - previous.axisCenter <=
+    next.axisCenter - axisCoordinate
     ? low - 1
     : low;
 }
@@ -1406,7 +1322,9 @@ function findSortableAxisCandidateContainingCoordinate(
 
   const candidate = candidatesByStart[lastStartBeforeCoordinate];
 
-  return candidate && candidate.axisEnd >= axisCoordinate ? candidate : undefined;
+  return candidate && candidate.axisEnd >= axisCoordinate
+    ? candidate
+    : undefined;
 }
 
 function hasOverlappingSortableAxisRanges(

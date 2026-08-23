@@ -4,10 +4,9 @@ import type { DomDropContainerRuntime } from "../droppable/create-drop-container
 import type { DomDroppableRuntime } from "../droppable/create-droppable.js";
 import type { DomSortableRuntime } from "../sortable/sortable-registry.js";
 import { DragRuntime, type StaleDomBindingRecord } from "./drag-runtime.js";
-import type {
-  DragRuntimeConfigureInput,
-  DragRuntimeOptions,
-} from "./types.js";
+import type { DragRuntimeSubscription } from "./lifecycle.js";
+import { linkSortableCoordinatorHost } from "./sortable-coordinator.js";
+import type { DragRuntimeConfigureInput, DragRuntimeOptions } from "./types.js";
 
 export type DragRuntimeScopeOptions = DragRuntimeOptions;
 
@@ -22,6 +21,7 @@ export type DragRuntimeScope = DomDraggableRuntime &
     releaseActiveDragResources: () => void;
     recomputeActiveDrag: () => void;
     setOverlayRect: (overlayRect: DragRect | null) => void;
+    subscribe: (subscription: DragRuntimeSubscription) => () => void;
   };
 
 export type InternalStaleDomBindingRuntime = {
@@ -61,11 +61,14 @@ export function createDragRuntimeScope(
       runtime.getDropTargetRegistration(dropTargetId, group),
     subscribe: (subscription) => runtime.subscribe(subscription),
     remeasureDropTargets: (input) => runtime.remeasureDropTargets(input),
-    registerStaleDomBinding: (record) => runtime.registerStaleDomBinding(record),
+    registerStaleDomBinding: (record) =>
+      runtime.registerStaleDomBinding(record),
     pruneDisconnectedDomBindings: () => runtime.pruneDisconnectedDomBindings(),
     getStaleDomBindingRecordCount: () =>
       runtime.getStaleDomBindingRecordCount(),
   };
+
+  linkSortableCoordinatorHost(scope, runtime);
 
   return scope;
 }

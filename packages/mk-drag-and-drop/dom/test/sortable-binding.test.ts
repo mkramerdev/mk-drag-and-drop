@@ -23,7 +23,9 @@ describe("createSortable", () => {
   let raf: ReturnType<typeof installMockRaf> | null = null;
 
   afterEach(() => {
-    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
+    controller
+      ? getControllerRuntime(controller).releaseActiveDragResources()
+      : undefined;
     controller = null;
     raf?.restore();
     raf = null;
@@ -113,6 +115,7 @@ describe("createSortable", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "default",
         source: "pointer",
         pointerPosition: { x: 3, y: 4 },
         sourceRect: createRect({ left: 0, top: 0, width: 20, height: 20 }),
@@ -158,6 +161,39 @@ describe("createSortable", () => {
     dispatchKeyDown(element, "Space");
 
     expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("restores the sortable preview before controller cancellation completes", () => {
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    controller = createDragController({ onDragEnd, onDrop });
+    raf = installMockRaf();
+    const list = document.createElement("div");
+    document.body.append(list);
+    const a = createMeasuredElement(
+      createRect({ left: 0, top: 0, width: 20, height: 20 }),
+    );
+    const b = createMeasuredElement(
+      createRect({ left: 0, top: 30, width: 20, height: 20 }),
+    );
+    list.append(a, b);
+    createSortable({ controller, element: a, draggableId: "a" });
+    createSortable({ controller, element: b, draggableId: "b" });
+
+    dispatchPointerDown(a, { pointerId: 1 });
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+    expect(Array.from(list.children)).toEqual([b, a]);
+
+    controller.cancelDrag();
+
+    expect(Array.from(list.children)).toEqual([a, b]);
+    expect(a.hasAttribute("data-dnd-dragged")).toBe(false);
+    expect(onDragEnd).toHaveBeenCalledWith(
+      expect.objectContaining({ result: "canceled" }),
+      expect.any(Object),
+    );
+    expect(onDrop).not.toHaveBeenCalled();
   });
 
   it("passes container metadata into sortable registration", () => {
@@ -219,7 +255,9 @@ describe("createSortable", () => {
     a.remove();
 
     expect(
-      controller ? getControllerRuntime(controller).getDropTargetRegistration("a") : null,
+      controller
+        ? getControllerRuntime(controller).getDropTargetRegistration("a")
+        : null,
     ).toBeNull();
 
     dragToTarget(a, b);
@@ -409,12 +447,7 @@ describe("createSortable", () => {
     expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount * 2);
     runtime.pruneDisconnectedDomBindings();
 
-    expect(items.slice(0, 4)).toEqual([
-      "item-1",
-      "item-0",
-      "item-2",
-      "item-3",
-    ]);
+    expect(items.slice(0, 4)).toEqual(["item-1", "item-0", "item-2", "item-3"]);
     expect(getSortableItemIds(list).slice(0, 4)).toEqual(items.slice(0, 4));
     expect(runtime.getStaleDomBindingRecordCount()).toBe(itemCount);
 
@@ -445,7 +478,11 @@ describe("createSortable", () => {
         }
 
         orderBeforeCommit = getSortableItemIds(list);
-        items = moveItemToSortablePlacement(items, draggableId, sortablePlacement);
+        items = moveItemToSortablePlacement(
+          items,
+          draggableId,
+          sortablePlacement,
+        );
         moveSortableElementToPlacement({
           itemElements,
           list,
@@ -530,7 +567,9 @@ describe("createSortable", () => {
   }
 });
 
-function createMeasuredElement(rect: ReturnType<typeof createRect>): HTMLElement {
+function createMeasuredElement(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   stubBoundingClientRect(element, rect);
@@ -546,8 +585,9 @@ function createDetachedMeasuredElement(
 }
 
 function getSortableItemIds(list: HTMLElement): string[] {
-  return Array.from(list.children, (element) =>
-    (element as HTMLElement).dataset.sortableId ?? "",
+  return Array.from(
+    list.children,
+    (element) => (element as HTMLElement).dataset.sortableId ?? "",
   );
 }
 
@@ -638,7 +678,9 @@ function moveSortableElementToPlacement(input: {
   }
 
   if (input.placement.previousDraggableId !== null) {
-    const previous = input.itemElements.get(input.placement.previousDraggableId);
+    const previous = input.itemElements.get(
+      input.placement.previousDraggableId,
+    );
 
     if (previous) {
       previous.after(element);

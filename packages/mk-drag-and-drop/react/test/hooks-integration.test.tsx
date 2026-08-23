@@ -198,11 +198,13 @@ describe("React hooks", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 0, y: 0 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -210,6 +212,99 @@ describe("React hooks", () => {
     act(() => {
       dispatchPointerUp(window, { pointerId: 1, clientX: 0, clientY: 0 });
     });
+  });
+
+  it("remeasures sortable geometry then publishes a projected recompute without pointer movement", () => {
+    const raf = installMockRaf();
+    const onDragUpdate = vi.fn();
+    let geometrySync:
+      | {
+          remeasure: ReturnType<typeof useRemeasureDropTargets>;
+          recompute: ReturnType<typeof useRecomputeActiveDrag>;
+        }
+      | undefined;
+    render(
+      <DragProvider onDragUpdate={onDragUpdate}>
+        <GeometrySyncProbe onReady={(value) => (geometrySync = value)} />
+        <DynamicSortable
+          draggableId="a"
+          group="geometry-items"
+          containerId={null}
+        />
+        <DynamicSortable
+          draggableId="b"
+          group="geometry-items"
+          containerId={null}
+        />
+        <DynamicSortable
+          draggableId="c"
+          group="geometry-items"
+          containerId={null}
+        />
+      </DragProvider>,
+    );
+    const a = screen.getAllByTestId("dynamic-sortable")[0];
+    const b = screen.getAllByTestId("dynamic-sortable")[1];
+    const c = screen.getAllByTestId("dynamic-sortable")[2];
+    if (!a || !b || !c || !geometrySync) {
+      throw new Error("Expected geometry synchronization fixture");
+    }
+    stubBoundingClientRect(a, createRect({ top: 0, width: 20, height: 20 }));
+    let targetRect = createRect({ top: 30, width: 20, height: 20 });
+    const targetMeasurement = vi
+      .spyOn(b, "getBoundingClientRect")
+      .mockImplementation(() => targetRect as DOMRect);
+    let thirdRect = createRect({ top: 200, width: 20, height: 20 });
+    const thirdMeasurement = vi
+      .spyOn(c, "getBoundingClientRect")
+      .mockImplementation(() => thirdRect as DOMRect);
+
+    act(() => {
+      dispatchPointerDown(a, { pointerId: 1, clientX: 10, clientY: 10 });
+      dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 48 });
+      raf.flush();
+    });
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "geometry-items",
+        pointerPosition: { x: 10, y: 48 },
+        sortablePreview: expect.objectContaining({ status: "projected" }),
+      }),
+      expect.any(Object),
+    );
+    const updatesBeforeRecompute = onDragUpdate.mock.calls.length;
+    targetRect = createRect({ top: 200, width: 20, height: 20 });
+    thirdRect = createRect({ top: 30, width: 20, height: 20 });
+    targetMeasurement.mockClear();
+    thirdMeasurement.mockClear();
+
+    act(() => {
+      geometrySync?.remeasure({ group: "geometry-items" });
+      geometrySync?.recompute();
+    });
+
+    expect(targetMeasurement).toHaveBeenCalled();
+    expect(thirdMeasurement).toHaveBeenCalled();
+    expect(onDragUpdate).toHaveBeenCalledTimes(updatesBeforeRecompute + 1);
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        group: "geometry-items",
+        pointerPosition: { x: 10, y: 48 },
+        activeDropTargetId: "c",
+        sortablePreview: expect.objectContaining({
+          status: "projected",
+          placement: expect.objectContaining({
+            previousDraggableId: "c",
+            nextDraggableId: null,
+            targetDraggableId: "c",
+            side: "after",
+          }),
+        }),
+      }),
+      expect.any(Object),
+    );
+    act(() => dispatchPointerCancel(window, { pointerId: 1 }));
+    raf.restore();
   });
 
   it("useRemeasureOverlay returns a safe no-op without mounted overlay", () => {
@@ -338,27 +433,15 @@ describe("React hooks", () => {
     unmount();
 
     expect(registerSpy).toHaveBeenCalledTimes(2);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "target-1",
-      element,
-      "items",
-      { containerId: null },
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "target-2",
-      element,
-      "items",
-      { containerId: null },
-    );
+    expect(registerSpy).toHaveBeenCalledWith("target-1", element, "items", {
+      containerId: null,
+    });
+    expect(registerSpy).toHaveBeenCalledWith("target-2", element, "items", {
+      containerId: null,
+    });
     expect(unregisterSpy).toHaveBeenCalledTimes(2);
-    expect(unregisterSpy).toHaveBeenCalledWith(
-      "target-1",
-      element,
-    );
-    expect(unregisterSpy).toHaveBeenCalledWith(
-      "target-2",
-      element,
-    );
+    expect(unregisterSpy).toHaveBeenCalledWith("target-1", element);
+    expect(unregisterSpy).toHaveBeenCalledWith("target-2", element);
   });
 
   it("useDroppable passes container metadata through", () => {
@@ -376,12 +459,9 @@ describe("React hooks", () => {
     const element = screen.getByTestId("droppable");
 
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "target-1",
-      element,
-      "items",
-      { containerId: "bucket-1" },
-    );
+    expect(registerSpy).toHaveBeenCalledWith("target-1", element, "items", {
+      containerId: "bucket-1",
+    });
   });
 
   it("useDropContainer registers and unregisters on callback ref changes", () => {
@@ -408,25 +488,11 @@ describe("React hooks", () => {
     unmount();
 
     expect(registerSpy).toHaveBeenCalledTimes(2);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "container-1",
-      element,
-      "items",
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "container-2",
-      element,
-      "items",
-    );
+    expect(registerSpy).toHaveBeenCalledWith("container-1", element, "items");
+    expect(registerSpy).toHaveBeenCalledWith("container-2", element, "items");
     expect(unregisterSpy).toHaveBeenCalledTimes(2);
-    expect(unregisterSpy).toHaveBeenCalledWith(
-      "container-1",
-      element,
-    );
-    expect(unregisterSpy).toHaveBeenCalledWith(
-      "container-2",
-      element,
-    );
+    expect(unregisterSpy).toHaveBeenCalledWith("container-1", element);
+    expect(unregisterSpy).toHaveBeenCalledWith("container-2", element);
   });
 
   it("useDropContainer returns a stable result when options do not change", () => {
@@ -526,21 +592,13 @@ describe("React hooks", () => {
     unmount();
 
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "item-1",
-      row,
-      "items",
-      {
-        containerId: "container-1",
-        sortable: true,
-        sortableAxis: "vertical",
-      },
-    );
+    expect(registerSpy).toHaveBeenCalledWith("item-1", row, "items", {
+      containerId: "container-1",
+      sortable: true,
+      sortableAxis: "vertical",
+    });
     expect(unregisterSpy).toHaveBeenCalledTimes(1);
-    expect(unregisterSpy).toHaveBeenCalledWith(
-      "item-1",
-      row,
-    );
+    expect(unregisterSpy).toHaveBeenCalledWith("item-1", row);
   });
 
   it("useSortable starts drag and registers the target under React StrictMode", () => {
@@ -570,16 +628,11 @@ describe("React hooks", () => {
       expect.objectContaining({ draggableId: "item-1", source: "pointer" }),
       expect.any(Object),
     );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "item-1",
-      row,
-      "items",
-      {
-        containerId: "container-1",
-        sortable: true,
-        sortableAxis: "vertical",
-      },
-    );
+    expect(registerSpy).toHaveBeenCalledWith("item-1", row, "items", {
+      containerId: "container-1",
+      sortable: true,
+      sortableAxis: "vertical",
+    });
   });
 
   it("useSortable ref cleanup works under React StrictMode", () => {
@@ -639,26 +692,16 @@ describe("React hooks", () => {
     );
     unmount();
 
-    expect(registerSpy).toHaveBeenCalledWith(
-      "item-1",
-      element,
-      "items",
-      {
-        containerId: "container-1",
-        sortable: true,
-        sortableAxis: "vertical",
-      },
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "item-2",
-      element,
-      "other-items",
-      {
-        containerId: "container-2",
-        sortable: true,
-        sortableAxis: "vertical",
-      },
-    );
+    expect(registerSpy).toHaveBeenCalledWith("item-1", element, "items", {
+      containerId: "container-1",
+      sortable: true,
+      sortableAxis: "vertical",
+    });
+    expect(registerSpy).toHaveBeenCalledWith("item-2", element, "other-items", {
+      containerId: "container-2",
+      sortable: true,
+      sortableAxis: "vertical",
+    });
     expect(unregisterSpy).toHaveBeenCalledWith("item-1", element);
     expect(unregisterSpy).toHaveBeenCalledWith("item-2", element);
   });
@@ -749,7 +792,12 @@ describe("React integration flows", () => {
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", source: "pointer", dropTargetId: "target-1" },
+      {
+        draggableId: "item-1",
+        group: "items",
+        source: "pointer",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
     raf.restore();
@@ -847,7 +895,12 @@ describe("React integration flows", () => {
       expect.any(Object),
     );
     expect(onDrop).toHaveBeenCalledWith(
-      { draggableId: "item-1", source: "keyboard", dropTargetId: "target-1" },
+      {
+        draggableId: "item-1",
+        group: "items",
+        source: "keyboard",
+        dropTargetId: "target-1",
+      },
       expect.any(Object),
     );
 
@@ -864,6 +917,7 @@ describe("React integration flows", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "keyboard",
         result: "canceled",
         overlayRect: null,
@@ -940,6 +994,7 @@ describe("React integration flows", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "canceled",
         overlayRect: null,
@@ -956,7 +1011,10 @@ describe("React integration flows", () => {
     const cardA = screen.getByTestId("card-a");
     const cardB = screen.getByTestId("card-b");
     const rightColumn = screen.getByTestId("column-body-right");
-    stubBoundingClientRect(cardA, createRect({ left: 0, width: 50, height: 20 }));
+    stubBoundingClientRect(
+      cardA,
+      createRect({ left: 0, width: 50, height: 20 }),
+    );
     stubBoundingClientRect(
       cardB,
       createRect({ left: 100, width: 50, height: 20 }),
@@ -1119,6 +1177,20 @@ function RecomputeActiveDragProbe({
 
   onRecomputeActiveDrag(recomputeActiveDrag);
 
+  return null;
+}
+
+function GeometrySyncProbe({
+  onReady,
+}: {
+  onReady: (value: {
+    remeasure: ReturnType<typeof useRemeasureDropTargets>;
+    recompute: ReturnType<typeof useRecomputeActiveDrag>;
+  }) => void;
+}) {
+  const remeasure = useRemeasureDropTargets();
+  const recompute = useRecomputeActiveDrag();
+  onReady({ remeasure, recompute });
   return null;
 }
 

@@ -14,6 +14,14 @@ export default defineConfig({
       ),
       "@mk-drag-and-drop/dom": resolve(packageRoot, "../dom/src/index.ts"),
       "@mk-drag-and-drop/react": resolve(packageRoot, "src/index.ts"),
+      "@repo/carrier-table-example/model": resolve(
+        packageRoot,
+        "../../../apps/shared/carrierTableModel.ts",
+      ),
+      "@repo/carrier-table-example/sortable-placement": resolve(
+        packageRoot,
+        "../../../apps/shared/sortablePlacement.ts",
+      ),
     },
   },
   test: {

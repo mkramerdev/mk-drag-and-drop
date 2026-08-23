@@ -10,7 +10,7 @@ import {
   type SortableDropPlacement,
 } from "@mk-drag-and-drop/dom";
 
-import { moveItemToSortablePlacement } from "./sortablePlacement";
+import { applySortablePlacement } from "@repo/carrier-table-example/sortable-placement";
 
 const defaultItems = Array.from({ length: 10_000 }, (_, index) =>
   String(index + 1),
@@ -43,9 +43,7 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
       updateItemDraggingClasses();
     },
     onDragEnd({ dropTargetId }, { getDropTargetRect }) {
-      releaseTargetRect = dropTargetId
-        ? getDropTargetRect(dropTargetId)
-        : null;
+      releaseTargetRect = dropTargetId ? getDropTargetRect(dropTargetId) : null;
 
       if (dropTargetId !== null) {
         return;
@@ -62,7 +60,7 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
       }
 
       // Example drop behavior: translate package sortable placement into app data.
-      items = moveItemToSortablePlacement(items, draggableId, placement);
+      items = applySortablePlacement(items, draggableId, placement);
       moveItemElementToSortablePlacement(draggableId, placement);
     },
   });
@@ -82,6 +80,7 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
   renderItems();
 
   return () => {
+    controller.cancelDrag();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
     itemElements.clear();
@@ -239,7 +238,9 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
     return element;
   }
 
-  function createDragOverlay(input: DragControllerOverlayInput): HTMLElement | null {
+  function createDragOverlay(
+    input: DragControllerOverlayInput,
+  ): HTMLElement | null {
     const { dragState, phase } = input;
 
     // Example rendering: overlay markup and release animation are app-owned.
@@ -384,11 +385,13 @@ export function mountSortablePerformanceExample(root: HTMLElement): () => void {
       cancelAnimationFrameId(animationFrameId);
     }
   }
-
 }
 
 // Example rendering: overlay content is app-owned.
-function appendOverlayContents(element: HTMLElement, draggableId: string): void {
+function appendOverlayContents(
+  element: HTMLElement,
+  draggableId: string,
+): void {
   const handle = document.createElement("div");
   handle.className = "dragListHandle";
   handle.textContent = dragHandleText;

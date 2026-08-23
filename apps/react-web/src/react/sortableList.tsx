@@ -19,7 +19,7 @@ import {
     type DragRect,
 } from "@mk-drag-and-drop/react";
 
-import { moveItemToSortablePlacement } from "./sortablePlacement";
+import { applySortablePlacement } from "@repo/carrier-table-example/sortable-placement";
 
 const defaultItems = ["1", "2", "3", "4", "5"];
 const sortableGroup = "sortable-demo";
@@ -73,7 +73,7 @@ export function SortableList(): ReactElement {
 
         // Example drop behavior: translate package sortable placement into app data.
         setItems((currentItems) =>
-          moveItemToSortablePlacement(currentItems, draggableId, placement),
+          applySortablePlacement(currentItems, draggableId, placement),
         );
       }}
       dragOverlay={(input) => (

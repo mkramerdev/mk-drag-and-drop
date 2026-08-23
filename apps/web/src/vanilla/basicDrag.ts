@@ -74,10 +74,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
       { getDropTargetRect },
     ) {
       // Example drop behavior: commit valid drops into app-owned DOM state.
-      if (
-        droppedItemId !== "draggable" ||
-        !isKnownDropTarget(dropTargetId)
-      ) {
+      if (droppedItemId !== "draggable" || !isKnownDropTarget(dropTargetId)) {
         return;
       }
 
@@ -120,6 +117,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   rootDropzoneElement.append(itemElement);
 
   return () => {
+    controller.cancelDrag();
     cleanupMovePreview();
     cleanupReleaseOverlay();
     cancelPendingAnimationFrames();
@@ -204,7 +202,9 @@ export function mountBasicDrag(root: HTMLElement): () => void {
   }
 
   // Example rendering: overlay markup and release animation are app-owned.
-  function createDragOverlay(input: DragControllerOverlayInput): HTMLElement | null {
+  function createDragOverlay(
+    input: DragControllerOverlayInput,
+  ): HTMLElement | null {
     const { dragState, phase } = input;
 
     if (phase === "released" && !overlayTargetRect) {
@@ -348,8 +348,7 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     cleanup: () => void;
   } {
     const preview = document.createElement("div");
-    preview.className =
-      "sortableItem sortableItemPreview sortableItemFadingIn";
+    preview.className = "sortableItem sortableItemPreview sortableItemFadingIn";
     appendItemContents(preview, draggableItem.draggableId, false);
 
     const handleAnimationEnd = (event: AnimationEvent): void => {
@@ -404,7 +403,10 @@ export function mountBasicDrag(root: HTMLElement): () => void {
     activeDropTargetId = nextDropTarget;
   }
 
-  function setDropzoneActive(dropTargetId: string | null, active: boolean): void {
+  function setDropzoneActive(
+    dropTargetId: string | null,
+    active: boolean,
+  ): void {
     if (!dropTargetId) {
       return;
     }

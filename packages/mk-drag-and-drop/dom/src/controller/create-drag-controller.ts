@@ -60,6 +60,7 @@ export type DragControllerOptions = {
 } & DragLifecycleCallbacks;
 
 export type DragController = {
+  cancelDrag: () => void;
   remeasureDropTargets: (input?: RemeasureDropTargetsInput) => void;
   remeasureOverlay: () => void;
   recomputeActiveDrag: () => void;
@@ -87,6 +88,9 @@ export function createDragController(
   syncLiveRegion();
 
   const controller: DragController = {
+    cancelDrag: () => {
+      runtime.cancelDrag();
+    },
     remeasureDropTargets: (input) => {
       runtime.remeasureDropTargets(input);
     },
@@ -168,7 +172,9 @@ export function createDragController(
       return;
     }
 
-    const wrapper = getOverlayWrapper(currentOptions.overlayRoot ?? document.body);
+    const wrapper = getOverlayWrapper(
+      currentOptions.overlayRoot ?? document.body,
+    );
     styleOverlayWrapper(wrapper, overlayState.dragState);
     wrapper.replaceChildren(nextOverlayElement);
     setOverlayElement(nextOverlayElement);

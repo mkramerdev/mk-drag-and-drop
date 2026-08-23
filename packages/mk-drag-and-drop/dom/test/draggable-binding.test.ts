@@ -9,7 +9,11 @@ import { getControllerRuntime } from "../src/controller/controller-internals.js"
 import {
   createRect,
   dispatchKeyDown,
+  dispatchPointerCancel,
   dispatchPointerDown,
+  dispatchPointerMove,
+  dispatchPointerUp,
+  installMockRaf,
   stubBoundingClientRect,
 } from "./test-utils.js";
 
@@ -17,7 +21,9 @@ describe("createDraggable", () => {
   let controller: DragController | null = null;
 
   afterEach(() => {
-    controller ? getControllerRuntime(controller).releaseActiveDragResources() : undefined;
+    controller
+      ? getControllerRuntime(controller).releaseActiveDragResources()
+      : undefined;
     controller = null;
     document.body.innerHTML = "";
     vi.restoreAllMocks();
@@ -34,6 +40,7 @@ describe("createDraggable", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item",
+        group: "default",
         source: "pointer",
         pointerPosition: { x: 4, y: 5 },
         sourceRect: createRect({ width: 20, height: 20 }),
@@ -58,7 +65,6 @@ describe("createDraggable", () => {
       expect.objectContaining({ draggableId: "item", source: "keyboard" }),
       expect.any(Object),
     );
-
   });
 
   it("does not bind keyboard drag when keyboard dragging is disabled", () => {
@@ -76,6 +82,46 @@ describe("createDraggable", () => {
     dispatchKeyDown(element, "Space");
 
     expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("cancels pending pointer activation through the controller", () => {
+    vi.useFakeTimers();
+    const onDragStart = vi.fn();
+    controller = createDragController({
+      onDragStart,
+      pointerConfiguration: { activationDelay: 200 },
+    });
+    const element = createMeasuredElement();
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchPointerDown(element, { pointerId: 1 });
+    controller.cancelDrag();
+    vi.advanceTimersByTime(250);
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 100,
+      clientY: 100,
+    });
+
+    expect(onDragStart).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("cancels an active keyboard drag through the controller", () => {
+    const onDragEnd = vi.fn();
+    const onDrop = vi.fn();
+    controller = createDragController({ onDragEnd, onDrop });
+    const element = createMeasuredElement();
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchKeyDown(element, "Space");
+    controller.cancelDrag();
+
+    expect(onDragEnd).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "keyboard", result: "canceled" }),
+      expect.any(Object),
+    );
+    expect(onDrop).not.toHaveBeenCalled();
   });
 
   it("self-prunes after the bound element is removed", () => {
@@ -100,6 +146,107 @@ describe("createDraggable", () => {
     dispatchKeyDown(element, "Space");
 
     expect(onDragStart).not.toHaveBeenCalled();
+  });
+
+  it("does not suppress a quick button-handle click before drag activation", () => {
+    controller = createDragController({
+      pointerConfiguration: { activationDistance: 5 },
+    });
+    const element = createMeasuredElement();
+    const button = document.createElement("button");
+    button.dataset.dndDragHandle = "true";
+    element.append(button);
+    const onClick = vi.fn();
+    button.addEventListener("click", onClick);
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchPointerDown(button, { pointerId: 1 });
+    dispatchPointerUp(button, { pointerId: 1 });
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+    );
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses exactly one related click after pointer drag activation", () => {
+    const raf = installMockRaf();
+    controller = createDragController({
+      pointerConfiguration: { activationDistance: 5 },
+    });
+    const element = createMeasuredElement();
+    const button = document.createElement("button");
+    button.dataset.dndDragHandle = "true";
+    element.append(button);
+    const onClick = vi.fn();
+    button.addEventListener("click", onClick);
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchPointerDown(button, { pointerId: 1 });
+    dispatchPointerMove(button, { pointerId: 1, clientX: 10 });
+    dispatchPointerUp(button, { pointerId: 1, clientX: 10 });
+    button.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+    );
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+    );
+    button.click();
+
+    expect(onClick).toHaveBeenCalledTimes(3);
+    raf.restore();
+  });
+
+  it("does not retain click suppression after pointer cancellation", () => {
+    controller = createDragController({
+      pointerConfiguration: { activationDistance: 5 },
+    });
+    const element = createMeasuredElement();
+    const button = document.createElement("button");
+    button.dataset.dndDragHandle = "true";
+    element.append(button);
+    const onClick = vi.fn();
+    button.addEventListener("click", onClick);
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchPointerDown(button, { pointerId: 1 });
+    dispatchPointerMove(button, { pointerId: 1, clientX: 10 });
+    dispatchPointerCancel(button, { pointerId: 1 });
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+    );
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases click suppression when no related click arrives in the turn", () => {
+    vi.useFakeTimers();
+    controller = createDragController({
+      pointerConfiguration: { activationDistance: 5 },
+    });
+    const element = createMeasuredElement();
+    const button = document.createElement("button");
+    button.dataset.dndDragHandle = "true";
+    element.append(button);
+    const onClick = vi.fn();
+    button.addEventListener("click", onClick);
+    createDraggable({ controller, element, draggableId: "item" });
+
+    dispatchPointerDown(button, { pointerId: 1 });
+    dispatchPointerMove(button, { pointerId: 1, clientX: 10 });
+    dispatchPointerUp(button, { pointerId: 1, clientX: 10 });
+    vi.runOnlyPendingTimers();
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }),
+    );
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
 

@@ -7,6 +7,7 @@ import {
   restrictToContainer,
   type SortableAxis,
   type SortableDropPlacement,
+  type SortablePreview,
   type TargetingAlgorithm,
 } from "../src/index.js";
 import {
@@ -17,6 +18,7 @@ import {
   createDragRuntime,
   type DragRuntime,
 } from "../src/runtime/drag-runtime.js";
+import { DropTargetRegistry } from "../src/runtime/drop-target-registry.js";
 import { getSortablePreviewPlacement } from "../src/sortable/sortable-preview.js";
 import {
   createPointerHandlerEvent,
@@ -60,7 +62,10 @@ describe("createDomSortable", () => {
   });
 
   it("registers sortable items as drop targets", () => {
-    const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
+    const item = createSortableElement(
+      "a",
+      createRect({ width: 20, height: 20 }),
+    );
     const sortable = createDomSortable({
       runtime,
       draggableId: "a",
@@ -84,8 +89,95 @@ describe("createDomSortable", () => {
     });
   });
 
+  it("keeps identical draggable ids isolated by sortable group", () => {
+    const onDragUpdate = vi.fn();
+    runtime.configure({
+      targetingAlgorithm: pointerToCenter,
+      targetingConstraint: undefined,
+      hasDragOverlay: false,
+      overlayRelease: "auto",
+      lifecycleCallbacks: { onDragUpdate },
+      keyboardConfiguration: undefined,
+      modifiers: [],
+      pointerConfiguration: undefined,
+    });
+    const carrierList = document.createElement("div");
+    const referenceList = document.createElement("div");
+    const carrierA = createSortableElement(
+      "a",
+      createRect({ top: 0, width: 20, height: 20 }),
+    );
+    const carrierB = createSortableElement(
+      "b",
+      createRect({ top: 30, width: 20, height: 20 }),
+    );
+    const referenceA = createSortableElement(
+      "a",
+      createRect({ left: 100, top: 0, width: 20, height: 20 }),
+    );
+    const referenceB = createSortableElement(
+      "b",
+      createRect({ left: 100, top: 30, width: 20, height: 20 }),
+    );
+    carrierList.append(carrierA, carrierB);
+    referenceList.append(referenceA, referenceB);
+    document.body.append(carrierList, referenceList);
+    const carrierBehavior = createDomSortable({
+      runtime,
+      draggableId: "a",
+      group: "carrier-rows",
+      getElement: () => carrierA,
+    });
+    carrierBehavior.setElement(carrierA);
+    createDomSortable({
+      runtime,
+      draggableId: "b",
+      group: "carrier-rows",
+      getElement: () => carrierB,
+    }).setElement(carrierB);
+    createDomSortable({
+      runtime,
+      draggableId: "a",
+      group: "reference-rows",
+      getElement: () => referenceA,
+    }).setElement(referenceA);
+    createDomSortable({
+      runtime,
+      draggableId: "b",
+      group: "reference-rows",
+      getElement: () => referenceB,
+    }).setElement(referenceB);
+
+    carrierBehavior.onPointerDown(
+      createPointerHandlerEvent({
+        target: carrierA,
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(Array.from(carrierList.children)).toEqual([carrierB, carrierA]);
+    expect(Array.from(referenceList.children)).toEqual([
+      referenceA,
+      referenceB,
+    ]);
+    expect(onDragUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        draggableId: "a",
+        group: "carrier-rows",
+        sortablePreview: expect.objectContaining({ status: "projected" }),
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("stores sortable containerId on item registration", () => {
-    const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
+    const item = createSortableElement(
+      "a",
+      createRect({ width: 20, height: 20 }),
+    );
     const sortable = createDomSortable({
       runtime,
       draggableId: "a",
@@ -154,7 +246,9 @@ describe("createDomSortable", () => {
     const { elements, behaviors } = createSortableList();
     const [a, b, c] = elements;
 
-    behaviors.a.onKeyDown(createKeyboardHandlerEvent({ target: a, key: "Space" }));
+    behaviors.a.onKeyDown(
+      createKeyboardHandlerEvent({ target: a, key: "Space" }),
+    );
     dispatchKeyDown(window, "ArrowDown");
 
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
@@ -176,6 +270,171 @@ describe("createDomSortable", () => {
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
     expect(a.dataset.dndDragged).toBeUndefined();
     expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("publishes source, projected, retained, and returned previews for non-reflowing carriers", () => {
+    const previews: SortablePreview[] = [];
+    configureRuntimeCallbacks(
+      {
+        onDragUpdate: (event) => previews.push(event.sortablePreview),
+      },
+      {
+        targetingConstraint: ({ pointerPosition, dropTarget }) =>
+          Math.abs(pointerPosition.y - dropTarget.dropTargetRect.top) < 100,
+      },
+    );
+    const { elements, behaviors } = createSortableList("list");
+    const [a, b, c] = elements;
+    for (const element of elements) {
+      element.style.position = "absolute";
+    }
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    runtime.recomputeActiveDrag();
+
+    expect(previews.at(-1)).toEqual({
+      status: "source",
+      placement: {
+        sourceContainerId: "list",
+        containerId: "list",
+        previousDraggableId: null,
+        nextDraggableId: "b",
+        targetDraggableId: null,
+        side: null,
+      },
+    });
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    const projected = previews.at(-1);
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(projected).toEqual({
+      status: "projected",
+      placement: {
+        sourceContainerId: "list",
+        containerId: "list",
+        previousDraggableId: "b",
+        nextDraggableId: "c",
+        targetDraggableId: "b",
+        side: "after",
+      },
+    });
+
+    dispatchPointerMove(window, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 1000,
+    });
+    raf.flush();
+
+    expect(previews.at(-1)).toEqual({
+      status: "projected",
+      placement: {
+        ...(projected as Extract<SortablePreview, { status: "projected" }>)
+          .placement,
+        targetDraggableId: null,
+        side: null,
+      },
+    });
+
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 5 });
+    raf.flush();
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(previews.at(-1)?.status).toBe("source");
+  });
+
+  it("normalizes empty-container preview with container-only anchors", () => {
+    const previews: SortablePreview[] = [];
+    configureRuntimeCallbacks({
+      onDragUpdate: (event) => previews.push(event.sortablePreview),
+    });
+    const board = createSortableBoard({ rightItems: [] });
+
+    board.behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: board.left.a }),
+    );
+    dispatchPointerMove(window, { pointerId: 1, clientX: 110, clientY: 80 });
+    raf.flush();
+
+    expect(previews.at(-1)).toEqual({
+      status: "projected",
+      placement: {
+        sourceContainerId: "left",
+        containerId: "right",
+        previousDraggableId: null,
+        nextDraggableId: null,
+        targetDraggableId: null,
+        side: null,
+      },
+    });
+  });
+
+  it("completes preview before subscribers and callbacks, then restores before end and drop", () => {
+    const observedOrder: string[] = [];
+    let lastProjected: SortableDropPlacement | null = null;
+    let droppedPlacement: SortableDropPlacement | null = null;
+    const earlySubscriber = vi.fn((event) => {
+      if (event.sortablePreview.status === "projected") {
+        observedOrder.push("subscriber");
+      }
+    });
+    runtime.subscribe({ onDragUpdate: earlySubscriber });
+    const { elements, behaviors } = createSortableList("list");
+    const [a, b, c] = elements;
+
+    configureRuntimeCallbacks({
+      onDragUpdate: (event) => {
+        expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+        if (event.sortablePreview.status === "projected") {
+          lastProjected = event.sortablePreview.placement;
+          observedOrder.push("callback");
+        }
+      },
+      onDragEnd: () => {
+        expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+      },
+      onDrop: (event) => {
+        expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+        droppedPlacement = event.sortablePlacement ?? null;
+      },
+    });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
+
+    expect(observedOrder).toEqual(["subscriber", "callback"]);
+    expect(droppedPlacement).toEqual(lastProjected);
+  });
+
+  it("removes stale target anchors and reports a disconnected source as inactive", () => {
+    const previews: SortablePreview[] = [];
+    configureRuntimeCallbacks({
+      onDragUpdate: (event) => previews.push(event.sortablePreview),
+    });
+    const { elements, behaviors } = createSortableList("list");
+    const [a, b] = elements;
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 45 });
+    raf.flush();
+    b.remove();
+    runtime.recomputeActiveDrag();
+
+    const normalized = previews.at(-1);
+    expect(normalized?.status).toBe("projected");
+    if (normalized?.status === "projected") {
+      expect(normalized.placement.targetDraggableId).not.toBe("b");
+      expect(normalized.placement.previousDraggableId).not.toBe("b");
+      expect(normalized.placement.nextDraggableId).not.toBe("b");
+    }
+
+    a.remove();
+    runtime.recomputeActiveDrag();
+    expect(previews.at(-1)).toEqual({ status: "inactive" });
   });
 
   it("restores sortable preview on invalid-target release", () => {
@@ -235,6 +494,52 @@ describe("createDomSortable", () => {
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
     expect(a.dataset.dndDragged).toBeUndefined();
     expectSortableRegistrations(["a", "b", "c"]);
+  });
+
+  it("restores sortable state and preserves normalization failures", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("normalization failed");
+    const normalize = vi
+      .spyOn(DropTargetRegistry.prototype, "normalizeSortablePlacement")
+      .mockImplementation(() => {
+        throw error;
+      });
+
+    behaviors.a.onPointerDown(createPointerHandlerEvent({ target: a }));
+
+    try {
+      expect(() => runtime.recomputeActiveDrag()).toThrow(error);
+    } finally {
+      normalize.mockRestore();
+    }
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expect(runtime.isDragging).toBe(false);
+  });
+
+  it("restores sortable state and preserves preview mutation failures", () => {
+    const { elements, behaviors } = createSortableList();
+    const [a, b, c] = elements;
+    const error = new Error("preview mutation failed");
+    const moveAfter = vi.spyOn(b, "after").mockImplementation(() => {
+      throw error;
+    });
+
+    behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: a, clientX: 10, clientY: 45 }),
+    );
+
+    try {
+      expect(() => runtime.recomputeActiveDrag()).toThrow(error);
+    } finally {
+      moveAfter.mockRestore();
+    }
+
+    expect(Array.from(a.parentElement?.children ?? [])).toEqual([a, b, c]);
+    expect(a.dataset.dndDragged).toBeUndefined();
+    expect(runtime.isDragging).toBe(false);
   });
 
   it("restores sortable preview when onDragEnd throws", () => {
@@ -444,6 +749,10 @@ describe("createDomSortable", () => {
   });
 
   it("places after immediately on horizontal forward entry", () => {
+    const previews: SortablePreview[] = [];
+    configureRuntimeCallbacks({
+      onDragUpdate: (event) => previews.push(event.sortablePreview),
+    });
     const { elements, behaviors } = createSortableList(undefined, {
       axis: "horizontal",
     });
@@ -455,6 +764,7 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a, c]);
+    expect(previews.at(-1)?.status).toBe("projected");
   });
 
   it("does not use placementBoundary.start as the primary forward placement switch", () => {
@@ -493,7 +803,9 @@ describe("createDomSortable", () => {
     });
     const [firstA, firstB, firstC] = first.elements;
 
-    first.behaviors.a.onPointerDown(createPointerHandlerEvent({ target: firstA }));
+    first.behaviors.a.onPointerDown(
+      createPointerHandlerEvent({ target: firstA }),
+    );
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 34 });
     raf.flush();
 
@@ -528,6 +840,10 @@ describe("createDomSortable", () => {
   });
 
   it("keeps after placement on upward reversal until the end boundary is crossed", () => {
+    const previews: SortablePreview[] = [];
+    configureRuntimeCallbacks({
+      onDragUpdate: (event) => previews.push(event.sortablePreview),
+    });
     const { elements, behaviors } = createTallSortableList();
     const [a, b] = elements;
 
@@ -537,6 +853,7 @@ describe("createDomSortable", () => {
 
     expect(runtime.activeDropTargetId).toBe("b");
     expect(Array.from(a.parentElement?.children ?? [])).toEqual([b, a]);
+    expect(previews.at(-1)?.status).toBe("projected");
 
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 430 });
     raf.flush();
@@ -718,9 +1035,8 @@ describe("createDomSortable", () => {
         hasDragOverlay: true,
       },
     );
-    const { list, elements, behaviors } = createDynamicFourItemSortableList(
-      "list",
-    );
+    const { list, elements, behaviors } =
+      createDynamicFourItemSortableList("list");
     const [a, b, c, d] = elements;
 
     behaviors.a.onPointerDown(
@@ -820,7 +1136,11 @@ describe("createDomSortable", () => {
     const { rows, isolated, behaviors } = createMixedGroupSortableList();
     const { a, c } = rows;
     let placement: SortableDropPlacement | undefined;
+    let preview: SortablePreview = { status: "inactive" };
     configureRuntimeCallbacks({
+      onDragUpdate: (event) => {
+        preview = event.sortablePreview;
+      },
       onDrop: ({ sortablePlacement }) => {
         placement = sortablePlacement;
       },
@@ -836,6 +1156,17 @@ describe("createDomSortable", () => {
       c,
       a,
     ]);
+    expect(preview).toEqual({
+      status: "projected",
+      placement: {
+        sourceContainerId: null,
+        containerId: null,
+        previousDraggableId: "c",
+        nextDraggableId: null,
+        targetDraggableId: "c",
+        side: "after",
+      },
+    });
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 45 });
 
@@ -866,7 +1197,8 @@ describe("createDomSortable", () => {
   });
 
   it("commits item five before item four without crossing an isolated sibling", () => {
-    const { list, rows, isolated, behaviors } = createMixedFiveGroupSortableList();
+    const { list, rows, isolated, behaviors } =
+      createMixedFiveGroupSortableList();
     let items = ["one", "two", "isolated-three", "four", "five"];
     let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
@@ -884,7 +1216,11 @@ describe("createDomSortable", () => {
     });
 
     behaviors.five.onPointerDown(
-      createPointerHandlerEvent({ target: rows.five, clientX: 10, clientY: 130 }),
+      createPointerHandlerEvent({
+        target: rows.five,
+        clientX: 10,
+        clientY: 130,
+      }),
     );
     dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 95 });
     raf.flush();
@@ -912,7 +1248,8 @@ describe("createDomSortable", () => {
   });
 
   it("commits item one after an isolated sibling by anchoring before item four", () => {
-    const { list, rows, isolated, behaviors } = createMixedFiveGroupSortableList();
+    const { list, rows, isolated, behaviors } =
+      createMixedFiveGroupSortableList();
     let items = ["one", "two", "isolated-three", "four", "five"];
     let placement: SortableDropPlacement | undefined;
     configureRuntimeCallbacks({
@@ -1098,7 +1435,17 @@ describe("createDomSortable", () => {
         activeDropTargetId: "b",
         previousDropTargetId: null,
         pointerPosition: { x: 10, y: 35 },
-        placementPosition: { x: 10, y: 35 },
+        sortablePreview: {
+          status: "source",
+          placement: {
+            sourceContainerId: null,
+            containerId: null,
+            previousDraggableId: null,
+            nextDraggableId: "b",
+            targetDraggableId: null,
+            side: null,
+          },
+        },
       }),
     );
     expect(bMeasure).toHaveBeenCalled();
@@ -1542,8 +1889,64 @@ describe("createDomSortable", () => {
     expect(candidateIds.length).toBeGreaterThan(20);
   });
 
+  it("falls back safely when same-axis sortable geometry overlaps", () => {
+    const candidateIds: string[] = [];
+    configureRuntimeCallbacks(
+      {},
+      {
+        targetingConstraint: ({ dropTarget }) => {
+          candidateIds.push(dropTarget.dropTargetId);
+          return true;
+        },
+      },
+    );
+    const list = document.createElement("div");
+    document.body.append(list);
+    const elements = ["a", "b", "c"].map((draggableId) =>
+      createUnattachedSortableElement(
+        draggableId,
+        createRect({ top: 0, width: 20, height: 40 }),
+      ),
+    );
+    list.append(...elements);
+    const behaviors = elements.map((element, index) => {
+      const draggableId = ["a", "b", "c"][index];
+
+      if (!draggableId) {
+        throw new Error("Expected overlapping sortable ID");
+      }
+
+      const behavior = createDomSortable({
+        runtime,
+        draggableId,
+        group: "rows",
+        getElement: () => element,
+      });
+      behavior.setElement(element);
+      return behavior;
+    });
+    const sourceElement = elements[0];
+    const sourceBehavior = behaviors[0];
+
+    if (!sourceElement || !sourceBehavior) {
+      throw new Error("Expected overlapping sortable source");
+    }
+
+    sourceBehavior.onPointerDown(
+      createPointerHandlerEvent({ target: sourceElement }),
+    );
+    candidateIds.splice(0, candidateIds.length);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 20 });
+    raf.flush();
+
+    expect(candidateIds).toEqual(expect.arrayContaining(["a", "b", "c"]));
+  });
+
   it("cleans sortable dataset state on behavior cleanup", () => {
-    const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
+    const item = createSortableElement(
+      "a",
+      createRect({ width: 20, height: 20 }),
+    );
     const sortable = createDomSortable({
       runtime,
       draggableId: "a",
@@ -1562,7 +1965,10 @@ describe("createDomSortable", () => {
   });
 
   it("restores prior internal sortable attribute values on behavior cleanup", () => {
-    const item = createSortableElement("a", createRect({ width: 20, height: 20 }));
+    const item = createSortableElement(
+      "a",
+      createRect({ width: 20, height: 20 }),
+    );
     item.setAttribute("data-dnd-sortable-draggable", "custom-sortable");
     item.setAttribute("data-dnd-dragged", "custom-dragged");
     const sortable = createDomSortable({
@@ -1577,7 +1983,9 @@ describe("createDomSortable", () => {
 
     sortable.releaseRegistration();
 
-    expect(item.getAttribute("data-dnd-sortable-draggable")).toBe("custom-sortable");
+    expect(item.getAttribute("data-dnd-sortable-draggable")).toBe(
+      "custom-sortable",
+    );
     expect(item.getAttribute("data-dnd-dragged")).toBe("custom-dragged");
   });
 
@@ -1682,7 +2090,13 @@ describe("createDomSortable", () => {
             containerId: "list",
             getElement: () => nextC,
           }).setElement(nextC);
-          rerenderedElements.splice(0, rerenderedElements.length, nextA, nextB, nextC);
+          rerenderedElements.splice(
+            0,
+            rerenderedElements.length,
+            nextA,
+            nextB,
+            nextC,
+          );
         },
         onDrop,
       },
@@ -1871,13 +2285,14 @@ describe("createDomSortable", () => {
     const boundsElement = document.createElement("div");
 
     document.body.append(boundsElement);
-    vi.spyOn(boundsElement, "getBoundingClientRect").mockImplementation(() =>
-      createRect({
-        left: 0,
-        top: -10,
-        width: 200,
-        height: right.container.children.length > 2 ? 32 : 24,
-      }) as DOMRect,
+    vi.spyOn(boundsElement, "getBoundingClientRect").mockImplementation(
+      () =>
+        createRect({
+          left: 0,
+          top: -10,
+          width: 200,
+          height: right.container.children.length > 2 ? 32 : 24,
+        }) as DOMRect,
     );
     runtime.configure({
       targetingAlgorithm: pointerToCenter,
@@ -2228,7 +2643,12 @@ describe("createDomSortable", () => {
   it("prefers item targets over a non-empty container inside the item span", () => {
     const { left, right, behaviors } = createSortableBoard({
       rightItems: ["b", "c"],
-      rightContainerRect: createRect({ left: 100, top: 0, width: 50, height: 200 }),
+      rightContainerRect: createRect({
+        left: 100,
+        top: 0,
+        width: 50,
+        height: 200,
+      }),
       bRect: createRect({ left: 100, top: 0, width: 50, height: 20 }),
       cRect: createRect({ left: 100, top: 160, width: 50, height: 20 }),
     });
@@ -2405,20 +2825,22 @@ describe("createDomSortable", () => {
 
   function expectSortableRegistrations(draggableIds: readonly string[]): void {
     for (const draggableId of draggableIds) {
-      expect(runtime.getDropTargetRegistration(draggableId, "rows")).toMatchObject(
-        {
-          id: draggableId,
-          group: "rows",
-          capabilities: {
-            sortable: true,
-          },
+      expect(
+        runtime.getDropTargetRegistration(draggableId, "rows"),
+      ).toMatchObject({
+        id: draggableId,
+        group: "rows",
+        capabilities: {
+          sortable: true,
         },
-      );
+      });
     }
   }
 
   function configureRuntimeCallbacks(
-    lifecycleCallbacks: Parameters<DragRuntime["configure"]>[0]["lifecycleCallbacks"],
+    lifecycleCallbacks: Parameters<
+      DragRuntime["configure"]
+    >[0]["lifecycleCallbacks"],
     options: Partial<
       Pick<
         Parameters<DragRuntime["configure"]>[0],
@@ -3033,7 +3455,10 @@ describe("createDomSortable", () => {
   }
 });
 
-function createSortableElement(draggableId: string, rect: ReturnType<typeof createRect>) {
+function createSortableElement(
+  draggableId: string,
+  rect: ReturnType<typeof createRect>,
+) {
   const element = createUnattachedSortableElement(draggableId, rect);
   document.body.append(element);
   return element;

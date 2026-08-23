@@ -7,8 +7,9 @@ import { DropzoneList } from './react/dropzoneList'
 import { GroupedExample } from './react/groupedExample'
 import { KanbanExample } from './react/kanbanExample'
 import { TreeExample } from './react/treeExample'
+import { CarrierTable } from './react/carrierTable'
 
-type ExampleRoute = "examples" | "sortable-10k" | "not-found";
+type ExampleRoute = "examples" | "carrier-table" | "sortable-10k" | "not-found";
 
 export function App(): ReactElement {
   const route = getCurrentRoute();
@@ -17,8 +18,13 @@ export function App(): ReactElement {
     <main className="appShell">
       {route === "sortable-10k" ? (
         <SortablePerformanceExample />
+      ) : route === "carrier-table" ? (
+        <CarrierTable />
       ) : route === "examples" ? (
         <div className="examplesLayout">
+          <a className="carrierExampleLink" href="/carrier-table">
+            Open carrier-backed table parity example
+          </a>
           <SortableList/>
           <BasicDrag />
           <DropzoneList />
@@ -42,6 +48,10 @@ function getCurrentRoute(): ExampleRoute {
 
   if (window.location.pathname === "/sortable-10k") {
     return "sortable-10k";
+  }
+
+  if (window.location.pathname === "/carrier-table") {
+    return "carrier-table";
   }
 
   return "not-found";

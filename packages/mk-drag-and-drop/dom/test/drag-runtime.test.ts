@@ -63,6 +63,7 @@ describe("DragRuntime", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 4, y: 5 },
         sourceRect: createRect({ width: 40, height: 20 }),
@@ -86,6 +87,7 @@ describe("DragRuntime", () => {
     expect(onDragStart).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "keyboard",
         pointerPosition: { x: 20, y: 10 },
         sourceRect: createRect({ width: 40, height: 20 }),
@@ -111,11 +113,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 110, y: 10 },
         overlayRect: null,
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -171,11 +175,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 190, y: 10 },
         overlayRect: null,
         activeDropTargetId: "target-2",
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -249,6 +255,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "canceled",
         overlayRect: null,
@@ -420,20 +427,23 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 0, y: 0 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
     expect(onSubscriptionDragUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 0, y: 0 },
-        placementPosition: { x: 0, y: 0 },
+        sortablePreview: { status: "inactive" },
       }),
     );
     expect(updateOverlayHost).toHaveBeenLastCalledWith({
@@ -468,11 +478,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 110, y: 10 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -493,11 +505,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 13, y: 17 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -545,11 +559,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 12, y: 0 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -572,11 +588,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "keyboard",
         pointerPosition: { x: 20, y: 10 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -600,11 +618,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 0, y: 0 },
         overlayRect: null,
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -613,16 +633,26 @@ describe("DragRuntime", () => {
   it("does not use registry remeasurement or broad target measurements during recompute", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const targets = [
-      createMeasuredElement(createRect({ left: 100, top: 0, width: 20, height: 20 })),
-      createMeasuredElement(createRect({ left: 130, top: 0, width: 20, height: 20 })),
-      createMeasuredElement(createRect({ left: 160, top: 0, width: 20, height: 20 })),
+      createMeasuredElement(
+        createRect({ left: 100, top: 0, width: 20, height: 20 }),
+      ),
+      createMeasuredElement(
+        createRect({ left: 130, top: 0, width: 20, height: 20 }),
+      ),
+      createMeasuredElement(
+        createRect({ left: 160, top: 0, width: 20, height: 20 }),
+      ),
     ];
     const remeasureSpy = vi.spyOn(DropTargetRegistry.prototype, "remeasure");
     configureRuntime(runtime, {});
 
     try {
       targets.forEach((target, index) => {
-        runtime.registerDropTarget(`target-${index + 1}`, target.element, "items");
+        runtime.registerDropTarget(
+          `target-${index + 1}`,
+          target.element,
+          "items",
+        );
       });
       startRuntimeDrag(runtime, source);
       remeasureSpy.mockClear();
@@ -674,11 +704,13 @@ describe("DragRuntime", () => {
       expect(onDragUpdate).toHaveBeenCalledWith(
         {
           draggableId: "item-1",
+          group: "items",
           source: "pointer",
           pointerPosition: { x: 10, y: 10 },
           overlayRect: null,
           activeDropTargetId: "target-2",
           previousDropTargetId: "target-1",
+          sortablePreview: { status: "inactive" },
         },
         expect.any(Object),
       );
@@ -721,6 +753,7 @@ describe("DragRuntime", () => {
       expect.objectContaining({
         activeDropTargetId: null,
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -739,6 +772,7 @@ describe("DragRuntime", () => {
       expect.objectContaining({
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -776,6 +810,7 @@ describe("DragRuntime", () => {
       expect.objectContaining({
         activeDropTargetId: "target-1",
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -794,6 +829,7 @@ describe("DragRuntime", () => {
       expect.objectContaining({
         activeDropTargetId: null,
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -829,6 +865,7 @@ describe("DragRuntime", () => {
       expect.objectContaining({
         activeDropTargetId: "target-1",
         previousDropTargetId: null,
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -855,7 +892,7 @@ describe("DragRuntime", () => {
     target.remove();
     runtime.remeasureDropTargets({ group: "items" });
     expect(runtime.getDropTargetRegistration("target-1", "items")).toBeNull();
-    expect(runtime.activeDropTargetId).toBeNull();
+    expect(runtime.activeDropTargetId).toBe("target-1");
 
     onDragUpdate.mockClear();
     runtime.recomputeActiveDrag();
@@ -863,7 +900,8 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         activeDropTargetId: null,
-        previousDropTargetId: null,
+        previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
         pointerPosition: { x: 110, y: 10 },
       }),
       expect.any(Object),
@@ -921,11 +959,13 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenLastCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         pointerPosition: { x: 110, y: 10 },
         overlayRect: null,
         activeDropTargetId: null,
         previousDropTargetId: "target-1",
+        sortablePreview: { status: "inactive" },
       },
       expect.any(Object),
     );
@@ -937,7 +977,8 @@ describe("DragRuntime", () => {
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
     );
     const targetingAlgorithmMock = vi.fn(
-      (input: Parameters<TargetingAlgorithm>[0]) => input.dropTargets[0] ?? null,
+      (input: Parameters<TargetingAlgorithm>[0]) =>
+        input.dropTargets[0] ?? null,
     );
     const targetingAlgorithm: TargetingAlgorithm = Object.assign(
       targetingAlgorithmMock,
@@ -974,7 +1015,12 @@ describe("DragRuntime", () => {
       dropTargets: [
         {
           dropTargetId: "target-1",
-          dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
+          dropTargetRect: createRect({
+            left: 100,
+            top: 0,
+            width: 20,
+            height: 20,
+          }),
         },
       ],
     });
@@ -988,7 +1034,12 @@ describe("DragRuntime", () => {
       overlayRect: null,
       dropTarget: {
         dropTargetId: "target-1",
-        dropTargetRect: createRect({ left: 100, top: 0, width: 20, height: 20 }),
+        dropTargetRect: createRect({
+          left: 100,
+          top: 0,
+          width: 20,
+          height: 20,
+        }),
       },
     });
   });
@@ -1068,7 +1119,7 @@ describe("DragRuntime", () => {
     );
   });
 
-  it("keeps placementPosition in drag subscriptions for sortable placement", () => {
+  it("publishes only the completed public event to drag subscriptions", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const onDragUpdate = vi.fn();
 
@@ -1091,8 +1142,12 @@ describe("DragRuntime", () => {
     expect(onDragUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         pointerPosition: { x: 20, y: 0 },
-        placementPosition: { x: 25, y: 5 },
+        overlayRect: createRect({ left: 20, top: 0, width: 10, height: 10 }),
+        sortablePreview: { status: "inactive" },
       }),
+    );
+    expect(onDragUpdate.mock.calls[0]?.[0]).not.toHaveProperty(
+      "placementPosition",
     );
   });
 
@@ -1178,6 +1233,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "dropped",
         overlayRect: null,
@@ -1188,6 +1244,7 @@ describe("DragRuntime", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         dropTargetId: "target-1",
       },
@@ -1202,6 +1259,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "no-target",
         overlayRect: null,
@@ -1229,6 +1287,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "no-target",
         overlayRect: createRect({ left: 15, top: 27, width: 30, height: 40 }),
@@ -1262,6 +1321,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "dropped",
         overlayRect: createRect({ left: 122, top: 33, width: 50, height: 60 }),
@@ -1289,9 +1349,10 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "canceled",
-        overlayRect: createRect({ left: 15, top: 20, width: 30, height: 40 }),
+        overlayRect: createRect({ left: 10, top: 20, width: 30, height: 40 }),
         dropTargetId: null,
       },
       expect.any(Object),
@@ -1320,6 +1381,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "invalid-target",
         overlayRect: null,
@@ -1351,7 +1413,7 @@ describe("DragRuntime", () => {
     }
   });
 
-  it("clears stale active container targets when they unregister", () => {
+  it("retains stale active container targets until recompute or release", () => {
     const source = createElementWithRect(createRect({ width: 10, height: 10 }));
     const target = createElementWithRect(
       createRect({ left: 100, top: 0, width: 20, height: 20 }),
@@ -1368,7 +1430,7 @@ describe("DragRuntime", () => {
 
     runtime.unregisterDropContainer("container-1", target);
 
-    expect(runtime.activeDropTargetId).toBeNull();
+    expect(runtime.activeDropTargetId).toBe("container-1");
 
     dispatchPointerUp(window, { pointerId: 1, clientX: 110, clientY: 10 });
 
@@ -1393,6 +1455,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "canceled",
         overlayRect: null,
@@ -1409,6 +1472,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         result: "canceled",
         overlayRect: null,
@@ -1435,6 +1499,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "keyboard",
         result: "canceled",
         overlayRect: null,
@@ -1469,6 +1534,7 @@ describe("DragRuntime", () => {
     expect(onDragEnd).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "keyboard",
         result: "invalid-target",
         overlayRect: null,
@@ -1523,11 +1589,32 @@ describe("DragRuntime", () => {
     expect(onDrop).toHaveBeenCalledWith(
       {
         draggableId: "item-1",
+        group: "items",
         source: "pointer",
         dropTargetId: "target-1",
       },
       expect.any(Object),
     );
+  });
+
+  it("discards queued pointer updates when cancellation ends the drag", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    const onDragEnd = vi.fn();
+    configureRuntime(runtime, { onDragUpdate, onDragEnd });
+
+    startRuntimeDrag(runtime, source);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 50, clientY: 60 });
+    expect(raf.pendingCount()).toBe(1);
+
+    runtime.cancelDrag();
+
+    expect(raf.pendingCount()).toBe(0);
+    expect(onDragUpdate).not.toHaveBeenCalled();
+    expect(onDragEnd.mock.calls[0]?.[0]).toMatchObject({
+      group: "items",
+      result: "canceled",
+    });
   });
 
   it("releases listeners, text selection suppression, and RAF on active drag reset", () => {
@@ -1550,6 +1637,46 @@ describe("DragRuntime", () => {
     expect(document.body.style.userSelect).toBe("");
     expect(onDragEnd).not.toHaveBeenCalled();
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("publishes the captured group on direct reset and after source re-registration", () => {
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    const onDragUpdate = vi.fn();
+    const onDragEnd = vi.fn();
+    const onActiveDragReset = vi.fn();
+    configureRuntime(runtime, { onDragUpdate, onDragEnd });
+    runtime.subscribe({ onActiveDragReset });
+    runtime.registerDropTarget("item-1", source, "captured", {
+      sortable: true,
+      sortableAxis: "vertical",
+    });
+
+    runtime.requestDragStart({
+      draggableId: "item-1",
+      group: "captured",
+      element: source,
+      pointerId: 1,
+      pointerPosition: { x: 0, y: 0 },
+    });
+    runtime.registerDropTarget("item-1", source, "changed", {
+      sortable: true,
+      sortableAxis: "vertical",
+    });
+    runtime.recomputeActiveDrag();
+
+    expect(onDragUpdate.mock.calls[0]?.[0]).toMatchObject({
+      draggableId: "item-1",
+      group: "captured",
+      sortablePreview: { status: "inactive" },
+    });
+
+    runtime.releaseActiveDragResources();
+    expect(onActiveDragReset).toHaveBeenCalledWith({
+      draggableId: "item-1",
+      group: "captured",
+      source: "pointer",
+    });
+    expect(onDragEnd).not.toHaveBeenCalled();
   });
 
   it("releases active resources and rethrows when onDragStart throws", () => {
@@ -1815,7 +1942,9 @@ function startRuntimeDrag(runtime: DragRuntime, source: HTMLElement): void {
   });
 }
 
-function createElementWithRect(rect: ReturnType<typeof createRect>): HTMLElement {
+function createElementWithRect(
+  rect: ReturnType<typeof createRect>,
+): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   stubBoundingClientRect(element, rect);

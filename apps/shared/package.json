@@ -1,0 +1,12 @@
+{
+  "name": "@repo/carrier-table-example",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./model": "./carrierTableModel.ts",
+    "./sortable-placement": "./sortablePlacement.ts"
+  },
+  "dependencies": {
+    "@mk-drag-and-drop/dom": "workspace:*"
+  }
+}

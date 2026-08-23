@@ -75,6 +75,7 @@ export function mountDropzoneList(root: HTMLElement): () => void {
   renderItems();
 
   return () => {
+    controller.cancelDrag();
     clearActiveDropzoneLine();
     dropTargetElements.clear();
     root.replaceChildren();
@@ -289,6 +290,9 @@ function getEndDropzoneLine(): DropzoneLine {
   };
 }
 
-function getItemLabel(items: readonly DropzoneItem[], draggableId: string): string {
+function getItemLabel(
+  items: readonly DropzoneItem[],
+  draggableId: string,
+): string {
   return items.find((item) => item.draggableId === draggableId)?.label ?? "";
 }

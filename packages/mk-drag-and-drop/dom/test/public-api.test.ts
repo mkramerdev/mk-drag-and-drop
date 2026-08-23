@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import * as domApi from "../src/index.js";
 import * as integrationApi from "../src/integration/index.js";
+import type {
+  DragUpdateEvent,
+  SortablePreview as RootSortablePreview,
+} from "../src/index.js";
+import type { SortablePreview as IntegrationSortablePreview } from "../src/integration/index.js";
 
 const removedPublicNames = [
   "cleanup",
@@ -30,10 +35,12 @@ describe("DOM public API", () => {
     const controller = domApi.createDragController();
 
     expect(Object.keys(controller)).toEqual([
+      "cancelDrag",
       "remeasureDropTargets",
       "remeasureOverlay",
       "recomputeActiveDrag",
     ]);
+    expect(controller).toHaveProperty("cancelDrag");
     expect(controller).toHaveProperty("remeasureDropTargets");
     expect(controller).toHaveProperty("remeasureOverlay");
     expect(controller).toHaveProperty("recomputeActiveDrag");
@@ -61,6 +68,19 @@ describe("DOM public API", () => {
     const recomputeActiveDrag = runtime.recomputeActiveDrag;
 
     expect(typeof recomputeActiveDrag).toBe("function");
+  });
+
+  it("uses one exported sortable preview type with no alternate preview field", () => {
+    const integrationPreview: IntegrationSortablePreview = {
+      status: "inactive",
+    };
+    const rootPreview: RootSortablePreview = integrationPreview;
+    const hasAlternateField: "sortablePreviewPlacement" extends keyof DragUpdateEvent
+      ? true
+      : false = false;
+
+    expect(rootPreview).toEqual({ status: "inactive" });
+    expect(hasAlternateField).toBe(false);
   });
 
   it("examples do not call removed controller lifecycle or overlay release APIs", () => {

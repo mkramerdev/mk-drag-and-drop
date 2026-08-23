@@ -38,6 +38,8 @@ export type {
   DragStartEvent,
   DragUpdateEvent,
   DropEvent,
+  ActiveDragResetEvent,
+  SortablePreview,
 } from "./runtime/lifecycle.js";
 export type {
   RemeasureDropTargetsInput,
