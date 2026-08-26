@@ -29,6 +29,7 @@ export type PointerActivationControllerOptions = {
 
 type PendingPointerActivationState = ActivatedPointerDrag & {
   pointerId: number;
+  targetWindow: Window & typeof globalThis;
   activationTimerId: number | null;
   releasePendingPointerListeners: (() => void) | null;
 };
@@ -47,6 +48,7 @@ export class PointerActivationController {
 
     const { activationDelay, activationDistance } =
       this.options.getConfiguration();
+    const targetWindow = request.element.ownerDocument.defaultView ?? window;
 
     if (activationDelay === null && activationDistance === null) {
       this.options.startImmediately(request);
@@ -64,6 +66,7 @@ export class PointerActivationController {
       pointerId: request.pointerId,
       initialPointerPosition,
       latestPointerPosition: initialPointerPosition,
+      targetWindow,
       activationTimerId: null,
       releasePendingPointerListeners: null,
     };
@@ -87,8 +90,7 @@ export class PointerActivationController {
       const distanceX = pointerPosition.x - initialPointerPosition.x;
       const distanceY = pointerPosition.y - initialPointerPosition.y;
       const distanceSquared = distanceX * distanceX + distanceY * distanceY;
-      const activationDistanceSquared =
-        activationDistance * activationDistance;
+      const activationDistanceSquared = activationDistance * activationDistance;
 
       if (distanceSquared >= activationDistanceSquared) {
         this.activatePendingPointerDrag(pendingActivation);
@@ -103,34 +105,34 @@ export class PointerActivationController {
       this.cancelPendingActivation();
     };
 
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointermove",
       handlePointerMove,
       globalPointerListenerCapture,
     );
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointerup",
       handlePointerEnd,
       globalPointerListenerCapture,
     );
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointercancel",
       handlePointerEnd,
       globalPointerListenerCapture,
     );
 
     pendingActivation.releasePendingPointerListeners = () => {
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointermove",
         handlePointerMove,
         globalPointerListenerCapture,
       );
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointerup",
         handlePointerEnd,
         globalPointerListenerCapture,
       );
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointercancel",
         handlePointerEnd,
         globalPointerListenerCapture,
@@ -140,7 +142,7 @@ export class PointerActivationController {
     this.pendingActivation = pendingActivation;
 
     if (activationDelay !== null) {
-      pendingActivation.activationTimerId = window.setTimeout(() => {
+      pendingActivation.activationTimerId = targetWindow.setTimeout(() => {
         this.activatePendingPointerDrag(pendingActivation);
       }, activationDelay);
     }
@@ -178,7 +180,9 @@ export class PointerActivationController {
       return;
     }
 
-    window.clearTimeout(pendingActivation.activationTimerId);
+    pendingActivation.targetWindow.clearTimeout(
+      pendingActivation.activationTimerId,
+    );
     pendingActivation.activationTimerId = null;
   }
 

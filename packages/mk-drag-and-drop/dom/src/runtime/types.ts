@@ -43,6 +43,7 @@ export type RequestDragStartInput = PointerDragActivationRequest;
 type BaseStartDragInput = {
   draggableId: string;
   group: DragGroup;
+  element: HTMLElement;
   pointerPosition: Point;
   sourceRect: DragRect;
 };
@@ -51,7 +52,6 @@ export type StartDragInput =
   | (BaseStartDragInput & {
       inputType: "pointer";
       pointerId: number;
-      element: HTMLElement;
     })
   | (BaseStartDragInput & {
       inputType: "keyboard";

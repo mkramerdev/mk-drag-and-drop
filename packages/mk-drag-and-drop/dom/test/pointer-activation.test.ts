@@ -204,6 +204,27 @@ describe("PointerActivationController", () => {
     expect(removeEventListenerSpy).toHaveBeenCalledTimes(3);
   });
 
+  it("clears delayed activation from the initiating window after adoption", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const frameDocument = iframe.contentDocument;
+    const frameWindow = iframe.contentWindow;
+    expect(frameDocument).not.toBeNull();
+    expect(frameWindow).not.toBeNull();
+    const element =
+      frameDocument?.createElement("div") ?? createRequest().element;
+    frameDocument?.body.append(element);
+    const frameClearTimeout = vi.spyOn(frameWindow ?? window, "clearTimeout");
+    const controller = createDelayedController({ activate: vi.fn() });
+
+    controller.request({ ...createRequest(), element });
+    document.adoptNode(element);
+    controller.cancelPendingActivation();
+
+    expect(frameClearTimeout).toHaveBeenCalledTimes(1);
+    iframe.remove();
+  });
+
   it("does not allow a stale activation timer to start a drag after cancellation", () => {
     vi.useFakeTimers();
     const activate = vi.fn();
@@ -253,7 +274,9 @@ describe("PointerActivationController", () => {
   });
 });
 
-function createDelayedController(input: { activate: ReturnType<typeof vi.fn> }) {
+function createDelayedController(input: {
+  activate: ReturnType<typeof vi.fn>;
+}) {
   return new PointerActivationController({
     getConfiguration: () => ({
       activationDelay: 100,

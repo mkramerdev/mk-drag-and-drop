@@ -29,6 +29,9 @@ describe("DOM public API", () => {
     expect(domApi).toHaveProperty("createDroppable");
     expect(domApi).toHaveProperty("createDropContainer");
     expect(domApi).toHaveProperty("createSortable");
+    expect(domApi.domPointerDragActiveAttribute).toBe(
+      "data-dnd-pointer-drag-active",
+    );
   });
 
   it("createDragController exposes only public drag scope operations", () => {
@@ -61,6 +64,9 @@ describe("DOM public API", () => {
     expect(integrationApi).toHaveProperty("createDomDroppable");
     expect(integrationApi).toHaveProperty("createDomDropContainer");
     expect(integrationApi).toHaveProperty("createDomSortable");
+    expect(integrationApi.domPointerDragActiveAttribute).toBe(
+      domApi.domPointerDragActiveAttribute,
+    );
   });
 
   it("exposes recomputeActiveDrag through the integration runtime scope", () => {

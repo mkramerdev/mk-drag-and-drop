@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DragRuntimeScope } from "@mk-drag-and-drop/dom/integration";
 import {
   DragProvider,
+  domPointerDragActiveAttribute,
   useDraggable,
   useDroppable,
   useSortable,
@@ -303,6 +304,10 @@ describe("DragProvider", () => {
       });
     });
 
+    expect(document.documentElement).toHaveAttribute(
+      domPointerDragActiveAttribute,
+      "true",
+    );
     expect(document.documentElement.style.userSelect).toBe("none");
 
     act(() => {
@@ -326,6 +331,9 @@ describe("DragProvider", () => {
     );
     expect(document.documentElement.style.userSelect).toBe("");
     expect(document.body.style.userSelect).toBe("");
+    expect(document.documentElement).not.toHaveAttribute(
+      domPointerDragActiveAttribute,
+    );
   });
 
   it("unmounts during an active keyboard drag by releasing active resources", () => {

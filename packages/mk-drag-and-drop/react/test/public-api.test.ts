@@ -25,6 +25,9 @@ describe("React public API", () => {
     expect(reactApi).toHaveProperty("useRemeasureDropTargets");
     expect(reactApi).toHaveProperty("useRecomputeActiveDrag");
     expect(reactApi).toHaveProperty("useRemeasureOverlay");
+    expect(reactApi.domPointerDragActiveAttribute).toBe(
+      "data-dnd-pointer-drag-active",
+    );
   });
 
   it("re-exports the final sortable preview contract", () => {

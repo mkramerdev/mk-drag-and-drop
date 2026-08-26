@@ -5,6 +5,28 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## 0.5.1
+
+### Added
+
+- Added the stable `data-dnd-pointer-drag-active="true"` document-root contract
+  for active pointer drags and exported its
+  `domPointerDragActiveAttribute` name from both packages.
+- Added consumer cursor guidance for overriding explicit descendant cursors
+  without injecting package presentation styles.
+
+### Fixed
+
+- Coordinated active pointer-drag markers across multiple runtime scopes in one
+  document, with idempotent cleanup and exact restoration of pre-existing
+  attribute state after the final lease releases.
+- Bound pending and active pointer listeners, timers, animation frames,
+  post-drag click suppression, and text-selection suppression to the initiating
+  element's document and window so iframe-owned drags release correctly.
+- Removed active pointer state before drag-end callbacks and manual overlay
+  release rendering, including cancellation, invalid targets, failures, and
+  provider/runtime cleanup.
+
 ## 0.5.0
 
 ### Breaking

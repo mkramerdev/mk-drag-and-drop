@@ -29,6 +29,7 @@ export {
   createDragHandle,
   type CreateDragHandleInput,
 } from "./input/create-drag-handle.js";
+export { domPointerDragActiveAttribute } from "./input/pointer-drag-state.js";
 export type {
   DragEndResult,
   DragEndEvent,

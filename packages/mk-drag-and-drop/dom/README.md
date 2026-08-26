@@ -17,6 +17,7 @@ import {
   createDropContainer,
   createDroppable,
   createSortable,
+  domPointerDragActiveAttribute,
   type DragUpdateEvent,
   type SortableDropPlacement,
   type SortablePreview,
@@ -263,6 +264,32 @@ pointer handle, but Space and Enter are reserved for its button/menu behavior;
 interactive-element protection prevents those keys from starting a drag. Use a
 noninteractive or separately focusable handle, or explicit commands, for
 keyboard sorting. Editable descendants remain protected.
+
+### Active pointer cursor state
+
+When a pointer drag activates, the runtime sets the stable
+`data-dnd-pointer-drag-active="true"` contract on the initiating document's
+root element. Pending delay or distance activation and keyboard dragging do not
+set it. The marker is removed when the actual drag ends, before lifecycle
+completion and before any manual overlay release animation finishes.
+
+The package does not choose or inject a cursor. Applications can opt into one:
+
+```css
+:root[data-dnd-pointer-drag-active="true"],
+:root[data-dnd-pointer-drag-active="true"] *,
+:root[data-dnd-pointer-drag-active="true"] *::before,
+:root[data-dnd-pointer-drag-active="true"] *::after {
+  cursor: grabbing !important;
+}
+```
+
+The descendant selectors and `!important` override explicit application
+cursors such as `text`, `pointer`, or `col-resize`. Add equivalent rules inside
+shadow roots when shadow content declares its own cursor. Each iframe document
+also needs its own consumer stylesheet. The exported
+`domPointerDragActiveAttribute` constant contains the supported attribute name
+for JavaScript and CSS-in-JS integrations.
 
 ## Targeting and overlays
 

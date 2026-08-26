@@ -7,6 +7,7 @@ placement, targeting, modifier, input, geometry, and overlay types.
 ```tsx
 import {
   DragProvider,
+  domPointerDragActiveAttribute,
   useDragHandle,
   useRecomputeActiveDrag,
   useRemeasureDropTargets,
@@ -231,6 +232,29 @@ generated click, while a later intentional click works. Space and Enter remain
 button/menu activation keys and do not start keyboard dragging because the
 handle is interactive. Use another appropriate handle or explicit commands for
 keyboard sorting; editable descendants remain protected.
+
+### Active pointer cursor state
+
+The underlying DOM runtime marks the initiating document root with
+`data-dnd-pointer-drag-active="true"` only after pointer activation succeeds.
+The marker is coordinated across providers in the same document and is removed
+as soon as the drag ends, even when a manual overlay release animation
+continues. Keyboard dragging never sets it.
+
+Cursor presentation remains application owned:
+
+```css
+:root[data-dnd-pointer-drag-active="true"],
+:root[data-dnd-pointer-drag-active="true"] *,
+:root[data-dnd-pointer-drag-active="true"] *::before,
+:root[data-dnd-pointer-drag-active="true"] *::after {
+  cursor: grabbing !important;
+}
+```
+
+The package re-exports `domPointerDragActiveAttribute` for JavaScript and
+CSS-in-JS integrations. Shadow roots with explicit cursor styles and iframe
+documents require the corresponding consumer CSS in their own style scope.
 
 ## Overlays
 

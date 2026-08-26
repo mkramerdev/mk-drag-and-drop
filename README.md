@@ -20,6 +20,7 @@ import {
   createDragController,
   createDragHandle,
   createSortable,
+  domPointerDragActiveAttribute,
   type DragUpdateEvent,
   type SortablePreview,
 } from "@mk-drag-and-drop/dom";
@@ -28,6 +29,7 @@ import {
 ```tsx
 import {
   DragProvider,
+  domPointerDragActiveAttribute,
   useDragHandle,
   useSortable,
   type DragUpdateEvent,
@@ -217,6 +219,23 @@ available.
 A button may be a pointer drag handle, but interactive filtering reserves Space
 and Enter for button/menu activation. Provide another noninteractive or
 separately focusable handle, or domain commands, for keyboard sorting.
+
+When a pointer drag activates, the DOM runtime adds the stable
+`data-dnd-pointer-drag-active="true"` marker to the initiating document root.
+The DOM and React packages export `domPointerDragActiveAttribute`; consumers
+choose the cursor with CSS:
+
+```css
+:root[data-dnd-pointer-drag-active="true"],
+:root[data-dnd-pointer-drag-active="true"] *,
+:root[data-dnd-pointer-drag-active="true"] *::before,
+:root[data-dnd-pointer-drag-active="true"] *::after {
+  cursor: grabbing !important;
+}
+```
+
+Pending and keyboard drags do not set the marker. It is removed when the drag
+ends, independently of a manual overlay release animation.
 
 Sortables do not require overlays. Pointer targeting works without one;
 rect-based targeting requires a measurable overlay. Overlay callbacks receive

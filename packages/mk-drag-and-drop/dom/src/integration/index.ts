@@ -47,3 +47,4 @@ export type {
   SortablePlacementBoundary,
 } from "../sortable/sortable-options.js";
 export { domDragHandleAttribute } from "../input/drag-handle.js";
+export { domPointerDragActiveAttribute } from "../input/pointer-drag-state.js";

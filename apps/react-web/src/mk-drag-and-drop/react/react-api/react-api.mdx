@@ -238,6 +238,14 @@ Space/Enter for the button. Use a noninteractive keyboard handle or explicit
 commands for keyboard sorting. Quick pointer release remains a click; an
 activated drag suppresses its one related generated click only.
 
+## Active pointer cursor state
+
+The DOM runtime marks the initiating document root with
+`data-dnd-pointer-drag-active="true"` after pointer activation and removes it
+when the drag ends, independently of manual overlay release. React re-exports
+`domPointerDragActiveAttribute`; consumers provide the cursor CSS described in
+the DOM API.
+
 ## Remeasurement and recompute hooks
 
 ```ts
@@ -407,3 +415,4 @@ Re-exported DOM contracts:
 - targeting algorithms, constraints, and types
 - pointer/keyboard configuration
 - geometry and remeasurement types
+- `domPointerDragActiveAttribute`

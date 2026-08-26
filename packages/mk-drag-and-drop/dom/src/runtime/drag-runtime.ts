@@ -19,6 +19,7 @@ import {
 } from "../input/keyboard-drag.js";
 import { globalPointerListenerCapture } from "../input/global-pointer-listeners.js";
 import { PointerActivationController } from "../input/pointer-activation.js";
+import { acquireDocumentPointerDragState } from "../input/pointer-drag-state.js";
 import {
   applyDragModifiers,
   createActiveDragModifiers,
@@ -114,9 +115,12 @@ export class DragRuntime {
   private activeDragModifiers: ActiveDragModifier[] = [];
   private releaseActiveInputListeners: (() => void) | null = null;
   private restoreTextSelectionSuppression: (() => void) | null = null;
+  private releasePointerDragState: (() => void) | null = null;
   private releasePostDragClickSuppression: (() => void) | null = null;
   private queuedPointerPosition: Point | null = null;
   private pointerFrameId: number | null = null;
+  private pointerFrameWindow: (Window & typeof globalThis) | null = null;
+  private activeDragWindow: (Window & typeof globalThis) | null = null;
   private subscriptions = new Set<DragRuntimeSubscription>();
   private staleDomBindingRecords = new Set<StoredStaleDomBindingRecord>();
   private lifecycleCallbacks: DragLifecycleCallbacks = {};
@@ -258,6 +262,7 @@ export class DragRuntime {
       draggableId: input.draggableId,
       group: input.group,
       inputType: "keyboard",
+      element: input.element,
       pointerPosition,
       sourceRect,
     });
@@ -300,8 +305,11 @@ export class DragRuntime {
       return;
     }
 
-    this.pointerFrameId = window.requestAnimationFrame(() => {
+    const targetWindow = this.activeDragWindow ?? window;
+    this.pointerFrameWindow = targetWindow;
+    this.pointerFrameId = targetWindow.requestAnimationFrame(() => {
       this.pointerFrameId = null;
+      this.pointerFrameWindow = null;
       const nextPointerPosition = this.queuedPointerPosition;
       this.queuedPointerPosition = null;
 
@@ -694,6 +702,14 @@ export class DragRuntime {
       };
 
       this.setSession(nextSession);
+      this.activeDragWindow = input.element.ownerDocument.defaultView ?? window;
+
+      if (input.inputType === "pointer") {
+        this.releasePointerDragState = acquireDocumentPointerDragState(
+          input.element.ownerDocument,
+        );
+      }
+
       this.remeasureDropTargets({ group: input.group });
 
       const dragStartEvent: DragStartEvent = {
@@ -724,11 +740,11 @@ export class DragRuntime {
           phase: "dragging",
         },
       });
-      this.suppressTextSelection();
+      this.suppressTextSelection(input.element.ownerDocument);
       if (input.inputType === "pointer") {
         this.bindPointerWindowListeners(input.pointerId, input.element);
       } else {
-        this.bindKeyboardWindowListeners();
+        this.bindKeyboardWindowListeners(this.activeDragWindow);
       }
       this.notifyDragStartLifecycle(dragStartEvent);
     } catch (error) {
@@ -888,6 +904,7 @@ export class DragRuntime {
     initiatingElement: HTMLElement,
   ): void {
     this.releaseActiveInputListeners?.();
+    const targetWindow = initiatingElement.ownerDocument.defaultView ?? window;
 
     let listenersReleased = false;
     const handlePointerMove = (event: PointerEvent): void => {
@@ -924,17 +941,17 @@ export class DragRuntime {
       this.cancelDrag();
     };
 
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointermove",
       handlePointerMove,
       globalPointerListenerCapture,
     );
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointerup",
       handlePointerUp,
       globalPointerListenerCapture,
     );
-    window.addEventListener(
+    targetWindow.addEventListener(
       "pointercancel",
       handlePointerCancel,
       globalPointerListenerCapture,
@@ -946,17 +963,17 @@ export class DragRuntime {
       }
 
       listenersReleased = true;
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointermove",
         handlePointerMove,
         globalPointerListenerCapture,
       );
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointerup",
         handlePointerUp,
         globalPointerListenerCapture,
       );
-      window.removeEventListener(
+      targetWindow.removeEventListener(
         "pointercancel",
         handlePointerCancel,
         globalPointerListenerCapture,
@@ -964,19 +981,23 @@ export class DragRuntime {
     };
   }
 
-  private bindKeyboardWindowListeners(): void {
+  private bindKeyboardWindowListeners(
+    targetWindow: Window & typeof globalThis,
+  ): void {
     this.releaseActiveInputListeners?.();
-    this.releaseActiveInputListeners = this.keyboardDrag.bindWindowListeners();
+    this.releaseActiveInputListeners =
+      this.keyboardDrag.bindWindowListeners(targetWindow);
   }
 
   private suppressNextRelatedClick(initiatingElement: HTMLElement): void {
     this.clearPostDragClickSuppression();
+    const targetWindow = initiatingElement.ownerDocument.defaultView ?? window;
 
     let timeoutId: number | null = null;
     const handleClick = (event: MouseEvent): void => {
       if (
         event.detail === 0 ||
-        !(event.target instanceof Node) ||
+        !(event.target instanceof targetWindow.Node) ||
         !initiatingElement.contains(event.target)
       ) {
         return;
@@ -987,10 +1008,10 @@ export class DragRuntime {
       event.stopImmediatePropagation();
     };
     const release = (): void => {
-      window.removeEventListener("click", handleClick, true);
+      targetWindow.removeEventListener("click", handleClick, true);
 
       if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
+        targetWindow.clearTimeout(timeoutId);
         timeoutId = null;
       }
 
@@ -999,9 +1020,9 @@ export class DragRuntime {
       }
     };
 
-    window.addEventListener("click", handleClick, true);
+    targetWindow.addEventListener("click", handleClick, true);
     this.releasePostDragClickSuppression = release;
-    timeoutId = window.setTimeout(release, 0);
+    timeoutId = targetWindow.setTimeout(release, 0);
   }
 
   private clearPostDragClickSuppression(): void {
@@ -1010,20 +1031,24 @@ export class DragRuntime {
     release?.();
   }
 
-  private suppressTextSelection(): void {
+  private suppressTextSelection(sourceDocument: Document): void {
     this.restoreTextSelectionSuppression?.();
 
-    const root = document.documentElement;
-    const body = document.body;
+    const root = sourceDocument.documentElement;
+    const body = sourceDocument.body;
     const previousRootUserSelect = root.style.userSelect;
-    const previousBodyUserSelect = body.style.userSelect;
+    const previousBodyUserSelect = body?.style.userSelect;
 
     root.style.userSelect = "none";
-    body.style.userSelect = "none";
+    if (body) {
+      body.style.userSelect = "none";
+    }
 
     this.restoreTextSelectionSuppression = () => {
       root.style.userSelect = previousRootUserSelect;
-      body.style.userSelect = previousBodyUserSelect;
+      if (body) {
+        body.style.userSelect = previousBodyUserSelect ?? "";
+      }
     };
   }
 
@@ -1031,6 +1056,7 @@ export class DragRuntime {
     this.cancelQueuedPointerUpdate();
     this.setSession({ status: "idle" });
     this.activeDragModifiers = [];
+    this.activeDragWindow = null;
   }
 
   private releaseActiveInputResources(): void {
@@ -1039,6 +1065,8 @@ export class DragRuntime {
     const restoreTextSelectionSuppression =
       this.restoreTextSelectionSuppression;
     this.restoreTextSelectionSuppression = null;
+    const releasePointerDragState = this.releasePointerDragState;
+    this.releasePointerDragState = null;
 
     let releaseError: unknown;
     let hasReleaseError = false;
@@ -1059,6 +1087,15 @@ export class DragRuntime {
       }
     }
 
+    try {
+      releasePointerDragState?.();
+    } catch (error) {
+      if (!hasReleaseError) {
+        releaseError = error;
+        hasReleaseError = true;
+      }
+    }
+
     if (hasReleaseError) {
       throw releaseError;
     }
@@ -1070,8 +1107,11 @@ export class DragRuntime {
 
   private flushQueuedPointerUpdate(): void {
     if (this.pointerFrameId !== null) {
-      window.cancelAnimationFrame(this.pointerFrameId);
+      (this.pointerFrameWindow ?? window).cancelAnimationFrame(
+        this.pointerFrameId,
+      );
       this.pointerFrameId = null;
+      this.pointerFrameWindow = null;
     }
 
     const nextPointerPosition = this.queuedPointerPosition;
@@ -1084,8 +1124,11 @@ export class DragRuntime {
 
   private cancelQueuedPointerUpdate(): void {
     if (this.pointerFrameId !== null) {
-      window.cancelAnimationFrame(this.pointerFrameId);
+      (this.pointerFrameWindow ?? window).cancelAnimationFrame(
+        this.pointerFrameId,
+      );
       this.pointerFrameId = null;
+      this.pointerFrameWindow = null;
     }
 
     this.queuedPointerPosition = null;

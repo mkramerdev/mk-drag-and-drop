@@ -13,6 +13,7 @@ export {
   maxPointerDistanceToRect,
   pointerToCenter,
   pointerToRectDistance,
+  domPointerDragActiveAttribute,
   type DragEndResult,
   type DragEndEvent,
   type DragLifecycleCallbacks,

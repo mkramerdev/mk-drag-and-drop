@@ -97,7 +97,9 @@ export class KeyboardDragController {
     return false;
   }
 
-  bindWindowListeners(): () => void {
+  bindWindowListeners(
+    targetWindow: Window & typeof globalThis = window,
+  ): () => void {
     let isCleanedUp = false;
 
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -109,7 +111,7 @@ export class KeyboardDragController {
       event.stopPropagation();
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    targetWindow.addEventListener("keydown", handleKeyDown);
 
     return () => {
       if (isCleanedUp) {
@@ -117,7 +119,7 @@ export class KeyboardDragController {
       }
 
       isCleanedUp = true;
-      window.removeEventListener("keydown", handleKeyDown);
+      targetWindow.removeEventListener("keydown", handleKeyDown);
     };
   }
 }

@@ -44,6 +44,76 @@ test.afterEach(async ({ page }) => {
   expect(browserErrors.get(page) ?? []).toEqual([]);
 });
 
+test("publishes active pointer state for consumer cursor styling", async ({
+  page,
+}) => {
+  await page.addStyleTag({
+    content: `
+      .cursorProbe { cursor: text !important; }
+      :root[data-dnd-pointer-drag-active="true"],
+      :root[data-dnd-pointer-drag-active="true"] *,
+      :root[data-dnd-pointer-drag-active="true"] *::before,
+      :root[data-dnd-pointer-drag-active="true"] *::after {
+        cursor: grabbing !important;
+      }
+    `,
+  });
+  await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.className = "cursorProbe";
+    probe.dataset.testid = "cursor-probe";
+    Object.assign(probe.style, {
+      position: "fixed",
+      left: "8px",
+      top: "8px",
+      width: "40px",
+      height: "40px",
+      zIndex: "10000",
+    });
+    document.body.append(probe);
+  });
+
+  const handle = page.getByTestId("row-menu-row-1");
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(
+    (handleBox?.x ?? 0) + (handleBox?.width ?? 0) / 2,
+    (handleBox?.y ?? 0) + (handleBox?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.getAttribute("data-dnd-pointer-drag-active"),
+      ),
+    )
+    .toBe("true");
+
+  const probe = page.getByTestId("cursor-probe");
+  const probeBox = await probe.boundingBox();
+  expect(probeBox).not.toBeNull();
+  await page.mouse.move(
+    (probeBox?.x ?? 0) + (probeBox?.width ?? 0) / 2,
+    (probeBox?.y ?? 0) + (probeBox?.height ?? 0) / 2,
+  );
+  await expect
+    .poll(() => probe.evaluate((element) => getComputedStyle(element).cursor))
+    .toBe("grabbing");
+
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.getAttribute("data-dnd-pointer-drag-active"),
+      ),
+    )
+    .toBeNull();
+  await expect
+    .poll(() => probe.evaluate((element) => getComputedStyle(element).cursor))
+    .toBe("text");
+});
+
 test("starts with equivalent unequal carrier and reference geometry", async ({
   page,
 }) => {

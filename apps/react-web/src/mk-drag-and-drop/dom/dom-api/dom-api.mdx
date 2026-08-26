@@ -19,6 +19,7 @@ import {
   createDropContainer,
   createSortable,
   createDragHandle,
+  domPointerDragActiveAttribute,
   centerToCenter,
   pointerToCenter,
   pointerToRectDistance,
@@ -239,6 +240,27 @@ protected.
 A quick pre-activation release remains a click. An activated pointer drag
 suppresses only its related generated click in the initiating draggable
 subtree. Later intentional and keyboard clicks remain available.
+
+## Active pointer cursor state
+
+After pointer activation, the initiating document root has
+`data-dnd-pointer-drag-active="true"` until the drag ends. Pending and keyboard
+drags do not set it. Multiple runtime scopes share a document lease, and manual
+overlay release does not extend the marker lifetime.
+
+```css
+:root[data-dnd-pointer-drag-active="true"],
+:root[data-dnd-pointer-drag-active="true"] *,
+:root[data-dnd-pointer-drag-active="true"] *::before,
+:root[data-dnd-pointer-drag-active="true"] *::after {
+  cursor: grabbing !important;
+}
+```
+
+The package owns only the stable state marker; application CSS owns the cursor.
+Use the exported `domPointerDragActiveAttribute` constant from JavaScript or
+CSS-in-JS. Shadow roots and iframe documents need the consumer rule in their
+own style scope.
 
 ## Lifecycle
 
@@ -467,7 +489,8 @@ with the captured group. The entry point also exports:
 - DOM droppable and container behavior/input/runtime types.
 - DOM sortable behavior/input/runtime, axis, and boundary types.
 - Drag state, overlay host/render/update/phase, and release types.
-- `SortablePreview`, `ActiveDragResetEvent`, and `domDragHandleAttribute`.
+- `SortablePreview`, `ActiveDragResetEvent`, `domDragHandleAttribute`, and
+  `domPointerDragActiveAttribute`.
 
 It does not export the sortable registry or internal coordinator.
 
@@ -478,6 +501,7 @@ Main entry point:
 - Controller constructor plus controller/options/announcements/overlay types.
 - Draggable, droppable, container, sortable, and handle registration functions
   and input types.
+- Active pointer-drag document attribute constant.
 - All lifecycle, callback, helper, source, result, reset, preview, placement,
   axis, boundary, overlay, targeting, modifier, input, and geometry APIs.
 
@@ -486,4 +510,4 @@ Integration entry point:
 - Runtime scope/configuration/options/subscription types.
 - Overlay state and host types.
 - DOM behavior factories and adapter types.
-- Drag-handle attribute constant.
+- Drag-handle and active pointer-drag attribute constants.
