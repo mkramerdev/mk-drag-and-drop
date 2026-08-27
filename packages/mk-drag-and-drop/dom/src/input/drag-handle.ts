@@ -17,28 +17,37 @@ export function shouldStartDragFromTarget(input: {
   draggableElement: HTMLElement;
   eventTarget: EventTarget | null;
 }): boolean {
+  return getPointerCaptureTarget(input) !== null;
+}
+
+export function getPointerCaptureTarget(input: {
+  draggableElement: HTMLElement;
+  eventTarget: EventTarget | null;
+}): Element | null {
   const eventTarget = getEventTargetElement(input.eventTarget);
 
   if (!eventTarget) {
-    return false;
+    return null;
   }
 
   const hasDragHandle =
     input.draggableElement.querySelector(domDragHandleSelector) !== null;
 
   if (!hasDragHandle) {
-    return !isInteractiveDragTarget({
+    return isInteractiveDragTarget({
       draggableElement: input.draggableElement,
       eventTarget,
-    });
+    })
+      ? null
+      : input.draggableElement;
   }
 
   const closestDragHandle = eventTarget.closest(domDragHandleSelector);
 
-  return (
-    closestDragHandle !== null &&
+  return closestDragHandle !== null &&
     input.draggableElement.contains(closestDragHandle)
-  );
+    ? closestDragHandle
+    : null;
 }
 
 export function shouldHandleKeyboardDragFromTarget(input: {

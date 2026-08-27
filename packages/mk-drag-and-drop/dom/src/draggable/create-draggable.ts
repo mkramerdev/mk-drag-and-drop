@@ -1,8 +1,8 @@
 import type { DragPoint } from "../geometry/rects.js";
 
 import {
+  getPointerCaptureTarget,
   shouldHandleKeyboardDragFromTarget,
-  shouldStartDragFromTarget,
 } from "../input/drag-handle.js";
 
 export type DomDraggableRuntime = {
@@ -10,7 +10,9 @@ export type DomDraggableRuntime = {
     draggableId: string;
     group: string;
     element: HTMLElement;
+    pointerCaptureTarget?: Element;
     pointerId: number;
+    pointerType?: string;
     pointerPosition: DragPoint;
   }) => void;
   isKeyboardDragEnabled: () => boolean;
@@ -35,6 +37,7 @@ export type DomDraggablePointerDownEvent = {
   preventDefault: () => void;
   stopPropagation: () => void;
   pointerId: number;
+  pointerType?: string;
   button?: number;
   isPrimary?: boolean;
   clientX: number;
@@ -65,12 +68,12 @@ export function createDomDraggable(
         return;
       }
 
-      if (
-        !shouldStartDragFromTarget({
-          draggableElement: element,
-          eventTarget: event.target,
-        })
-      ) {
+      const pointerCaptureTarget = getPointerCaptureTarget({
+        draggableElement: element,
+        eventTarget: event.target,
+      });
+
+      if (!pointerCaptureTarget) {
         return;
       }
 
@@ -88,7 +91,9 @@ export function createDomDraggable(
         draggableId: input.draggableId,
         group: input.group,
         element,
+        pointerCaptureTarget,
         pointerId: event.pointerId,
+        pointerType: event.pointerType,
         pointerPosition: {
           x: event.clientX,
           y: event.clientY,
@@ -123,7 +128,7 @@ export function createDomDraggable(
       event.stopPropagation();
     },
     tabIndex:
-      (input.keyboardDragEnabled ?? input.runtime.isKeyboardDragEnabled())
+      input.keyboardDragEnabled ?? input.runtime.isKeyboardDragEnabled()
         ? 0
         : undefined,
   };

@@ -18,6 +18,7 @@ import {
   type SourceKeyboardDragKeyDownInput as KeyboardSourceKeyDownInput,
 } from "../input/keyboard-drag.js";
 import { globalPointerListenerCapture } from "../input/global-pointer-listeners.js";
+import { acquireDocumentSelectionSuppression } from "../input/document-selection-state.js";
 import { PointerActivationController } from "../input/pointer-activation.js";
 import { acquireDocumentPointerDragState } from "../input/pointer-drag-state.js";
 import {
@@ -114,6 +115,7 @@ export class DragRuntime {
   private modifiers: readonly DragModifierInput[] = [];
   private activeDragModifiers: ActiveDragModifier[] = [];
   private releaseActiveInputListeners: (() => void) | null = null;
+  private ensureActivePointerCapture: (() => void) | null = null;
   private restoreTextSelectionSuppression: (() => void) | null = null;
   private releasePointerDragState: (() => void) | null = null;
   private releasePostDragClickSuppression: (() => void) | null = null;
@@ -145,6 +147,8 @@ export class DragRuntime {
   private pointerActivation = new PointerActivationController({
     getConfiguration: () => this.pointerConfiguration,
     isDragging: () => this.isDragging,
+    acquirePendingResources: (request) =>
+      acquireDocumentSelectionSuppression(request.element.ownerDocument),
     startImmediately: (request) => {
       if (!request.element.isConnected) {
         return;
@@ -155,6 +159,8 @@ export class DragRuntime {
         group: request.group,
         inputType: "pointer",
         pointerId: request.pointerId,
+        pointerCaptureTarget: request.pointerCaptureTarget ?? request.element,
+        pointerType: request.pointerType,
         element: request.element,
         pointerPosition: request.pointerPosition,
         sourceRect: measureDomElement(request.element),
@@ -170,6 +176,8 @@ export class DragRuntime {
         group: activation.group,
         inputType: "pointer",
         pointerId: activation.pointerId,
+        pointerCaptureTarget: activation.pointerCaptureTarget,
+        pointerType: activation.pointerType,
         element: activation.element,
         pointerPosition: activation.initialPointerPosition,
         sourceRect: measureDomElement(activation.element),
@@ -380,6 +388,7 @@ export class DragRuntime {
       placementPosition: sortablePlacementPosition,
       movementPosition: rawPointerPosition,
     });
+    this.ensureActivePointerCapture?.();
     const sortablePreview = this.getSortablePreview(nextSession);
     const completedSession: DraggingSession = {
       ...nextSession,
@@ -742,7 +751,11 @@ export class DragRuntime {
       });
       this.suppressTextSelection(input.element.ownerDocument);
       if (input.inputType === "pointer") {
-        this.bindPointerWindowListeners(input.pointerId, input.element);
+        this.bindPointerWindowListeners(
+          input.pointerId,
+          input.element,
+          input.pointerCaptureTarget ?? input.element,
+        );
       } else {
         this.bindKeyboardWindowListeners(this.activeDragWindow);
       }
@@ -902,11 +915,49 @@ export class DragRuntime {
   private bindPointerWindowListeners(
     pointerId: number,
     initiatingElement: HTMLElement,
+    pointerCaptureTarget: Element,
   ): void {
     this.releaseActiveInputListeners?.();
     const targetWindow = initiatingElement.ownerDocument.defaultView ?? window;
 
     let listenersReleased = false;
+    const ensurePointerCapture = (): void => {
+      if (
+        !pointerCaptureTarget.isConnected ||
+        typeof pointerCaptureTarget.setPointerCapture !== "function"
+      ) {
+        return;
+      }
+
+      try {
+        if (
+          typeof pointerCaptureTarget.hasPointerCapture === "function" &&
+          pointerCaptureTarget.hasPointerCapture(pointerId)
+        ) {
+          return;
+        }
+
+        pointerCaptureTarget.setPointerCapture(pointerId);
+      } catch {
+        // Window listeners remain the fallback when capture is unavailable.
+      }
+    };
+    const releasePointerCapture = (): void => {
+      if (typeof pointerCaptureTarget.releasePointerCapture !== "function") {
+        return;
+      }
+
+      try {
+        if (
+          typeof pointerCaptureTarget.hasPointerCapture !== "function" ||
+          pointerCaptureTarget.hasPointerCapture(pointerId)
+        ) {
+          pointerCaptureTarget.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // Pointerup/cancel may have already released capture implicitly.
+      }
+    };
     const handlePointerMove = (event: PointerEvent): void => {
       if (event.pointerId !== pointerId) {
         return;
@@ -957,12 +1008,19 @@ export class DragRuntime {
       globalPointerListenerCapture,
     );
 
+    this.ensureActivePointerCapture = ensurePointerCapture;
+    ensurePointerCapture();
+
     this.releaseActiveInputListeners = () => {
       if (listenersReleased) {
         return;
       }
 
       listenersReleased = true;
+      if (this.ensureActivePointerCapture === ensurePointerCapture) {
+        this.ensureActivePointerCapture = null;
+      }
+      releasePointerCapture();
       targetWindow.removeEventListener(
         "pointermove",
         handlePointerMove,
@@ -1033,23 +1091,8 @@ export class DragRuntime {
 
   private suppressTextSelection(sourceDocument: Document): void {
     this.restoreTextSelectionSuppression?.();
-
-    const root = sourceDocument.documentElement;
-    const body = sourceDocument.body;
-    const previousRootUserSelect = root.style.userSelect;
-    const previousBodyUserSelect = body?.style.userSelect;
-
-    root.style.userSelect = "none";
-    if (body) {
-      body.style.userSelect = "none";
-    }
-
-    this.restoreTextSelectionSuppression = () => {
-      root.style.userSelect = previousRootUserSelect;
-      if (body) {
-        body.style.userSelect = previousBodyUserSelect ?? "";
-      }
-    };
+    this.restoreTextSelectionSuppression =
+      acquireDocumentSelectionSuppression(sourceDocument);
   }
 
   private resetActiveDragState(): void {
@@ -1062,6 +1105,7 @@ export class DragRuntime {
   private releaseActiveInputResources(): void {
     const releaseActiveInputListeners = this.releaseActiveInputListeners;
     this.releaseActiveInputListeners = null;
+    this.ensureActivePointerCapture = null;
     const restoreTextSelectionSuppression =
       this.restoreTextSelectionSuppression;
     this.restoreTextSelectionSuppression = null;

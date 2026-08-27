@@ -52,6 +52,8 @@ export type StartDragInput =
   | (BaseStartDragInput & {
       inputType: "pointer";
       pointerId: number;
+      pointerCaptureTarget?: Element;
+      pointerType?: string;
     })
   | (BaseStartDragInput & {
       inputType: "keyboard";

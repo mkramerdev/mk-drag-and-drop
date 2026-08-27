@@ -7,7 +7,9 @@ export type PointerDragActivationRequest = {
   draggableId: string;
   group: string;
   element: HTMLElement;
+  pointerCaptureTarget?: Element;
   pointerId: number;
+  pointerType?: string;
   pointerPosition: DragPoint;
 };
 
@@ -15,7 +17,9 @@ export type ActivatedPointerDrag = {
   draggableId: string;
   group: string;
   element: HTMLElement;
+  pointerCaptureTarget: Element;
   pointerId: number;
+  pointerType: string;
   initialPointerPosition: DragPoint;
   latestPointerPosition: DragPoint;
 };
@@ -23,6 +27,9 @@ export type ActivatedPointerDrag = {
 export type PointerActivationControllerOptions = {
   getConfiguration: () => NormalizedPointerConfiguration;
   isDragging: () => boolean;
+  acquirePendingResources?: (
+    request: PointerDragActivationRequest,
+  ) => () => void;
   startImmediately: (request: PointerDragActivationRequest) => void;
   activate: (activation: ActivatedPointerDrag) => void;
 };
@@ -32,6 +39,7 @@ type PendingPointerActivationState = ActivatedPointerDrag & {
   targetWindow: Window & typeof globalThis;
   activationTimerId: number | null;
   releasePendingPointerListeners: (() => void) | null;
+  releasePendingResources: (() => void) | null;
 };
 
 export class PointerActivationController {
@@ -63,12 +71,16 @@ export class PointerActivationController {
       draggableId: request.draggableId,
       group: request.group,
       element: request.element,
+      pointerCaptureTarget: request.pointerCaptureTarget ?? request.element,
       pointerId: request.pointerId,
+      pointerType: request.pointerType ?? "",
       initialPointerPosition,
       latestPointerPosition: initialPointerPosition,
       targetWindow,
       activationTimerId: null,
       releasePendingPointerListeners: null,
+      releasePendingResources:
+        this.options.acquirePendingResources?.(request) ?? null,
     };
 
     const handlePointerMove = (event: PointerEvent): void => {
@@ -171,6 +183,10 @@ export class PointerActivationController {
       pendingActivation.releasePendingPointerListeners;
     pendingActivation.releasePendingPointerListeners = null;
     releasePendingPointerListeners?.();
+
+    const releasePendingResources = pendingActivation.releasePendingResources;
+    pendingActivation.releasePendingResources = null;
+    releasePendingResources?.();
   }
 
   private clearPendingActivationTimer(
@@ -193,14 +209,23 @@ export class PointerActivationController {
       return;
     }
 
+    const releasePendingResources = pendingActivation.releasePendingResources;
+    pendingActivation.releasePendingResources = null;
     this.clearPendingActivation(pendingActivation);
-    this.options.activate({
-      draggableId: pendingActivation.draggableId,
-      group: pendingActivation.group,
-      element: pendingActivation.element,
-      pointerId: pendingActivation.pointerId,
-      initialPointerPosition: pendingActivation.initialPointerPosition,
-      latestPointerPosition: pendingActivation.latestPointerPosition,
-    });
+
+    try {
+      this.options.activate({
+        draggableId: pendingActivation.draggableId,
+        group: pendingActivation.group,
+        element: pendingActivation.element,
+        pointerCaptureTarget: pendingActivation.pointerCaptureTarget,
+        pointerId: pendingActivation.pointerId,
+        pointerType: pendingActivation.pointerType,
+        initialPointerPosition: pendingActivation.initialPointerPosition,
+        latestPointerPosition: pendingActivation.latestPointerPosition,
+      });
+    } finally {
+      releasePendingResources?.();
+    }
   }
 }

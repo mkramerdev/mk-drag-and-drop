@@ -110,6 +110,58 @@ describe("PointerActivationController", () => {
     expect(activate).not.toHaveBeenCalled();
   });
 
+  it("holds pending resources through activation and always releases them", () => {
+    vi.useFakeTimers();
+    const releasePendingResources = vi.fn();
+    const activate = vi.fn(() => {
+      expect(releasePendingResources).not.toHaveBeenCalled();
+    });
+    const controller = new PointerActivationController({
+      getConfiguration: () => ({
+        activationDelay: 100,
+        activationDistance: null,
+      }),
+      isDragging: () => false,
+      acquirePendingResources: () => releasePendingResources,
+      startImmediately: vi.fn(),
+      activate,
+    });
+
+    controller.request(createRequest());
+    vi.advanceTimersByTime(100);
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(releasePendingResources).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases pending resources on cancellation and activation errors", () => {
+    vi.useFakeTimers();
+    const canceledRelease = vi.fn();
+    const failedRelease = vi.fn();
+    const activationError = new Error("activation failed");
+    const controller = new PointerActivationController({
+      getConfiguration: () => ({
+        activationDelay: 100,
+        activationDistance: null,
+      }),
+      isDragging: () => false,
+      acquirePendingResources: (request) =>
+        request.draggableId === "canceled" ? canceledRelease : failedRelease,
+      startImmediately: vi.fn(),
+      activate: () => {
+        throw activationError;
+      },
+    });
+
+    controller.request({ ...createRequest(), draggableId: "canceled" });
+    controller.cancelPendingActivation();
+    expect(canceledRelease).toHaveBeenCalledTimes(1);
+
+    controller.request({ ...createRequest(), draggableId: "failed" });
+    expect(() => vi.advanceTimersByTime(100)).toThrow(activationError);
+    expect(failedRelease).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels pending activation on matching pointer end", () => {
     vi.useFakeTimers();
     const activate = vi.fn();

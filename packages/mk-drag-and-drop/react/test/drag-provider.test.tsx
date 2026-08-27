@@ -50,6 +50,7 @@ describe("DragProvider", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("does not configure the runtime during initial render", () => {
@@ -153,15 +154,11 @@ describe("DragProvider", () => {
     );
 
     expect(configureSpy).not.toHaveBeenCalled();
-    stubBoundingClientRect(
-      screen.getByTestId("draggable"),
-      createRect({ width: 20, height: 20 }),
-    );
+    const source = screen.getByTestId("draggable");
+    stubBoundingClientRect(source, createRect({ width: 20, height: 20 }));
 
     act(() => {
-      dispatchPointerDown(screen.getByTestId("draggable"), {
-        pointerId: 1,
-      });
+      dispatchPointerDown(source, { pointerId: 1 });
     });
 
     expect(firstOnDragStart).not.toHaveBeenCalled();
@@ -293,15 +290,29 @@ describe("DragProvider", () => {
         <DraggableBox />
       </DragProvider>,
     );
-    stubBoundingClientRect(
-      screen.getByTestId("draggable"),
-      createRect({ width: 20, height: 20 }),
-    );
+    const source = screen.getByTestId("draggable");
+    stubBoundingClientRect(source, createRect({ width: 20, height: 20 }));
+    let captured = false;
+    const setPointerCapture = vi.fn(() => {
+      captured = true;
+    });
+    const releasePointerCapture = vi.fn(() => {
+      captured = false;
+    });
+    Object.defineProperties(source, {
+      setPointerCapture: { configurable: true, value: setPointerCapture },
+      hasPointerCapture: {
+        configurable: true,
+        value: vi.fn(() => captured),
+      },
+      releasePointerCapture: {
+        configurable: true,
+        value: releasePointerCapture,
+      },
+    });
 
     act(() => {
-      dispatchPointerDown(screen.getByTestId("draggable"), {
-        pointerId: 1,
-      });
+      dispatchPointerDown(source, { pointerId: 1 });
     });
 
     expect(document.documentElement).toHaveAttribute(
@@ -309,6 +320,8 @@ describe("DragProvider", () => {
       "true",
     );
     expect(document.documentElement.style.userSelect).toBe("none");
+    expect(document.documentElement.style.webkitUserSelect).toBe("none");
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
 
     act(() => {
       unmount();
@@ -331,6 +344,9 @@ describe("DragProvider", () => {
     );
     expect(document.documentElement.style.userSelect).toBe("");
     expect(document.body.style.userSelect).toBe("");
+    expect(document.documentElement.style.webkitUserSelect ?? "").toBe("");
+    expect(document.body.style.webkitUserSelect ?? "").toBe("");
+    expect(releasePointerCapture).toHaveBeenCalledWith(1);
     expect(document.documentElement).not.toHaveAttribute(
       domPointerDragActiveAttribute,
     );
@@ -363,6 +379,52 @@ describe("DragProvider", () => {
     );
     expect(document.documentElement.style.userSelect).toBe("");
     expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("unmounts during pending activation by restoring selection state", () => {
+    vi.useFakeTimers();
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(
+      <DragProvider pointerConfiguration={{ activationDelay: 100 }}>
+        <DraggableBox />
+      </DragProvider>,
+    );
+    const source = screen.getByTestId("draggable");
+    stubBoundingClientRect(source, createRect({ width: 20, height: 20 }));
+
+    act(() => {
+      dispatchPointerDown(source, { pointerId: 1, pointerType: "touch" });
+    });
+
+    expect(document.documentElement).not.toHaveAttribute(
+      domPointerDragActiveAttribute,
+    );
+    expect(document.documentElement.style.userSelect).toBe("none");
+    expect(document.documentElement.style.webkitUserSelect).toBe("none");
+
+    act(() => {
+      unmount();
+    });
+
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointermove",
+      expect.any(Function),
+      true,
+    );
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointerup",
+      expect.any(Function),
+      true,
+    );
+    expect(removeListener).toHaveBeenCalledWith(
+      "pointercancel",
+      expect.any(Function),
+      true,
+    );
+    expect(document.documentElement.style.userSelect).toBe("");
+    expect(document.body.style.userSelect).toBe("");
+    expect(document.documentElement.style.webkitUserSelect ?? "").toBe("");
+    expect(document.body.style.webkitUserSelect ?? "").toBe("");
   });
 
   it("does not fire stale lifecycle callbacks after provider unmount", () => {

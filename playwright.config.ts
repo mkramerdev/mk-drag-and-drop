@@ -6,7 +6,7 @@ const useProductionBuild = process.env.E2E_PRODUCTION === "1";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "**/carrier-table.spec.ts",
+  testMatch: ["**/carrier-table.spec.ts", "**/mobile-pointer.spec.ts"],
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
@@ -43,6 +43,16 @@ export default defineConfig({
     createProject("react-firefox", reactBaseUrl, devices["Desktop Firefox"]),
     createProject("vanilla-webkit", vanillaBaseUrl, devices["Desktop Safari"]),
     createProject("react-webkit", reactBaseUrl, devices["Desktop Safari"]),
+    createMobilePointerProject(
+      "vanilla-mobile-webkit",
+      vanillaBaseUrl,
+      devices["iPhone 16"],
+    ),
+    createMobilePointerProject(
+      "react-mobile-webkit",
+      reactBaseUrl,
+      devices["iPhone 16"],
+    ),
   ],
 });
 
@@ -53,6 +63,19 @@ function createProject(
 ) {
   return {
     name,
+    testIgnore: "**/mobile-pointer.spec.ts",
+    use: { ...device, baseURL },
+  };
+}
+
+function createMobilePointerProject(
+  name: string,
+  baseURL: string,
+  device: (typeof devices)[keyof typeof devices],
+) {
+  return {
+    name,
+    testMatch: "**/mobile-pointer.spec.ts",
     use: { ...device, baseURL },
   };
 }

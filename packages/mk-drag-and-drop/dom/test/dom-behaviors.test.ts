@@ -60,6 +60,9 @@ describe("DOM behaviors", () => {
     draggable.onPointerDown(handleEvent);
 
     expect(runtime.requestDragStart).toHaveBeenCalledTimes(1);
+    expect(runtime.requestDragStart).toHaveBeenCalledWith(
+      expect.objectContaining({ pointerCaptureTarget: handle }),
+    );
     expect(buttonEvent.preventDefault).not.toHaveBeenCalled();
     expect(handleEvent.preventDefault).toHaveBeenCalled();
     expect(handleEvent.stopPropagation).toHaveBeenCalled();
@@ -81,6 +84,9 @@ describe("DOM behaviors", () => {
     draggable.onPointerDown(event);
 
     expect(runtime.requestDragStart).toHaveBeenCalledTimes(1);
+    expect(runtime.requestDragStart).toHaveBeenCalledWith(
+      expect.objectContaining({ pointerCaptureTarget: element }),
+    );
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(event.stopPropagation).toHaveBeenCalledTimes(1);
   });

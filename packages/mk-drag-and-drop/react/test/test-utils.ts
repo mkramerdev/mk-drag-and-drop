@@ -16,6 +16,7 @@ type PointerEventInput = {
   clientY?: number;
   button?: number;
   isPrimary?: boolean;
+  pointerType?: string;
 };
 
 export function createRect({
@@ -77,10 +78,7 @@ export function dispatchPointerCancel(
   return dispatchPointerEvent(target, "pointercancel", input);
 }
 
-export function dispatchKeyDown(
-  target: EventTarget,
-  key: string,
-): boolean {
+export function dispatchKeyDown(target: EventTarget, key: string): boolean {
   return target.dispatchEvent(
     new KeyboardEvent("keydown", {
       bubbles: true,
@@ -165,6 +163,7 @@ function dispatchPointerEvent(
   Object.defineProperties(event, {
     pointerId: { value: input.pointerId ?? 1 },
     isPrimary: { value: input.isPrimary ?? true },
+    pointerType: { value: input.pointerType ?? "mouse" },
   });
 
   return target.dispatchEvent(event);

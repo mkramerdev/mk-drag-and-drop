@@ -205,6 +205,29 @@ pointer, reapplies modifiers, and publishes via the same completed preview path;
 it does not implicitly remeasure. Schedule after projected DOM commit, skip
 unchanged orders, allow at most one pending frame, and cancel it on end/unmount.
 
+## Mobile pointer ownership
+
+`useDragHandle` returns the stable `data-dnd-drag-handle` attribute. Dedicated
+handles must declare touch gesture ownership before a gesture begins:
+
+```css
+[data-dnd-drag-handle] {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+```
+
+Add the rule to every document or shadow root that renders handles.
+`preventDefault()` during `pointerdown`, active pointer capture, and runtime
+selection suppression cannot retroactively change native pan/zoom ownership.
+
+For a draggable without a handle, apply `touch-action` to the draggable surface
+only if it should own touch movement. `touch-action: none` also prevents normal
+page scrolling from gestures that begin on that surface. Axis-specific values
+can preserve orthogonal native panning, but native scrolling and dragging
+cannot both own the same-axis gesture.
+
 ## Descendant menu-button handles
 
 ```tsx

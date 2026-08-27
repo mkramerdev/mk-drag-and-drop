@@ -15,6 +15,7 @@ type PointerEventInput = {
   clientY?: number;
   button?: number;
   isPrimary?: boolean;
+  pointerType?: string;
 };
 
 export function createRect({
@@ -76,10 +77,7 @@ export function dispatchPointerCancel(
   return dispatchPointerEvent(target, "pointercancel", input);
 }
 
-export function dispatchKeyDown(
-  target: EventTarget,
-  key: string,
-): boolean {
+export function dispatchKeyDown(target: EventTarget, key: string): boolean {
   return target.dispatchEvent(
     new KeyboardEvent("keydown", {
       bubbles: true,
@@ -151,6 +149,7 @@ export function createPointerHandlerEvent(
   preventDefault: () => void;
   stopPropagation: () => void;
   pointerId: number;
+  pointerType?: string;
   button?: number;
   isPrimary?: boolean;
   clientX: number;
@@ -161,6 +160,7 @@ export function createPointerHandlerEvent(
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
     pointerId: input.pointerId ?? 1,
+    pointerType: input.pointerType,
     button: input.button,
     isPrimary: input.isPrimary,
     clientX: input.clientX ?? 0,
@@ -184,6 +184,7 @@ function dispatchPointerEvent(
   Object.defineProperties(event, {
     pointerId: { value: input.pointerId ?? 1 },
     isPrimary: { value: input.isPrimary ?? true },
+    pointerType: { value: input.pointerType ?? "mouse" },
   });
 
   return target.dispatchEvent(event);

@@ -89,6 +89,23 @@ test("publishes active pointer state for consumer cursor styling", async ({
       ),
     )
     .toBe("true");
+  await expect
+    .poll(() =>
+      handle.evaluate((element) => {
+        const pointerId = Number(
+          document.documentElement.dataset.lastPointerId ?? "-1",
+        );
+        return element.hasPointerCapture(pointerId);
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.style.webkitUserSelect ?? "",
+      ),
+    )
+    .toBe("none");
 
   const probe = page.getByTestId("cursor-probe");
   const probeBox = await probe.boundingBox();
@@ -112,6 +129,54 @@ test("publishes active pointer state for consumer cursor styling", async ({
   await expect
     .poll(() => probe.evaluate((element) => getComputedStyle(element).cursor))
     .toBe("text");
+  await expect
+    .poll(() =>
+      handle.evaluate((element) => {
+        const pointerId = Number(
+          document.documentElement.dataset.lastPointerId ?? "-1",
+        );
+        return element.hasPointerCapture(pointerId);
+      }),
+    )
+    .toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.style.webkitUserSelect ?? "",
+      ),
+    )
+    .toBe("");
+});
+
+test("establishes touch ownership only on dedicated drag handles", async ({
+  page,
+}) => {
+  const handle = page.getByTestId("row-menu-row-1");
+  const outsideHandle = page.getByTestId("carrier-table");
+
+  await expect
+    .poll(() =>
+      handle.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          touchAction: style.touchAction,
+          userSelect: style.userSelect || style.webkitUserSelect,
+          webkitUserSelect: style.webkitUserSelect,
+        };
+      }),
+    )
+    .toEqual({
+      touchAction: "none",
+      userSelect: "none",
+      webkitUserSelect: "none",
+    });
+  await expect
+    .poll(() =>
+      outsideHandle.evaluate(
+        (element) => getComputedStyle(element).touchAction,
+      ),
+    )
+    .toBe("auto");
 });
 
 test("starts with equivalent unequal carrier and reference geometry", async ({

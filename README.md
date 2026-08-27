@@ -210,6 +210,33 @@ drop.
 
 ## Handles and overlays
 
+### Mobile pointer ownership
+
+Dedicated drag handles must declare touch gesture ownership before a gesture
+begins. `createDragHandle` adds the stable `data-dnd-drag-handle` attribute;
+apply the following CSS in every document or shadow root that renders handles:
+
+```css
+[data-dnd-drag-handle] {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+```
+
+`touch-action` cannot be applied from `pointerdown`: the browser decides native
+pan/zoom ownership before the handler runs. The runtime uses pointer capture
+after activation and suppresses standard and WebKit text selection during both
+pending and active pointer input, but neither mechanism replaces the CSS
+contract.
+
+For a draggable without a dedicated handle, apply `touch-action` to the
+draggable surface only when that surface should own touch movement. `none`
+prevents ordinary page scrolling from gestures that begin there. An
+axis-specific value can preserve orthogonal native panning, but a vertical drag
+and vertical page scroll cannot own the same gesture simultaneously. Scrolling
+outside dedicated handles remains unaffected.
+
 Pointer activation delay and distance use OR semantics: reaching either
 threshold activates. A quick release before activation remains a click. Once a
 pointer drag activates, only the related generated click in the initiating

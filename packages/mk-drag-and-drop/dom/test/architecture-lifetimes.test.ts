@@ -356,6 +356,24 @@ describe("architecture lifetimes", () => {
     expectSortablePreviewRestores("active-release");
   });
 
+  it("reacquires pointer capture after package-owned sortable movement", () => {
+    const raf = trackRaf(installMockRaf());
+    const controller = trackController(createDragController());
+    const { list, a, b } = createSortablePair(controller);
+    const capture = installPointerCaptureMock(a);
+
+    dispatchPointerDown(a, { pointerId: 1, clientX: 10, clientY: 10 });
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(1);
+
+    capture.setCaptured(false);
+    dispatchPointerMove(window, { pointerId: 1, clientX: 10, clientY: 40 });
+    raf.flush();
+
+    expect(Array.from(list.children)).toEqual([b, a]);
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(2);
+    dispatchPointerUp(window, { pointerId: 1, clientX: 10, clientY: 40 });
+  });
+
   function trackController(controller: DragController): DragController {
     activeControllers.push(controller);
     return controller;
@@ -485,4 +503,38 @@ function createMeasuredElement(
   stubBoundingClientRect(element, rect);
 
   return element;
+}
+
+function installPointerCaptureMock(element: Element): {
+  setCaptured: (captured: boolean) => void;
+  setPointerCapture: ReturnType<typeof vi.fn>;
+} {
+  let captured = false;
+  const setPointerCapture = vi.fn(() => {
+    captured = true;
+  });
+
+  Object.defineProperties(element, {
+    setPointerCapture: {
+      configurable: true,
+      value: setPointerCapture,
+    },
+    hasPointerCapture: {
+      configurable: true,
+      value: vi.fn(() => captured),
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: vi.fn(() => {
+        captured = false;
+      }),
+    },
+  });
+
+  return {
+    setCaptured: (nextCaptured) => {
+      captured = nextCaptured;
+    },
+    setPointerCapture,
+  };
 }

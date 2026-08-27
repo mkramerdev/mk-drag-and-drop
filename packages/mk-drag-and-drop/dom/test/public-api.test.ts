@@ -29,6 +29,7 @@ describe("DOM public API", () => {
     expect(domApi).toHaveProperty("createDroppable");
     expect(domApi).toHaveProperty("createDropContainer");
     expect(domApi).toHaveProperty("createSortable");
+    expect(domApi.domDragHandleAttribute).toBe("data-dnd-drag-handle");
     expect(domApi.domPointerDragActiveAttribute).toBe(
       "data-dnd-pointer-drag-active",
     );
@@ -64,6 +65,9 @@ describe("DOM public API", () => {
     expect(integrationApi).toHaveProperty("createDomDroppable");
     expect(integrationApi).toHaveProperty("createDomDropContainer");
     expect(integrationApi).toHaveProperty("createDomSortable");
+    expect(integrationApi.domDragHandleAttribute).toBe(
+      domApi.domDragHandleAttribute,
+    );
     expect(integrationApi.domPointerDragActiveAttribute).toBe(
       domApi.domPointerDragActiveAttribute,
     );

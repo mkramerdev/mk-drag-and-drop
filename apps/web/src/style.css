@@ -213,6 +213,12 @@ button {
   flex-direction: column;
 }
 
+[data-dnd-drag-handle] {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .dragListHandle {
   width: 1.5rem;
   height: 1.5rem;

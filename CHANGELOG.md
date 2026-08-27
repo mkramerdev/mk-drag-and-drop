@@ -5,6 +5,25 @@ All notable package changes will be documented here.
 This project is still early, so release notes may stay brief until the public
 API settles.
 
+## Unreleased
+
+## 0.5.2
+
+### Added
+
+- Added explicit best-effort pointer capture with idempotent cleanup and
+  reacquisition after package-owned sortable movement.
+- Exported the stable `domDragHandleAttribute` from the DOM and React package
+  roots and documented the required mobile handle style contract.
+
+### Fixed
+
+- Suppressed both standard and WebKit text selection during pending and active
+  pointer input, with coordinated document ownership and exact inline-property
+  restoration.
+- Updated shipped handle examples to establish `touch-action: none` before
+  mobile gestures begin.
+
 ## 0.5.1
 
 ### Added

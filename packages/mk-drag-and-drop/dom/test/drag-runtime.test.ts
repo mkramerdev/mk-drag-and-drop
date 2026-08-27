@@ -72,6 +72,91 @@ describe("DragRuntime", () => {
     );
   });
 
+  it("captures the activation target and releases it on pointer completion", () => {
+    const source = createElementWithRect(createRect({ width: 40, height: 20 }));
+    const handle = document.createElement("button");
+    source.append(handle);
+    const capture = installPointerCaptureMock(handle);
+    configureRuntime(runtime, {});
+
+    runtime.requestDragStart({
+      draggableId: "item-1",
+      group: "items",
+      element: source,
+      pointerCaptureTarget: handle,
+      pointerId: 7,
+      pointerPosition: { x: 4, y: 5 },
+    });
+
+    expect(capture.setPointerCapture).toHaveBeenCalledWith(7);
+    dispatchPointerUp(window, { pointerId: 7 });
+    expect(capture.releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("releases pointer capture on cancel, pointercancel, and forced cleanup", () => {
+    const releaseDrag = [
+      () => runtime.cancelDrag(),
+      () => dispatchPointerCancel(window, { pointerId: 1 }),
+      () => runtime.releaseActiveDragResources(),
+    ];
+
+    for (const release of releaseDrag) {
+      const source = createElementWithRect(
+        createRect({ width: 40, height: 20 }),
+      );
+      const capture = installPointerCaptureMock(source);
+      configureRuntime(runtime, {});
+
+      startRuntimeDrag(runtime, source);
+      release();
+
+      expect(capture.releasePointerCapture).toHaveBeenCalledWith(1);
+    }
+  });
+
+  it("falls back to window listeners when pointer capture APIs throw", () => {
+    const source = createElementWithRect(createRect({ width: 40, height: 20 }));
+    Object.defineProperties(source, {
+      setPointerCapture: {
+        configurable: true,
+        value: vi.fn(() => {
+          throw new DOMException("capture unavailable", "NotFoundError");
+        }),
+      },
+      hasPointerCapture: {
+        configurable: true,
+        value: vi.fn(() => false),
+      },
+      releasePointerCapture: {
+        configurable: true,
+        value: vi.fn(() => {
+          throw new DOMException("capture unavailable", "NotFoundError");
+        }),
+      },
+    });
+    configureRuntime(runtime, {});
+
+    expect(() => startRuntimeDrag(runtime, source)).not.toThrow();
+    expect(runtime.isDragging).toBe(true);
+    expect(() => dispatchPointerUp(window, { pointerId: 1 })).not.toThrow();
+    expect(runtime.isDragging).toBe(false);
+  });
+
+  it("releases pointer capture when drag activation throws", () => {
+    const source = createElementWithRect(createRect({ width: 40, height: 20 }));
+    const capture = installPointerCaptureMock(source);
+    const activationError = new Error("activation failed");
+    configureRuntime(runtime, {
+      onDragStart: () => {
+        throw activationError;
+      },
+    });
+
+    expect(() => startRuntimeDrag(runtime, source)).toThrow(activationError);
+    expect(capture.releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(runtime.isDragging).toBe(false);
+  });
+
   it("starts keyboard drags and calls onDragStart with keyboard source", () => {
     const source = createElementWithRect(createRect({ width: 40, height: 20 }));
     const onDragStart = vi.fn();
@@ -340,6 +425,29 @@ describe("DragRuntime", () => {
     expect(onDragStart).not.toHaveBeenCalled();
     expect(removeListener).toHaveBeenCalledTimes(6);
     expectPointerWindowListenersReleased(removeListener);
+  });
+
+  it("suppresses standard and WebKit selection while activation is pending", () => {
+    vi.useFakeTimers();
+    const source = createElementWithRect(createRect({ width: 10, height: 10 }));
+    configureRuntimeWith(runtime, {
+      pointerConfiguration: { activationDelay: 100 },
+    });
+
+    startRuntimeDrag(runtime, source);
+
+    expect(runtime.isDragging).toBe(false);
+    expect(document.documentElement.style.userSelect).toBe("none");
+    expect(document.documentElement.style.webkitUserSelect).toBe("none");
+    expect(document.body.style.userSelect).toBe("none");
+    expect(document.body.style.webkitUserSelect).toBe("none");
+
+    dispatchPointerUp(window, { pointerId: 1 });
+
+    expect(document.documentElement.style.userSelect).toBe("");
+    expect(document.documentElement.style.webkitUserSelect ?? "").toBe("");
+    expect(document.body.style.userSelect).toBe("");
+    expect(document.body.style.webkitUserSelect ?? "").toBe("");
   });
 
   it("no-ops active drag recomputation while idle", () => {
@@ -1949,6 +2057,43 @@ function createElementWithRect(
   document.body.append(element);
   stubBoundingClientRect(element, rect);
   return element;
+}
+
+function installPointerCaptureMock(element: Element): {
+  setCaptured: (captured: boolean) => void;
+  setPointerCapture: ReturnType<typeof vi.fn>;
+  releasePointerCapture: ReturnType<typeof vi.fn>;
+} {
+  let captured = false;
+  const setPointerCapture = vi.fn(() => {
+    captured = true;
+  });
+  const releasePointerCapture = vi.fn(() => {
+    captured = false;
+  });
+
+  Object.defineProperties(element, {
+    setPointerCapture: {
+      configurable: true,
+      value: setPointerCapture,
+    },
+    hasPointerCapture: {
+      configurable: true,
+      value: vi.fn(() => captured),
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: releasePointerCapture,
+    },
+  });
+
+  return {
+    setCaptured: (nextCaptured) => {
+      captured = nextCaptured;
+    },
+    setPointerCapture,
+    releasePointerCapture,
+  };
 }
 
 function createMeasuredElement(
