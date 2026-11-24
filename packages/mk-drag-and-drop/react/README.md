@@ -226,7 +226,8 @@ For a draggable without a handle, apply `touch-action` to the draggable surface
 only if it should own touch movement. `touch-action: none` also prevents normal
 page scrolling from gestures that begin on that surface. Axis-specific values
 can preserve orthogonal native panning, but native scrolling and dragging
-cannot both own the same-axis gesture.
+cannot both own the same-axis gesture. If the draggable is an inline anchor,
+use a display value such as `inline-block` so `touch-action` applies.
 
 ## Descendant menu-button handles
 
@@ -249,12 +250,22 @@ function Carrier({ id }: { id: string }) {
 }
 ```
 
-Pointer activation delay and distance use OR semantics. A quick release before
-activation remains a click. An activated drag suppresses only the related
-generated click, while a later intentional click works. Space and Enter remain
-button/menu activation keys and do not start keyboard dragging because the
-handle is interactive. Use another appropriate handle or explicit commands for
-keyboard sorting; editable descendants remain protected.
+Pointer activation delay and distance use OR semantics. Without a dedicated
+handle, pointer drags can start on links (`a[href]` and `role="link"`), including
+when the draggable is itself a link. Buttons, inputs, selects, textareas, options,
+elements with `role="button"` or `role="textbox"`, and content-editable elements
+are protected from pointer drag starts. When a draggable has a dedicated handle,
+pointer drags start only from that handle.
+
+Native browser dragging is suppressed in the draggable subtree while pointer
+activation is pending or active. A quick release before activation follows the
+link as usual. After activation, the generated click on the initiating draggable
+subtree is suppressed. Later intentional clicks work normally.
+
+Keyboard drag starts protect links as well as the controls and editable elements
+listed above. Enter on a focused link follows it. Space and Enter still activate
+a button or menu when that button is also a pointer drag handle. Use another
+appropriate handle or explicit commands for keyboard sorting.
 
 ### Active pointer cursor state
 

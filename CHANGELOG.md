@@ -7,6 +7,15 @@ API settles.
 
 ## Unreleased
 
+## 0.5.3
+
+### Fixed
+
+- Enabled pointer drags from links in draggables without a dedicated handle,
+  including when the draggable is an anchor. Native link dragging is suppressed
+  while activation is pending or active. A quick click and Enter still follow
+  the link, and an activated drag suppresses its generated click.
+
 ## 0.5.2
 
 ### Added

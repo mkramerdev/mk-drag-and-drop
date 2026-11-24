@@ -43,9 +43,11 @@ describe("DOM behaviors", () => {
   it("createDomDraggable ignores interactive descendants unless a drag handle is used", () => {
     const element = document.createElement("div");
     const button = document.createElement("button");
+    const link = document.createElement("a");
+    link.href = "#destination";
     const handle = document.createElement("button");
     handle.dataset.dndDragHandle = "true";
-    element.append(button, handle);
+    element.append(button, link, handle);
     const runtime = createDraggableRuntime();
     const draggable = createDomDraggable({
       runtime,
@@ -54,9 +56,11 @@ describe("DOM behaviors", () => {
       getElement: () => element,
     });
     const buttonEvent = createPointerHandlerEvent({ target: button });
+    const linkEvent = createPointerHandlerEvent({ target: link });
     const handleEvent = createPointerHandlerEvent({ target: handle });
 
     draggable.onPointerDown(buttonEvent);
+    draggable.onPointerDown(linkEvent);
     draggable.onPointerDown(handleEvent);
 
     expect(runtime.requestDragStart).toHaveBeenCalledTimes(1);
@@ -64,6 +68,7 @@ describe("DOM behaviors", () => {
       expect.objectContaining({ pointerCaptureTarget: handle }),
     );
     expect(buttonEvent.preventDefault).not.toHaveBeenCalled();
+    expect(linkEvent.preventDefault).not.toHaveBeenCalled();
     expect(handleEvent.preventDefault).toHaveBeenCalled();
     expect(handleEvent.stopPropagation).toHaveBeenCalled();
   });
@@ -89,6 +94,27 @@ describe("DOM behaviors", () => {
     );
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a pointer drag from a role=link draggable and preserves Enter", () => {
+    const element = document.createElement("span");
+    element.setAttribute("role", "link");
+    const runtime = createDraggableRuntime();
+    const draggable = createDomDraggable({
+      runtime,
+      draggableId: "link",
+      group: "items",
+      getElement: () => element,
+    });
+    const pointerEvent = createPointerHandlerEvent({ target: element });
+    const keyEvent = { ...pointerEvent, key: "Enter" };
+
+    draggable.onPointerDown(pointerEvent);
+    draggable.onKeyDown(keyEvent);
+
+    expect(runtime.requestDragStart).toHaveBeenCalledTimes(1);
+    expect(runtime.handleSourceKeyboardKeyDown).not.toHaveBeenCalled();
+    expect(pointerEvent.preventDefault).not.toHaveBeenCalled();
   });
 
   it("keeps Space and Enter available to an interactive button handle", () => {

@@ -1,7 +1,7 @@
 import type { DragPoint } from "../geometry/rects.js";
 
 import {
-  getPointerCaptureTarget,
+  getPointerDragStartTarget,
   shouldHandleKeyboardDragFromTarget,
 } from "../input/drag-handle.js";
 
@@ -68,12 +68,12 @@ export function createDomDraggable(
         return;
       }
 
-      const pointerCaptureTarget = getPointerCaptureTarget({
+      const dragStartTarget = getPointerDragStartTarget({
         draggableElement: element,
         eventTarget: event.target,
       });
 
-      if (!pointerCaptureTarget) {
+      if (!dragStartTarget) {
         return;
       }
 
@@ -84,14 +84,17 @@ export function createDomDraggable(
         return;
       }
 
-      event.preventDefault();
+      // A canceled pointerdown can prevent a touch tap from clicking the link.
+      if (!dragStartTarget.preservePointerDownDefault) {
+        event.preventDefault();
+      }
       event.stopPropagation();
 
       input.runtime.requestDragStart({
         draggableId: input.draggableId,
         group: input.group,
         element,
-        pointerCaptureTarget,
+        pointerCaptureTarget: dragStartTarget.captureTarget,
         pointerId: event.pointerId,
         pointerType: event.pointerType,
         pointerPosition: {

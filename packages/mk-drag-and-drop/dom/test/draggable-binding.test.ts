@@ -49,6 +49,83 @@ describe("createDraggable", () => {
     );
   });
 
+  it.each(["child", "draggable"])(
+    "preserves link activation and suppresses native dragging for a link as the %s",
+    (position) => {
+      const onDragStart = vi.fn();
+      controller = createDragController({
+        onDragStart,
+        pointerConfiguration: { activationDistance: 10 },
+      });
+      const link = document.createElement("a");
+      link.href = "#destination";
+      const element = position === "child" ? createMeasuredElement() : link;
+      if (position === "child") {
+        element.append(link);
+      } else {
+        document.body.append(link);
+      }
+      createDraggable({ controller, element, draggableId: "item" });
+
+      const otherLink = document.createElement("a");
+      document.body.append(otherLink);
+      const dispatchNativeDrag = (target = link) =>
+        target.dispatchEvent(
+          new Event("dragstart", { bubbles: true, cancelable: true }),
+        );
+      const dispatchClick = () =>
+        link.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            detail: 1,
+          }),
+        );
+
+      link.focus();
+      expect(document.activeElement).toBe(link);
+      expect(dispatchKeyDown(link, "Enter")).toBe(true);
+      expect(onDragStart).not.toHaveBeenCalled();
+
+      expect(dispatchPointerDown(link)).toBe(true);
+      expect(dispatchNativeDrag()).toBe(false);
+      expect(dispatchNativeDrag(otherLink)).toBe(true);
+      dispatchPointerUp(link);
+      expect(dispatchClick()).toBe(true);
+      expect(dispatchNativeDrag()).toBe(true);
+      expect(onDragStart).not.toHaveBeenCalled();
+
+      dispatchPointerDown(link);
+      dispatchPointerMove(link, { clientX: 15 });
+      expect(onDragStart).toHaveBeenCalledTimes(1);
+      expect(onDragStart).toHaveBeenCalledWith(
+        expect.objectContaining({ draggableId: "item", source: "pointer" }),
+        expect.any(Object),
+      );
+      expect(dispatchNativeDrag()).toBe(false);
+      dispatchPointerUp(link, { clientX: 15 });
+      expect(dispatchClick()).toBe(false);
+      expect(dispatchNativeDrag()).toBe(true);
+    },
+  );
+
+  it("releases native drag suppression when an immediate pointer drag is canceled", () => {
+    controller = createDragController();
+    const link = document.createElement("a");
+    link.href = "#destination";
+    document.body.append(link);
+    createDraggable({ controller, element: link, draggableId: "link" });
+    const dispatchNativeDrag = () =>
+      link.dispatchEvent(
+        new Event("dragstart", { bubbles: true, cancelable: true }),
+      );
+
+    dispatchPointerDown(link);
+    expect(dispatchNativeDrag()).toBe(false);
+    dispatchPointerCancel(link);
+    expect(dispatchNativeDrag()).toBe(true);
+  });
+
   it("binds keyboard drag when keyboard dragging is enabled", () => {
     const onDragStart = vi.fn();
     controller = createDragController({ onDragStart });

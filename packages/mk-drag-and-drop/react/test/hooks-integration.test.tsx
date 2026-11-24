@@ -950,6 +950,78 @@ describe("React integration flows", () => {
     expect(onDragStart).not.toHaveBeenCalled();
   });
 
+  it.each(["child", "draggable"])(
+    "preserves link activation and suppresses native dragging for a link as the %s",
+    (position) => {
+      function DraggableLink() {
+        const draggable = useDraggable({ draggableId: "item" });
+        if (position === "draggable") {
+          return (
+            <a {...draggable} href="#destination">
+              Destination
+            </a>
+          );
+        }
+        return (
+          <div {...draggable}>
+            <a href="#destination">Destination</a>
+          </div>
+        );
+      }
+
+      const onDragStart = vi.fn();
+      render(
+        <DragProvider
+          onDragStart={onDragStart}
+          pointerConfiguration={{ activationDistance: 10 }}
+        >
+          <DraggableLink />
+        </DragProvider>,
+      );
+      const link = screen.getByRole("link", { name: "Destination" });
+      const dispatchNativeDrag = () =>
+        link.dispatchEvent(
+          new Event("dragstart", { bubbles: true, cancelable: true }),
+        );
+      const dispatchClick = () =>
+        link.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            detail: 1,
+          }),
+        );
+
+      link.focus();
+      expect(link).toHaveFocus();
+      act(() => expect(dispatchKeyDown(link, "Enter")).toBe(true));
+      expect(onDragStart).not.toHaveBeenCalled();
+
+      act(() => {
+        expect(dispatchPointerDown(link)).toBe(true);
+        expect(dispatchNativeDrag()).toBe(false);
+        dispatchPointerUp(link);
+        expect(dispatchClick()).toBe(true);
+        expect(dispatchNativeDrag()).toBe(true);
+      });
+      expect(onDragStart).not.toHaveBeenCalled();
+
+      act(() => {
+        dispatchPointerDown(link);
+        dispatchPointerMove(link, { clientX: 15 });
+        expect(dispatchNativeDrag()).toBe(false);
+        dispatchPointerUp(link, { clientX: 15 });
+        expect(dispatchClick()).toBe(false);
+        expect(dispatchNativeDrag()).toBe(true);
+      });
+      expect(onDragStart).toHaveBeenCalledTimes(1);
+      expect(onDragStart).toHaveBeenCalledWith(
+        expect.objectContaining({ draggableId: "item", source: "pointer" }),
+        expect.any(Object),
+      );
+    },
+  );
+
   it("announcements update from lifecycle callbacks", () => {
     render(
       <DragProvider

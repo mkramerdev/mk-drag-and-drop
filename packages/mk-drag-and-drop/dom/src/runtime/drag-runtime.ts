@@ -19,6 +19,7 @@ import {
 } from "../input/keyboard-drag.js";
 import { globalPointerListenerCapture } from "../input/global-pointer-listeners.js";
 import { acquireDocumentSelectionSuppression } from "../input/document-selection-state.js";
+import { suppressNativeDragStart } from "../input/native-drag-suppression.js";
 import { PointerActivationController } from "../input/pointer-activation.js";
 import { acquireDocumentPointerDragState } from "../input/pointer-drag-state.js";
 import {
@@ -147,8 +148,16 @@ export class DragRuntime {
   private pointerActivation = new PointerActivationController({
     getConfiguration: () => this.pointerConfiguration,
     isDragging: () => this.isDragging,
-    acquirePendingResources: (request) =>
-      acquireDocumentSelectionSuppression(request.element.ownerDocument),
+    acquirePendingResources: ({ element }) => {
+      const restoreTextSelection = acquireDocumentSelectionSuppression(
+        element.ownerDocument,
+      );
+      const releaseNativeDragSuppression = suppressNativeDragStart(element);
+      return () => {
+        releaseNativeDragSuppression();
+        restoreTextSelection();
+      };
+    },
     startImmediately: (request) => {
       if (!request.element.isConnected) {
         return;
@@ -919,6 +928,8 @@ export class DragRuntime {
   ): void {
     this.releaseActiveInputListeners?.();
     const targetWindow = initiatingElement.ownerDocument.defaultView ?? window;
+    const releaseNativeDragSuppression =
+      suppressNativeDragStart(initiatingElement);
 
     let listenersReleased = false;
     const ensurePointerCapture = (): void => {
@@ -1020,6 +1031,7 @@ export class DragRuntime {
       if (this.ensureActivePointerCapture === ensurePointerCapture) {
         this.ensureActivePointerCapture = null;
       }
+      releaseNativeDragSuppression();
       releasePointerCapture();
       targetWindow.removeEventListener(
         "pointermove",

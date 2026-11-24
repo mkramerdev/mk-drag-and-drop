@@ -1,29 +1,34 @@
 export const domDragHandleAttribute = "data-dnd-drag-handle";
 export const domDragHandleSelector = `[${domDragHandleAttribute}]`;
 
-const interactiveElementSelector = [
-  "a[href]",
+const pointerInteractiveElementSelector = [
   "button",
   "input",
   "option",
   "select",
   "textarea",
   "[role='button']",
-  "[role='link']",
   "[role='textbox']",
+].join(",");
+
+const linkElementSelector = "a[href],[role='link']";
+
+const keyboardInteractiveElementSelector = [
+  pointerInteractiveElementSelector,
+  linkElementSelector,
 ].join(",");
 
 export function shouldStartDragFromTarget(input: {
   draggableElement: HTMLElement;
   eventTarget: EventTarget | null;
 }): boolean {
-  return getPointerCaptureTarget(input) !== null;
+  return getPointerDragStartTarget(input) !== null;
 }
 
-export function getPointerCaptureTarget(input: {
+export function getPointerDragStartTarget(input: {
   draggableElement: HTMLElement;
   eventTarget: EventTarget | null;
-}): Element | null {
+}): { captureTarget: Element; preservePointerDownDefault: boolean } | null {
   const eventTarget = getEventTargetElement(input.eventTarget);
 
   if (!eventTarget) {
@@ -34,19 +39,32 @@ export function getPointerCaptureTarget(input: {
     input.draggableElement.querySelector(domDragHandleSelector) !== null;
 
   if (!hasDragHandle) {
-    return isInteractiveDragTarget({
-      draggableElement: input.draggableElement,
-      eventTarget,
-    })
-      ? null
-      : input.draggableElement;
+    if (
+      isInteractiveDragTarget({
+        draggableElement: input.draggableElement,
+        eventTarget,
+        selector: pointerInteractiveElementSelector,
+      })
+    ) {
+      return null;
+    }
+
+    return {
+      captureTarget: input.draggableElement,
+      preservePointerDownDefault:
+        closestWithin(
+          eventTarget,
+          linkElementSelector,
+          input.draggableElement,
+        ) !== null,
+    };
   }
 
   const closestDragHandle = eventTarget.closest(domDragHandleSelector);
 
   return closestDragHandle !== null &&
     input.draggableElement.contains(closestDragHandle)
-    ? closestDragHandle
+    ? { captureTarget: closestDragHandle, preservePointerDownDefault: false }
     : null;
 }
 
@@ -64,6 +82,7 @@ export function shouldHandleKeyboardDragFromTarget(input: {
     isInteractiveDragTarget({
       draggableElement: input.draggableElement,
       eventTarget,
+      selector: keyboardInteractiveElementSelector,
     })
   ) {
     return false;
@@ -88,13 +107,11 @@ function getEventTargetElement(target: EventTarget | null): Element | null {
 function isInteractiveDragTarget(input: {
   draggableElement: HTMLElement;
   eventTarget: Element;
+  selector: string;
 }): boolean {
   return (
-    closestWithin(
-      input.eventTarget,
-      interactiveElementSelector,
-      input.draggableElement,
-    ) !== null ||
+    closestWithin(input.eventTarget, input.selector, input.draggableElement) !==
+      null ||
     getEditableElement(input.eventTarget, input.draggableElement) !== null
   );
 }

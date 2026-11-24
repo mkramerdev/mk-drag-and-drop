@@ -278,19 +278,28 @@ draggable surface only when that surface should own touch movement. `none`
 prevents ordinary page scrolling from gestures that begin there. An
 axis-specific value can preserve orthogonal native panning, but a vertical drag
 and vertical page scroll cannot own the same gesture simultaneously. Scrolling
-outside dedicated handles remains unaffected.
+outside dedicated handles remains unaffected. If the draggable is an inline
+anchor, use a display value such as `inline-block` so `touch-action` applies.
 
 `activationDelay` and `activationDistance` use OR semantics: either threshold
-activates. Quick release before activation remains an ordinary click. After an
-activated pointer drag, the browser click belonging to that interaction and
-targeting the initiating draggable subtree is suppressed once; later unrelated,
-programmatic, and keyboard clicks remain available.
+activates. Without a dedicated handle, pointer drags can start on links
+(`a[href]` and `role="link"`), including when the draggable is itself a link.
+Buttons, inputs, selects, textareas, options, elements with `role="button"` or
+`role="textbox"`, and content-editable elements are protected from pointer drag
+starts. When a draggable has a dedicated handle, pointer drags start only from
+that handle.
 
-`createDragHandle({ element })` marks a descendant handle. A button may be a
-pointer handle, but Space and Enter are reserved for its button/menu behavior;
-interactive-element protection prevents those keys from starting a drag. Use a
-noninteractive or separately focusable handle, or explicit commands, for
-keyboard sorting. Editable descendants remain protected.
+Native browser dragging is suppressed in the draggable subtree while pointer
+activation is pending or active. A quick release before activation follows the
+link as usual. After activation, the generated click on the initiating draggable
+subtree is suppressed. Later unrelated, programmatic, and keyboard clicks remain
+available.
+
+Keyboard drag starts protect links as well as the controls and editable elements
+listed above. Enter on a focused link follows it. A button marked with
+`createDragHandle({ element })` can start a pointer drag and still uses Space and
+Enter for its button/menu action. Use a noninteractive or separately focusable
+handle, or explicit commands, for keyboard sorting.
 
 ### Active pointer cursor state
 
